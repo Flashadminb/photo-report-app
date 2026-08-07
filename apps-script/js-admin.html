@@ -47,7 +47,6 @@ function enterApp() {
   $('#app').classList.remove('hide');
   renderAll();
   stampFresh();
-  startAuto();
 }
 
 /**
@@ -84,61 +83,45 @@ function load(empId) {
   });
 }
 
-// ══ อัปเดตข้อมูลเองอัตโนมัติ ═════════════════════════════════════════
+// ══ ป้ายบอกความสดของข้อมูล ═══════════════════════════════════════════
 //
-// เดิมต้องกด "โหลดใหม่" เองตลอด ไม่งั้นข้อมูลที่หน้างานเพิ่งส่งมาจะไม่ขึ้น
-// ตอนนี้ดึงใหม่ให้เองทุก 1 นาที และดึงทันทีตอนกลับมาที่แท็บนี้
+// จงใจไม่ดึงข้อมูลใหม่เองอัตโนมัติ เพราะ 2 เหตุผล
+//   1. จอจะเปลี่ยนใต้มือตอนกำลังทำงานอยู่
+//   2. เปิดค้างทั้งวันแล้วยิงทุกนาที กินโควตาเวลาทำงานของ Apps Script
+//      วันละ ~24 นาที จาก 90 นาที ทั้งที่ไม่มีใครดู ถ้าโควตาหมดคนหน้างานส่งงานไม่ได้ด้วย
 //
-// ข้ามรอบนั้นไปถ้ากำลังทำอะไรค้างอยู่ (พิมพ์ในช่อง หรือติ๊กเลือกรูปไว้)
-// เพื่อไม่ให้จอเปลี่ยนใต้มือ และคงตำแหน่งเลื่อนหน้าไว้ที่เดิม
+// แทนที่ด้วยการบอกให้ชัดว่าข้อมูลเก่าแค่ไหน แล้วให้กด "โหลดใหม่" เอาเอง
+// นาฬิกาตัวนี้นับในเครื่องล้วน ๆ ไม่ได้เรียกเซิร์ฟเวอร์
 
-var AUTO = { ms: 60000, timer: null, last: 0, busy: false };
+var FRESH = { at: 0, timer: null };
 
 function stampFresh() {
-  var n = new Date();
-  var p = function (v) { return (v < 10 ? '0' : '') + v; };
+  FRESH.at = Date.now();
+  paintFresh();
+  clearInterval(FRESH.timer);
+  FRESH.timer = setInterval(paintFresh, 30000);
+}
+
+function paintFresh() {
   var f = $('#fresh');
-  if (f) f.textContent = 'อัปเดตล่าสุด\n' + p(n.getHours()) + ':' + p(n.getMinutes()) + ' น.';
-  AUTO.last = Date.now();
+  if (!f || !FRESH.at) return;
+  var d = new Date(FRESH.at);
+  var p = function (v) { return (v < 10 ? '0' : '') + v; };
+  var mins = Math.floor((Date.now() - FRESH.at) / 60000);
+  var ago = mins < 1 ? 'เมื่อครู่นี้' : (mins < 60 ? mins + ' นาทีที่แล้ว'
+    : Math.floor(mins / 60) + ' ชม.ที่แล้ว');
+
+  f.textContent = 'ข้อมูล ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' น.\n' + ago;
+  // เกิน 10 นาทีเริ่มเตือนด้วยสี จะได้นึกออกว่าควรกดโหลดใหม่
+  f.style.color = mins >= 10 ? 'var(--color-accent)' : '';
+  f.style.opacity = mins >= 10 ? '1' : '.6';
 }
-
-function autoBusyNow() {
-  var t = document.activeElement && document.activeElement.tagName;
-  if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return true;
-  return Object.keys(A.sel).length > 0;
-}
-
-function autoRefresh() {
-  if (AUTO.busy || !A.empId || !A.user) return;
-  if (document.hidden || autoBusyNow()) return;
-  if (Date.now() - AUTO.last < 20000) return;
-
-  AUTO.busy = true;
-  var y = window.scrollY;
-  load(A.empId).then(function () {
-    renderAll();
-    window.scrollTo(0, y);
-    stampFresh();
-  }).catch(function () {
-    /* เน็ตสะดุด ไม่ต้องรบกวน ไว้รอบหน้า */
-  }).then(function () { AUTO.busy = false; });
-}
-
-function startAuto() {
-  clearInterval(AUTO.timer);
-  AUTO.timer = setInterval(autoRefresh, AUTO.ms);
-}
-
-document.addEventListener('visibilitychange', function () {
-  if (!document.hidden) autoRefresh();
-});
-window.addEventListener('focus', autoRefresh);
 
 /** เปลี่ยนช่วงเวลาแล้วดึงข้อมูลใหม่จากชีท (ไม่ได้กรองในเครื่อง เพราะไม่ได้โหลดมาทั้งหมด) */
 function setRange(r) {
   A.range = r; A.sel = {}; A.fDate = 'ทั้งหมด';
   toast('กำลังโหลด…', false, 30000);
-  return reload().then(function () { toast(rangeText(A.range)); });
+  return reload().then(function () { stampFresh(); toast(rangeText(A.range)); });
 }
 
 function rangeText(r) {
