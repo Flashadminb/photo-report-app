@@ -751,7 +751,14 @@ var S = {
   extra: [],              // รูปแนบเพิ่ม [{id, dataUrl, time, gps, src}]
   issueShots: [],         // รูปจุดที่มีปัญหา — หลายรูปได้ เสียหลายเครื่องก็ถ่ายครบทุกเครื่อง
   result: '', issueText: '', note: '',
-  busy: false, queueCount: 0
+  busy: false, queueCount: 0,
+
+  // ทยอยอัปโหลดรูประหว่างที่ยังถ่ายอยู่ — ตอนกดส่งจะได้ไม่ต้องรออัปโหลดอีก
+  job: null,          // { recordId, folderId, folderUrl } ที่จองไว้
+  jobWait: null,      // คำขอจองที่กำลังวิ่งอยู่
+  up: {},             // { รหัสรูป: แถวที่อัปเสร็จแล้ว }
+  upBusy: {},         // { รหัสรูป: คำขอที่กำลังอัปอยู่ }
+  upSeq: 0
 };
 
 var CAP = null; // เป้าหมายของรูปที่กำลังจะถ่าย
@@ -829,6 +836,7 @@ function resetJob() {
   S.picked = []; S.pickedExtra = []; S.qty = 1;
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
+  S.job = null; S.jobWait = null; S.up = {}; S.upBusy = {}; S.upSeq = 0;
 }
 
 function openTopic(t) {
@@ -1246,6 +1254,11 @@ function renderNoteStep() {
       ? S.extra.length + ' รูป'
       : shotCount() + '/' + reqSlots().length + (S.extra.length ? ' (+' + S.extra.length + ')' : '')) +
     row2('รูปจุดที่มีปัญหา', S.issueShots.length ? S.issueShots.length + ' รูป' : '—') +
+    (function () {
+      var all = allPhotoList(), n = upDone(all);
+      if (!all.length) return '';
+      return row2('อัปโหลดแล้ว', n + '/' + all.length + (n === all.length ? ' · กดส่งได้เลย ไม่ต้องรอ' : ''));
+    })() +
     row2('สถานะ', S.result || 'ยังไม่เลือก') +
     row2('เครื่อง', (S.topic.countMode ? S.qty : S.picked.length) + ' เครื่อง') +
     row2('พิกัด', geo.text() || 'ยังไม่มี');
@@ -1301,15 +1314,15 @@ function allPhotoList() {
   if (!galleryMode()) {
     reqSlots().forEach(function (sl) {
       var s = S.shots[sl.th];
-      if (s) out.push({ slot: sl.th, dataUrl: s.dataUrl, time: s.time, gps: s.gps });
+      if (s) out.push({ id: s.id, slot: sl.th, dataUrl: s.dataUrl, time: s.time, gps: s.gps });
     });
   }
   S.issueShots.forEach(function (p) {
-    out.push({ slot: issueSlotName(), dataUrl: p.dataUrl, time: p.time, gps: p.gps });
+    out.push({ id: p.id, slot: issueSlotName(), dataUrl: p.dataUrl, time: p.time, gps: p.gps });
   });
   var extraSlot = galleryMode() ? gallerySlotName() : 'เพิ่มเติม';
   S.extra.forEach(function (p) {
-    out.push({ slot: extraSlot, dataUrl: p.dataUrl, time: p.time, gps: p.gps });
+    out.push({ id: p.id, slot: extraSlot, dataUrl: p.dataUrl, time: p.time, gps: p.gps });
   });
   return out;
 }
@@ -1368,7 +1381,10 @@ function renderFooter() {
     else                            { okState = readyToSend(); hintText = readyToSend() ? 'ครบแล้ว ไปตรวจทานได้' : missingText(); }
   } else if (S.screen === 'review') {
     label = navigator.onLine ? 'ส่งเข้าชีท' : 'บันทึกเข้าคิว';
-    hintText = navigator.onLine ? 'เขียนลงชีทอัตโนมัติ' : 'สัญญาณไม่ดี จะส่งให้อัตโนมัติเมื่อกลับมา';
+    var all = allPhotoList(), n = upDone(all);
+    hintText = !navigator.onLine ? 'สัญญาณไม่ดี จะส่งให้อัตโนมัติเมื่อกลับมา'
+      : (all.length && n === all.length ? 'รูปขึ้นครบแล้ว กดส่งได้เลย'
+         : (all.length ? 'อัปโหลดไปแล้ว ' + n + '/' + all.length + ' รูป' : 'เขียนลงชีทอัตโนมัติ'));
     okState = readyToSend();
   } else {
     show = false;
@@ -1550,7 +1566,8 @@ function handleFiles(files, fromCamera) {
 
   Promise.all(jobs).then(function (list) {
     if (cap.target === 'slot') {
-      S.shots[cap.slot] = list[0];
+      S.shots[cap.slot] = Object.assign({ id: uid('s') }, list[0]);
+      bgUpload(S.shots[cap.slot], cap.slot);
       // ถ่ายเสร็จเลื่อนไปช่องถัดไปที่ยังว่างโดยอัตโนมัติ
       var req = reqSlots();
       for (var j = 1; j <= req.length; j++) {
@@ -1558,9 +1575,15 @@ function handleFiles(files, fromCamera) {
         if (!S.shots[req[i].th]) { S.step = i; break; }
       }
     } else if (cap.target === 'issue') {
-      list.forEach(function (p) { S.issueShots.push(Object.assign({ id: uid('i') }, p)); });
+      list.forEach(function (p) {
+        var o = Object.assign({ id: uid('i') }, p);
+        S.issueShots.push(o); bgUpload(o, cap.slot);
+      });
     } else {
-      list.forEach(function (p) { S.extra.push(Object.assign({ id: uid('p') }, p)); });
+      list.forEach(function (p) {
+        var o = Object.assign({ id: uid('p') }, p);
+        S.extra.push(o); bgUpload(o, galleryMode() ? gallerySlotName() : 'เพิ่มเติม');
+      });
     }
     S.busy = false;
     if (!camOv) CAP = null;          // หน้ากล้องเปิดอยู่ ให้ถ่ายใบถัดไปต่อได้เลย
@@ -1611,43 +1634,88 @@ function clearProgress() {
   S.sendMsg = '';
 }
 
-/** อัปโหลดรูปพร้อมกันทีละหลายใบ — เร็วกว่าส่งเรียงกันทีละใบมาก */
+// ══════════════════════════════════════════════════════════════════════
+//  ทยอยอัปโหลดรูประหว่างที่ยังถ่ายอยู่
+//
+//  เดิมกดส่งแล้วค่อยอัปโหลดรูปทั้งชุด พนักงานต้องยืนรอเป็นนาที
+//  ตอนนี้พอถ่ายเสร็จใบไหน ใบนั้นวิ่งขึ้นเซิร์ฟเวอร์ทันทีระหว่างเดินไปถ่ายจุดต่อไป
+//  กดส่งจริงจึงเหลือแค่เขียนแถวลงชีท ไม่กี่วินาที
+//
+//  ล้มเหลวระหว่างทางไม่เป็นไร ตอนกดส่งจะอัปใบที่ยังไม่ขึ้นให้เอง
+// ══════════════════════════════════════════════════════════════════════
+
 var UPLOAD_PARALLEL = 4;   // มากกว่านี้เสี่ยงชนโควตา "รันพร้อมกัน" ของ Apps Script
 
-function uploadPhotos(empId, begin, photos) {
-  var next = 0, done = 0, rows = [];
-  function worker() {
-    if (next >= photos.length) return Promise.resolve();
-    var i = next++, ph = photos[i];
-    return rpc('apiUploadPhoto', empId, begin.recordId, begin.folderId,
-               ph.slot, ph.dataUrl, ph.time, ph.gps, i + 1)
-      .then(function (r) { rows[i] = r; setProgress(++done, photos.length); return worker(); });
-  }
-  var lanes = [];
-  for (var k = 0; k < Math.min(UPLOAD_PARALLEL, photos.length); k++) lanes.push(worker());
-  return Promise.all(lanes).then(function () {
-    return rows.filter(Boolean);
+/** จองรหัสรายการ + โฟลเดอร์ (ครั้งเดียวต่องาน) */
+function ensureJob() {
+  if (S.job) return Promise.resolve(S.job);
+  if (S.jobWait) return S.jobWait;
+  S.jobWait = rpc('apiReserve', S.user.id, S.topic.id).then(function (r) {
+    S.job = { recordId: r.recordId, folderId: r.folderId, folderUrl: r.folderUrl };
+    return S.job;
+  }).catch(function (e) { S.jobWait = null; throw e; });
+  return S.jobWait;
+}
+
+/** อัปโหลดรูป 1 ใบเบื้องหลัง — เงียบ ๆ ไม่รบกวนผู้ใช้ */
+function bgUpload(p, slot) {
+  if (!p || !p.id || !navigator.onLine || !S.user || !S.topic) return;
+  if (S.up[p.id] || S.upBusy[p.id]) return;
+  S.upBusy[p.id] = ensureJob().then(function (j) {
+    return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
+               slot, p.dataUrl, p.time, p.gps, ++S.upSeq);
+  }).then(function (row) {
+    S.up[p.id] = row;
+    delete S.upBusy[p.id];
+    if (S.screen === 'shoot' || S.screen === 'review') renderFooter();
+  }).catch(function () {
+    delete S.upBusy[p.id];   // ไว้ไปอัปใหม่ตอนกดส่ง
   });
 }
 
-/** ส่งแบบ 3 จังหวะ: จองรหัส → อัปโหลดรูปขนาน → เขียนชีท */
+function upDone(photos) {
+  return photos.filter(function (p) { return S.up[p.id]; }).length;
+}
+
+/** อัปโหลดรูปที่ยังไม่ขึ้น พร้อมกันทีละหลายใบ */
+function uploadPhotos(empId, job, photos, doneAlready, total) {
+  var next = 0, done = doneAlready || 0;
+  function worker() {
+    if (next >= photos.length) return Promise.resolve();
+    var ph = photos[next++];
+    return rpc('apiUploadPhoto', empId, job.recordId, job.folderId,
+               ph.slot, ph.dataUrl, ph.time, ph.gps, ++S.upSeq)
+      .then(function (r) { S.up[ph.id] = r; setProgress(++done, total); return worker(); });
+  }
+  var lanes = [];
+  for (var k = 0; k < Math.min(UPLOAD_PARALLEL, photos.length); k++) lanes.push(worker());
+  return Promise.all(lanes);
+}
+
+/** ส่ง: รอรูปที่กำลังอัปอยู่ → อัปใบที่ยังไม่ขึ้น → เขียนชีท */
 function sendNow(payload) {
   var photos = payload.photos || [];
   var lite = Object.assign({}, payload);
-  delete lite.photos;   // begin/commit ไม่ต้องใช้รูป ไม่ต้องส่งซ้ำให้เปลืองเน็ต
+  delete lite.photos;   // commit ไม่ต้องใช้ไฟล์รูป ไม่ต้องส่งซ้ำให้เปลืองเน็ต
 
-  return rpc('apiBeginSubmit', lite).catch(function (e) {
-    // หลังบ้านยังเป็นเวอร์ชันเก่าที่ยังไม่มีการส่งแบบ 3 จังหวะ — ถอยไปส่งครั้งเดียวแบบเดิม
-    // (กันกรณีหน้าเว็บอัปเดตแล้วแต่ Apps Script ยังไม่ได้ deploy เวอร์ชันใหม่)
-    if (/ไม่รู้จักคำสั่ง/.test(e.message)) return null;
+  setProgress(upDone(photos), photos.length);
+
+  return ensureJob().then(function (j) {
+    // รอใบที่กำลังวิ่งอยู่ให้จบก่อน จะได้ไม่อัปซ้ำ
+    return Promise.all(Object.keys(S.upBusy).map(function (k) { return S.upBusy[k]; }))
+      .catch(function () {})
+      .then(function () {
+        var left = photos.filter(function (p) { return !S.up[p.id]; });
+        return uploadPhotos(payload.empId, j, left, upDone(photos), photos.length);
+      })
+      .then(function () {
+        var rows = photos.map(function (p) { return S.up[p.id]; }).filter(Boolean);
+        return rpc('apiCommitSubmit', lite, rows, j.recordId, j.folderUrl);
+      });
+  }).catch(function (e) {
+    // หลังบ้านยังเป็นเวอร์ชันเก่า — ถอยไปส่งครั้งเดียวแบบเดิม
+    if (/ไม่รู้จักคำสั่ง/.test(e.message)) return rpc('apiSubmit', payload);
     throw e;
-  }).then(function (b) {
-    if (!b) return rpc('apiSubmit', payload);
-    if (b.duplicate) return b;
-    setProgress(0, photos.length);
-    return uploadPhotos(payload.empId, b, photos).then(function (rows) {
-      return rpc('apiCommitSubmit', lite, rows, b.recordId, b.folderUrl);
-    });
   });
 }
 

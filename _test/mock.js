@@ -1,3 +1,4 @@
+var MOCK_CALLS = [];
 /* ตัวจำลองฝั่งเซิร์ฟเวอร์ Apps Script สำหรับทดสอบหน้าจอในเบราว์เซอร์ */
 window.__ERRORS = [];
 window.addEventListener('error', function (e) { window.__ERRORS.push(String(e.message) + ' @ ' + e.lineno); });
@@ -64,7 +65,9 @@ var API = {
     return session(u);
   },
   apiRefresh: function (id) { return API.apiLogin(id); },
-  apiSubmit: function (p) {
+  apiReserve: function(empId, topicId){ MOCK_CALLS.push('reserve'); return { ok:true, recordId:'PP-20260806-1275', folderId:'FOLDER1', folderUrl:'https://drive.google.com/drive/folders/yyy' }; },
+  apiUploadPhoto: function(empId, recId, folderId, slot, dataUrl, time, gps, seq){ MOCK_CALLS.push('upload:'+slot); return { ok:true, slot:slot, url:'https://drive.google.com/open?id=p'+seq, time:time||'00:00:00', gps:gps||'' }; },
+  apiCommitSubmit: function(p, rows, recId, folderUrl){ MOCK_CALLS.push('commit:'+(rows||[]).length); return { ok:true, recordId:recId, folderUrl:folderUrl, photoCount:(rows||[]).length, ts:'6/8/2026, 16:12:04' }; },  apiSubmit: function (p) {
     console.log('SUBMIT', JSON.parse(JSON.stringify(p, function (k, v) {
       return k === 'dataUrl' ? '<' + String(v).length + ' bytes>' : v; })));
     return { ok: true, recordId: 'PP-20260806-1275', folderUrl: 'https://drive.google.com/drive/folders/yyy',
