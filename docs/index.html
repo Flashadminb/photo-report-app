@@ -340,10 +340,12 @@ textarea.input{min-height:90px;resize:vertical}
 
       <div class="pane" style="padding-top:0" id="step-cam">
         <div class="cam empty" id="cam">
+          <video id="cam-video" playsinline autoplay muted class="hide"
+                 style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
           <div class="camtop"><span style="background:var(--color-accent);padding:1px 5px;font-size:9px">ล็อก</span>
             <span id="cam-stamp"></span></div>
           <div id="cam-placeholder" style="font-size:13px;line-height:1.6;opacity:.85;padding:0 20px">
-            กรอบกล้อง<br><span style="font-size:11px;opacity:.7">เวลาและพิกัดล็อกจากระบบ แก้ไม่ได้</span>
+            กำลังเปิดกล้อง…<br><span style="font-size:11px;opacity:.7">เวลาและพิกัดล็อกจากระบบ แก้ไม่ได้</span>
           </div>
         </div>
         <div style="font-size:13px;line-height:1.55;padding:10px" class="surface" id="cam-hint"></div>
@@ -801,7 +803,11 @@ function readyToSend() {
 
 // ── การนำทาง ──────────────────────────────────────────────────────────
 
-function go(screen) { S.screen = screen; render(); window.scrollTo(0, 0); $('#body').scrollTop = 0; }
+function go(screen) {
+  if (screen !== 'shoot') stopCam();   // ออกจากหน้าถ่ายรูปแล้วปิดกล้อง ไม่ให้กินแบต
+  S.screen = screen; render();
+  window.scrollTo(0, 0); $('#body').scrollTop = 0;
+}
 
 function resetJob() {
   S.topic = null; S.action = 'เบิก'; S.ref = ''; S.picked = []; S.pickedExtra = []; S.qty = 1;
@@ -1092,9 +1098,18 @@ function renderCamStep(slot) {
   var shot = S.shots[slot.th];
   var cam = $('#cam');
   $$('img', cam).forEach(function (n) { n.remove(); });
-  cam.classList.toggle('empty', !shot);
-  $('#cam-placeholder').classList.toggle('hide', !!shot);
   if (shot) cam.appendChild(el('img', { src: shot.dataUrl, alt: slot.th }));
+
+  if (!shot) startCam();                       // เปิดกล้องในหน้าเว็บทันทีที่เข้าจุดถ่าย
+  var live = !!camStream && !shot;
+  $('#cam-video').classList.toggle('hide', !live);
+  cam.classList.toggle('empty', !shot && !live);
+  $('#cam-placeholder').classList.toggle('hide', !!shot || live);
+  $('#cam-placeholder').innerHTML = camBusy
+    ? 'กำลังเปิดกล้อง…<br><span style="font-size:11px;opacity:.7">กด "อนุญาต" เมื่อระบบถาม</span>'
+    : (camFailed
+        ? 'ใช้กล้องในหน้าเว็บไม่ได้<br><span style="font-size:11px;opacity:.7">กดถ่ายรูปเพื่อเปิดแอพกล้องของเครื่องแทน</span>'
+        : 'กรอบกล้อง<br><span style="font-size:11px;opacity:.7">เวลาและพิกัดล็อกจากระบบ แก้ไม่ได้</span>');
 
   var n = nowParts();
   $('#cam-stamp').textContent = shot
@@ -1357,6 +1372,79 @@ function stampLines(slotName) {
     slotName + ' · ' + codesText(),
     S.user.name + ' (' + S.user.id + ') · ' + S.user.dept + ' · ' + S.action
   ];
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  กล้องในหน้าเว็บ
+//
+//  เดิมกดถ่ายแล้วเด้งออกไปเปิด "แอพกล้อง" ของเครื่อง — Android (ซัมซุงเป็นหนัก)
+//  จะฆ่าหน้าเว็บทิ้งเพื่อคืนหน่วยความจำให้แอพกล้อง พอถ่ายเสร็จกลับมา
+//  หน้าเว็บโหลดใหม่และรูปที่เพิ่งถ่ายก็หายไปด้วย
+//
+//  เปิดกล้องในหน้าเว็บเองแทน ไม่มีการสลับแอพ ระบบจึงไม่ฆ่าหน้าเว็บ
+//  เครื่องที่เปิดกล้องแบบนี้ไม่ได้ จะถอยไปใช้แอพกล้องเหมือนเดิมอัตโนมัติ
+// ══════════════════════════════════════════════════════════════════════
+
+var camStream = null, camBusy = false;
+
+function camSupported() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+function startCam() {
+  if (camStream || camBusy || !camSupported()) return Promise.resolve(!!camStream);
+  camBusy = true;
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false
+  }).then(function (s) {
+    camStream = s;
+    var v = $('#cam-video');
+    v.srcObject = s;
+    v.play().catch(function () {});
+    camBusy = false;
+    render();
+    return true;
+  }).catch(function () {
+    camBusy = false;
+    camFailed = true;  // ไม่ให้สิทธิ์กล้อง หรือเครื่องไม่รองรับ — ถอยไปใช้แอพกล้องของเครื่อง
+    render();
+    return false;
+  });
+}
+var camFailed = false;
+
+function stopCam() {
+  if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; }
+  var v = $('#cam-video');
+  if (v) { v.srcObject = null; v.classList.add('hide'); }
+}
+
+/** ดึงภาพนิ่งจากกล้องที่กำลังแสดงอยู่ */
+function grabFrame() {
+  var v = $('#cam-video');
+  var w = v.videoWidth, h = v.videoHeight;
+  if (!w || !h) return Promise.reject(new Error('กล้องยังไม่พร้อม'));
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(v, 0, 0, w, h);
+  return new Promise(function (res, rej) {
+    c.toBlob(function (b) {
+      b ? res(new File([b], 'cam.jpg', { type: 'image/jpeg' })) : rej(new Error('ถ่ายไม่สำเร็จ'));
+    }, 'image/jpeg', 0.92);
+  });
+}
+
+/** ถ่ายจากกล้องในหน้าเว็บ ถ้าเปิดไม่ได้ค่อยถอยไปใช้แอพกล้อง */
+function shootSlot(slotName) {
+  if (camStream) {
+    CAP = { target: 'slot', slot: slotName };
+    S.busy = true; renderFooter();
+    grabFrame().then(function (f) { handleFiles([f], true); })
+      .catch(function (e) { S.busy = false; CAP = null; renderFooter(); toast(e.message, true); });
+    return;
+  }
+  capture('slot', slotName, true);
 }
 
 function capture(target, slotName, useCamera) {
@@ -1641,10 +1729,14 @@ function bind() {
     var st = curStep();
     if (st.type !== 'cam') return;
     if (S.shots[st.slot.th]) { nextStep(); return; }
-    capture('slot', st.slot.th, true);
+    shootSlot(st.slot.th);
   });
   $('#btn-retake').addEventListener('click', function () {
-    var st = curStep(); if (st.type === 'cam') capture('slot', st.slot.th, true);
+    var st = curStep();
+    if (st.type !== 'cam') return;
+    delete S.shots[st.slot.th];   // ลบรูปเดิมก่อน เพื่อให้กล้องสดกลับมาแสดง
+    render();
+    shootSlot(st.slot.th);
   });
   $('#btn-gal-cam').addEventListener('click', function () { capture('extra', 'เพิ่มเติม', true); });
   $('#btn-gal-up').addEventListener('click', function () { capture('extra', 'เพิ่มเติม', false); });
@@ -1686,9 +1778,10 @@ function bind() {
   window.addEventListener('offline', render);
 
   // เซฟงานที่ทำค้างทุกครั้งที่แอพกำลังจะถูกพักหรือปิด
-  window.addEventListener('pagehide', saveDraft);
+  window.addEventListener('pagehide', function () { saveDraft(); stopCam(); });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') saveDraft();
+    if (document.visibilityState === 'hidden') { saveDraft(); stopCam(); }
+    else if (S.screen === 'shoot' && curStep() && curStep().type === 'cam') startCam();
   });
 }
 
