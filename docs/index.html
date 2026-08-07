@@ -1052,9 +1052,9 @@ function renderForm() {
     });
   }
 
-  // จำนวนเครื่อง (หัวข้อที่นับจำนวนแทนการเลือกทีละรหัส)
-  $('#qty-wrap').classList.toggle('hide', !t.countMode);
-  $('#qty-val').textContent = S.qty;
+  // จำนวนเครื่องนับจากรหัสที่ติ๊ก ไม่ต้องกดบวกลบเอง (ทุกหัวข้อเหมือนกันหมด)
+  $('#qty-wrap').classList.add('hide');
+  S.qty = S.picked.length;
 
   // รหัสเครื่องจากทะเบียน กรองตามประเภทของหัวข้อ + แผนกของผู้ใช้
   var pool = S.assets.filter(function (a) {
@@ -1076,14 +1076,14 @@ function renderForm() {
 
   $('#codes-label').textContent = S.action === 'คืน'
     ? 'รหัสเครื่องที่คืน (ติ๊กออกถ้าคืนไม่ครบ)'
-    : (t.countMode ? 'รหัสเครื่อง (ถ้ามีในทะเบียน — ไม่บังคับ)' : 'รหัสเครื่อง (เลือกได้หลายคัน)');
+    : 'รหัสเครื่องที่เบิก (ติ๊กได้หลายตัว จำนวนนับให้เอง)';
   var cw = $('#code-chips'); cw.innerHTML = '';
   list.forEach(function (a) {
     var on = S.picked.indexOf(a.code) >= 0;
     var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code]);
     b.addEventListener('click', function () {
       S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
-      if (!t.countMode) S.qty = S.picked.length;
+      S.qty = S.picked.length;
       render();
     });
     cw.appendChild(b);
@@ -1092,7 +1092,7 @@ function renderForm() {
     cw.appendChild(el('div', { style: 'font-size:12px;opacity:.7' },
       ['ไม่มีเครื่องสถานะ "พร้อมใช้" ในทะเบียนสำหรับหัวข้อนี้']));
   }
-  $('#codes-count').textContent = (t.countMode ? S.qty : S.picked.length) + ' เครื่อง';
+  $('#codes-count').textContent = S.picked.length + ' เครื่อง';
 
   // ── อุปกรณ์เสริม (เช่น เลเซอร์ลบ) — ขึ้นให้ทุกแผนก ไม่บังคับเบิก ──
   var xt = extraType();
@@ -1271,7 +1271,7 @@ function renderNoteStep() {
       return row2('อัปโหลดแล้ว', n + '/' + all.length + (n === all.length ? ' · กดส่งได้เลย ไม่ต้องรอ' : ''));
     })() +
     row2('สถานะ', S.result || 'ยังไม่เลือก') +
-    row2('เครื่อง', (S.topic.countMode ? S.qty : S.picked.length) + ' เครื่อง') +
+    row2('เครื่อง', S.picked.length + ' เครื่อง') +
     row2('พิกัด', geo.text() || 'ยังไม่มี');
 }
 function row2(k, v) {
@@ -1300,7 +1300,7 @@ function renderReview() {
     ['แผนก', S.user.dept],
     ['หัวข้อ', S.topic.name],
     ['สถานะใช้งาน', S.action],
-    ['จำนวนเครื่อง', String(S.topic.countMode ? S.qty : S.picked.length)],
+    ['จำนวนเครื่อง', String(S.picked.length)],
     ['รหัสเครื่อง', codesText()],
     (extraType() ? [extraType(), S.pickedExtra.length ? S.pickedExtra.join(', ') : 'ไม่ได้เบิก'] : null),
     ['ผลตรวจ', S.result === 'มีปัญหา' ? 'มีปัญหา: ' + (S.issueText || '—') : 'ปกติ'],
@@ -1375,10 +1375,10 @@ function renderFooter() {
     hintText = S.pinErr || 'ทะเบียนพนักงานดึงจากชีท "พนักงาน"';
   } else if (S.screen === 'form') {
     label = 'ไปถ่ายรูป';
-    okState = S.topic.countMode ? S.qty > 0 : S.picked.length > 0;
-    hintText = S.topic.countMode
-      ? ('เบิก ' + S.qty + ' เครื่อง' + (S.picked.length ? ' · ระบุรหัส ' + S.picked.length : ''))
-      : (S.picked.length ? 'เลือกแล้ว ' + S.picked.length + ' คัน' : 'เลือกรหัสเครื่องอย่างน้อย 1 คัน');
+    okState = S.picked.length > 0;
+    hintText = S.picked.length
+      ? (S.action === 'คืน' ? 'คืน ' + S.picked.length + ' เครื่อง' : 'เบิก ' + S.picked.length + ' เครื่อง')
+      : 'ติ๊กรหัสเครื่องอย่างน้อย 1 ตัว';
   } else if (S.screen === 'shoot') {
     var st = curStep(), last = S.step >= steps().length - 1;
     label = last ? 'ตรวจทาน' : 'ถัดไป';
@@ -1619,7 +1619,7 @@ function buildPayload() {
     action: S.action,
     ref: S.ref,
     shift: S.shift,
-    qty: S.topic.countMode ? S.qty : S.picked.length,
+    qty: S.picked.length,
     codes: S.picked,
     extraCodes: S.pickedExtra,
     result: S.result,
