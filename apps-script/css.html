@@ -1,0 +1,147 @@
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   Modernist — โทเคนและคลาสจากดีไซน์ซิสเต็มของโปรเจกต์
+   (คัดมาจาก _ds/modernist-.../styles.css แล้วเพิ่มฟอนต์ไทย)
+
+   ฟอนต์โหลดด้วย <link> ใน <head> ของ app.html / admin.html ไม่ใช่ @import ตรงนี้
+   เพราะ @import ในไฟล์ CSS ทำให้เบราว์เซอร์ต้องอ่าน CSS จบก่อนถึงจะเริ่มโหลดฟอนต์ (ช้ากว่ามาก)
+   ══════════════════════════════════════════════════════════════════ */
+
+:root{
+  --color-bg:#f3f2f2;
+  --color-surface:#eae9e9;
+  --color-text:#201e1d;
+  --color-accent:#ec3013;
+  --color-accent-2:#e15b47;
+  --color-divider:color-mix(in srgb,#201e1d 40%,transparent);
+
+  --color-neutral-100:#f8f4f4; --color-neutral-200:#eae7e7; --color-neutral-300:#d7d3d3;
+  --color-neutral-400:#bab6b6; --color-neutral-500:#9b9797; --color-neutral-600:#7d7979;
+  --color-neutral-700:#605d5d; --color-neutral-800:#444141; --color-neutral-900:#2d2b2b;
+
+  --color-accent-100:#fff2ef; --color-accent-200:#ffe0d9; --color-accent-300:#ffc4b8;
+  --color-accent-400:#ff9783; --color-accent-500:#ff563c; --color-accent-600:#dd2b0f;
+  --color-accent-700:#ae1800; --color-accent-800:#7c1405; --color-accent-900:#4d170e;
+
+  --font-heading:"Archivo","IBM Plex Sans Thai",system-ui,sans-serif;
+  --font-body:"Archivo","IBM Plex Sans Thai",system-ui,sans-serif;
+
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px; --space-8:32px;
+  --radius-sm:0px; --radius-md:0px; --radius-lg:0px;
+
+  --shadow-sm:0 1px 2px color-mix(in srgb,#2d2b2b 14%,transparent);
+  --shadow-md:0 3px 10px color-mix(in srgb,#2d2b2b 16%,transparent);
+  --shadow-lg:0 12px 32px color-mix(in srgb,#2d2b2b 22%,transparent);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--color-bg); color:var(--color-text);
+  font-family:var(--font-body); font-size:15px; line-height:1.55;
+  -webkit-text-size-adjust:100%;
+}
+h1,h2,h3,h4,h5,h6{
+  font-family:var(--font-heading); font-weight:800;
+  line-height:1.14; letter-spacing:-0.015em; margin:0 0 var(--space-2);
+}
+h1{font-size:32px} h2{font-size:25px} h3{font-size:20px} h4{font-size:17px}
+p{margin:0 0 var(--space-3)}
+a{color:var(--color-accent-700);text-decoration:none}
+a:hover{color:var(--color-accent)}
+img{display:block;max-width:100%}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+::selection{background:color-mix(in srgb,var(--color-accent) 30%,transparent)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--color-text) 25%,transparent)}
+
+.hr{height:2px;border:0;margin:var(--space-4) 0;background:var(--color-divider)}
+.muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.kicker{font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent)}
+.label{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:.6;margin-bottom:6px;display:block}
+.mono{font-variant-numeric:tabular-nums}
+.grayscale{filter:grayscale(1) contrast(1.08)}
+.hide{display:none !important}
+
+/* — ปุ่ม — */
+.btn{
+  display:inline-flex;align-items:center;justify-content:flex-start;gap:6px;
+  cursor:pointer;text-decoration:none;font-family:var(--font-heading);font-weight:800;
+  font-size:14px;line-height:1.2;color:var(--color-text);
+  background:transparent;border:1px solid transparent;
+  padding:var(--space-2) calc(var(--space-3) * 1.2);border-radius:0;
+}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--color-accent);color:var(--color-bg);border-color:var(--color-accent)}
+.btn-primary:hover:not(:disabled){background:var(--color-accent-600)}
+.btn-secondary{border-color:var(--color-divider)}
+.btn-secondary:hover:not(:disabled){background:color-mix(in srgb,var(--color-text) 7%,transparent)}
+.btn-dark{background:var(--color-text);color:var(--color-bg)}
+.btn-ghost{color:var(--color-accent);padding-inline:var(--space-1)}
+.btn-block{width:100%;justify-content:flex-start}
+.btn-lg{height:52px;padding:0 20px;font-size:15px}
+
+/* — ฟอร์ม — */
+.input,select.input,textarea.input{
+  width:100%;min-height:38px;padding:8px 10px;font:inherit;font-size:14px;
+  color:var(--color-text);caret-color:var(--color-accent);
+  background:var(--color-surface);border:1px solid var(--color-divider);border-radius:0;
+}
+textarea.input{min-height:90px;resize:vertical}
+.input:focus-visible{border-color:var(--color-accent)}
+
+.chip{
+  padding:7px 11px;font-size:12px;cursor:pointer;font-family:var(--font-body);
+  border:1px solid var(--color-divider);background:transparent;color:var(--color-text);
+}
+.chip.on{border-color:var(--color-accent);background:var(--color-accent);color:var(--color-bg)}
+
+.toggle{
+  width:46px;height:26px;flex:none;border:1px solid var(--color-divider);
+  background:transparent;cursor:pointer;padding:2px;display:flex;justify-content:flex-start;
+}
+.toggle.on{border-color:var(--color-accent);background:var(--color-accent);justify-content:flex-end}
+.toggle > span{display:block;width:20px;height:20px;background:var(--color-text);opacity:.5}
+.toggle.on > span{background:var(--color-bg);opacity:1}
+
+/* — การ์ด / ตาราง — */
+.card{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3);background:var(--color-surface)}
+.surface{background:var(--color-surface)}
+.table{width:100%;border-collapse:collapse;font-size:14px}
+.table th{
+  text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--color-text) 60%,transparent);
+  padding:var(--space-2);border-bottom:2px solid var(--color-divider);white-space:nowrap;
+}
+.table td{padding:var(--space-2);border-bottom:1px solid var(--color-divider);vertical-align:top}
+.table tbody tr:hover{background:color-mix(in srgb,var(--color-text) 4%,transparent)}
+
+.tag{display:inline-block;padding:2px 8px;font-size:11px;letter-spacing:.06em;background:var(--color-surface)}
+.tag-issue{background:var(--color-accent);color:var(--color-bg)}
+
+.stat{border-top:2px solid var(--color-text);padding-top:8px}
+.stat .v{font-family:var(--font-heading);font-weight:800;font-size:26px;line-height:1}
+.stat .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.6}
+
+/* — แถบแจ้งเตือน — */
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
+  max-width:min(520px,92vw);padding:12px 16px;z-index:200;
+  background:var(--color-text);color:var(--color-bg);font-size:13px;line-height:1.5;
+  box-shadow:var(--shadow-lg);
+}
+.toast.err{background:var(--color-accent)}
+
+.overlay{
+  position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,#201e1d 55%,transparent);padding:20px;
+}
+.overlay .box{background:var(--color-bg);padding:20px;max-width:min(440px,94vw);width:100%;box-shadow:var(--shadow-lg)}
+
+.spin{
+  width:18px;height:18px;border:2px solid var(--color-bg);border-top-color:transparent;
+  border-radius:50%;animation:sp .7s linear infinite;display:inline-block;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>

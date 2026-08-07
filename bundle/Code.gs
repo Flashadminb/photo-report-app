@@ -1,0 +1,1190 @@
+/**
+ * Code.gs — รวมทุกไฟล์ .gs ไว้ที่เดียวเพื่อให้ก๊อปวางง่าย
+ *
+ * สร้างอัตโนมัติจากโฟลเดอร์ apps-script/ ด้วย build-bundle.ps1
+ * อย่าแก้ไฟล์นี้โดยตรง — แก้ที่ apps-script/ แล้วรันสคริปต์ใหม่
+ */
+
+
+// ==========================================================================
+//  Config.gs
+// ==========================================================================
+
+/**
+ * Config.gs — ค่าคงที่ทั้งหมดของระบบถ่ายรูปอัพเดทงาน
+ *
+ * ถ้าย้ายไฟล์ / เปลี่ยนชีท แก้ที่ไฟล์นี้ที่เดียว
+ */
+
+var CFG = {
+  // ── ไฟล์ Google Sheets ────────────────────────────────────────────────
+  MASTER_ID: '1eyEdIkSMxZbfSuzQVdWYRgR2m0imOK6W_KMKjDUbOhE', // ตั้งค่าระบบถ่ายรูปอัพเดทงาน (MASTER)
+  DATA_ID:   '1HHqiNiWoie026_szuxKdhzpp2w7Cx_uNV7f6ixRymVU', // บันทึกหน้างาน Power Pallet (DATA)
+
+  // โฟลเดอร์ Drive ที่จะเก็บรูป (ค่าเริ่มต้น = โฟลเดอร์เดียวกับไฟล์ชีท)
+  DRIVE_PARENT_ID: '1NSRtZvorT2LQjwDr6d0PtH-p3-oilfz5',
+  PHOTO_ROOT_NAME: 'รูปถ่ายหน้างาน',
+
+  TZ: 'Asia/Bangkok',
+
+  // ── ชื่อชีทใน MASTER ──────────────────────────────────────────────────
+  M: {
+    STAFF:  'พนักงาน',
+    ASSETS: 'เครื่อง',
+    TOPICS: 'หัวข้อสำรวจ',
+    SLOTS:  'ช่องถ่ายรูป',
+    RULES:  'เงื่อนไข'
+  },
+
+  // ── ชื่อชีทใน DATA ────────────────────────────────────────────────────
+  D: {
+    RECORDS: 'บันทึก',
+    PHOTOS:  'รูปภาพ',
+    OPEN:    'ค้างคืน'
+  },
+
+  // ── ลำดับคอลัมน์ (1-based) — ต้องตรงกับหัวตารางในชีทเป๊ะ ──────────────
+  COL: {
+    // MASTER!พนักงาน
+    STAFF: { ID: 1, NAME: 2, DEPT: 3, SHIFT: 4, ROLE: 5, STATUS: 6 },
+    // MASTER!เครื่อง
+    ASSET: { CODE: 1, TYPE: 2, DEPT: 3, STATUS: 4, NOTE: 5 },
+    // MASTER!หัวข้อสำรวจ
+    TOPIC: { ID: 1, NAME: 2, DESC: 3, ON: 4, ORDER: 5 },
+    // MASTER!ช่องถ่ายรูป
+    SLOT: { TOPIC: 1, ORDER: 2, TH: 3, EN: 4, REQ: 5, HINT: 6 },
+    // MASTER!เงื่อนไข
+    RULE: { TOPIC: 1, ID: 2, NAME: 3, VALUE: 4 },
+    // DATA!บันทึก
+    REC: {
+      ID: 1, TS: 2, DATE: 3, SHIFT: 4, EMP_ID: 5, EMP_NAME: 6, DEPT: 7,
+      TOPIC: 8, ACTION: 9, QTY: 10, CODES: 11, RESULT: 12, ISSUE: 13,
+      NOTE: 14, PHOTO_N: 15, FOLDER: 16, GPS: 17, REF: 18, SENT: 19
+    },
+    // DATA!รูปภาพ
+    PHOTO: { REC: 1, SLOT: 2, URL: 3, TIME: 4, GPS: 5 }
+  },
+
+  // ── คำที่ใช้ในชีท (ต้องสะกดตรงกับที่มีอยู่เดิม) ──────────────────────
+  V: {
+    ACTIVE: 'ใช้งาน',
+    SUSPENDED: 'ระงับ',
+    ASSET_READY: 'พร้อมใช้',
+    ASSET_REPAIR: 'ซ่อม',
+    ROLE_ADMIN: 'แอดมิน',
+    ROLE_LEAD: 'หัวหน้างาน',
+    ROLE_FIELD: 'พนักงานหน้างาน',
+    BORROW: 'เบิก',
+    RETURN: 'คืน',
+    OK: 'ปกติ',
+    ISSUE: 'มีปัญหา',
+    SENT: 'ส่งแล้ว'
+  },
+
+  // แผนกที่เลือกได้ในหน้าแอดมิน (ใช้เมื่อเพิ่มพนักงาน/เครื่องใหม่)
+  DEPTS: ['IN LH+BG', 'IN FD', 'BULKY', 'OUT 4W', 'OUT 6W', 'REPACK', 'MINI CS', 'ทุกแผนก'],
+
+  SHIFTS: [
+    'กะ 03:00 - 12:00 น.',
+    'กะ 09:00 - 18:00 น.',
+    'กะ 11:00 - 20:00 น.',
+    'กะ 15:00 - 00:00 น.',
+    'กะ 18:00 - 03:00 น.'
+  ],
+
+  // อาการยอดฮิต (ปุ่มลัดตอนแจ้งปัญหา)
+  ISSUE_TAGS: ['แบตไม่เก็บไฟ', 'ยกไม่ขึ้น', 'ล้อชำรุด', 'จอไม่ติด', 'มีเสียงดัง', 'น้ำมันรั่ว'],
+
+  CACHE_SEC: 300 // อายุแคชของข้อมูล MASTER (วินาที)
+};
+
+
+// ==========================================================================
+//  Master.gs
+// ==========================================================================
+
+/**
+ * Master.gs — อ่าน/เขียนไฟล์ตั้งค่า (MASTER)
+ *
+ * ทุกอย่างที่หน้าจอแสดง (หัวข้อ, ช่องถ่ายรูป, เงื่อนไข, ทะเบียนพนักงาน,
+ * ทะเบียนเครื่อง) มาจากชีทล้วน ๆ — ไม่มี hard-code ในโค้ดหน้าบ้าน
+ */
+
+function masterSS_() { return SpreadsheetApp.openById(CFG.MASTER_ID); }
+function dataSS_()   { return SpreadsheetApp.openById(CFG.DATA_ID); }
+
+/** อ่านชีทเป็น array of array โดยตัดหัวตารางและแถวว่างออก */
+function readRows_(ss, name) {
+  var sh = ss.getSheetByName(name);
+  if (!sh) throw new Error('ไม่พบชีท "' + name + '" ในไฟล์ ' + ss.getName());
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var vals = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
+  return vals.filter(function (r) {
+    return r.join('').toString().trim() !== '';
+  });
+}
+
+function s_(v) { return v === null || v === undefined ? '' : String(v).trim(); }
+
+/** ชีทเก็บ TRUE/FALSE บ้าง ข้อความบ้าง — แปลงให้เป็น boolean ทางเดียว */
+function truthy_(v) {
+  if (v === true) return true;
+  if (v === false) return false;
+  var t = s_(v).toUpperCase();
+  return t === 'TRUE' || t === 'ใช่' || t === 'YES' || t === '1' || t === 'เปิด';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  อ่าน MASTER (มีแคช 5 นาที เพื่อไม่ให้พนักงาน 30 คนยิงชีทพร้อมกันแล้วช้า)
+// ══════════════════════════════════════════════════════════════════════════
+
+function getMaster_(force) {
+  var cache = CacheService.getScriptCache();
+  if (!force) {
+    var hit = cache.get('master');
+    if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  }
+  var m = buildMaster_();
+  try { cache.put('master', JSON.stringify(m), CFG.CACHE_SEC); } catch (e) {}
+  return m;
+}
+
+function buildMaster_() {
+  var ss = masterSS_(), C = CFG.COL;
+
+  var staff = readRows_(ss, CFG.M.STAFF).map(function (r) {
+    return {
+      id: s_(r[C.STAFF.ID - 1]),
+      name: s_(r[C.STAFF.NAME - 1]),
+      dept: s_(r[C.STAFF.DEPT - 1]),
+      shift: s_(r[C.STAFF.SHIFT - 1]),
+      role: s_(r[C.STAFF.ROLE - 1]) || CFG.V.ROLE_FIELD,
+      status: s_(r[C.STAFF.STATUS - 1]) || CFG.V.ACTIVE
+    };
+  }).filter(function (p) { return p.id; });
+
+  var assets = readRows_(ss, CFG.M.ASSETS).map(function (r) {
+    return {
+      code: s_(r[C.ASSET.CODE - 1]),
+      type: s_(r[C.ASSET.TYPE - 1]),
+      dept: s_(r[C.ASSET.DEPT - 1]),
+      status: s_(r[C.ASSET.STATUS - 1]) || CFG.V.ASSET_READY,
+      note: s_(r[C.ASSET.NOTE - 1])
+    };
+  }).filter(function (a) { return a.code; });
+
+  var slots = readRows_(ss, CFG.M.SLOTS).map(function (r) {
+    var req = r[C.SLOT.REQ - 1];
+    var reqTxt = s_(req);
+    return {
+      topic: s_(r[C.SLOT.TOPIC - 1]),
+      order: Number(r[C.SLOT.ORDER - 1]) || 0,
+      th: s_(r[C.SLOT.TH - 1]),
+      en: s_(r[C.SLOT.EN - 1]),
+      // "บังคับ" มีได้ 3 ค่า: TRUE / FALSE / "เมื่อมีปัญหา"
+      req: truthy_(req),
+      onIssue: reqTxt.indexOf('ปัญหา') >= 0,
+      hint: s_(r[C.SLOT.HINT - 1])
+    };
+  }).filter(function (x) { return x.topic && x.th; })
+    .sort(function (a, b) { return a.order - b.order; });
+
+  var rules = readRows_(ss, CFG.M.RULES).map(function (r) {
+    return {
+      topic: s_(r[C.RULE.TOPIC - 1]),
+      id: s_(r[C.RULE.ID - 1]),
+      name: s_(r[C.RULE.NAME - 1]),
+      on: truthy_(r[C.RULE.VALUE - 1])
+    };
+  }).filter(function (x) { return x.topic && x.id; });
+
+  var topics = readRows_(ss, CFG.M.TOPICS).map(function (r) {
+    var id = s_(r[C.TOPIC.ID - 1]);
+    var tSlots = slots.filter(function (x) { return x.topic === id; });
+    var tRules = {};
+    rules.forEach(function (x) { if (x.topic === id) tRules[x.id] = x.on; });
+    return {
+      id: id,
+      name: s_(r[C.TOPIC.NAME - 1]),
+      desc: s_(r[C.TOPIC.DESC - 1]),
+      on: truthy_(r[C.TOPIC.ON - 1]),
+      order: Number(r[C.TOPIC.ORDER - 1]) || 0,
+      abbr: id.slice(0, 2),
+      // ประเภทเครื่องในทะเบียนที่ผูกกับหัวข้อนี้
+      assetType: s_(r[C.TOPIC.NAME - 1]).indexOf('ไอดาต้า') >= 0 || id === 'IDATA'
+        ? 'ไอดาต้า' : s_(r[C.TOPIC.NAME - 1]),
+      slots: tSlots,
+      rules: tRules,
+      // หัวข้อที่นับจำนวนเครื่องเอง (ไม่ได้เลือกทีละรหัส) เช่น IDATA
+      countMode: !!tRules.count
+    };
+  }).filter(function (t) { return t.id; })
+    .sort(function (a, b) { return a.order - b.order; });
+
+  return {
+    staff: staff, assets: assets, topics: topics, slots: slots, rules: rules,
+    depts: CFG.DEPTS, shifts: CFG.SHIFTS, issueTags: CFG.ISSUE_TAGS
+  };
+}
+
+function clearMasterCache_() {
+  try { CacheService.getScriptCache().remove('master'); } catch (e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  เขียน MASTER (ใช้จากหน้าเว็บแอดมิน)
+// ══════════════════════════════════════════════════════════════════════════
+
+/** หาแถวจากค่าในคอลัมน์คีย์ คืน row number (1-based) หรือ 0 ถ้าไม่เจอ */
+function findRow_(sh, keyCol, keyVal) {
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var col = sh.getRange(2, keyCol, last - 1, 1).getValues();
+  for (var i = 0; i < col.length; i++) {
+    if (s_(col[i][0]) === s_(keyVal)) return i + 2;
+  }
+  return 0;
+}
+
+function masterUpsert_(sheetName, keyCol, keyVal, rowValues) {
+  var sh = masterSS_().getSheetByName(sheetName);
+  if (!sh) throw new Error('ไม่พบชีท ' + sheetName);
+  var row = findRow_(sh, keyCol, keyVal);
+  if (!row) row = sh.getLastRow() + 1;
+  sh.getRange(row, 1, 1, rowValues.length).setValues([rowValues]);
+  clearMasterCache_();
+  return row;
+}
+
+function masterDelete_(sheetName, keyCol, keyVal) {
+  var sh = masterSS_().getSheetByName(sheetName);
+  var row = findRow_(sh, keyCol, keyVal);
+  if (row) { sh.deleteRow(row); clearMasterCache_(); }
+  return !!row;
+}
+
+
+// ==========================================================================
+//  Records.gs
+// ==========================================================================
+
+/**
+ * Records.gs — อ่าน/เขียนไฟล์บันทึกหน้างาน (DATA)
+ *
+ * ชีท "บันทึก"  = 1 แถว ต่อ 1 ครั้งที่กดส่ง (ทั้งเบิกและคืน)
+ * ชีท "รูปภาพ"  = 1 แถว ต่อ 1 รูป
+ * ชีท "ค้างคืน" = สูตร FILTER ในชีท (เราไม่เขียนทับ) — ฝั่งแอพคำนวณเองจาก "บันทึก"
+ */
+
+function fmtDate_(d)  { return Utilities.formatDate(d, CFG.TZ, 'd/M/yyyy'); }
+function fmtTime_(d)  { return Utilities.formatDate(d, CFG.TZ, 'HH:mm:ss'); }
+function fmtStamp_(d) { return Utilities.formatDate(d, CFG.TZ, 'd/M/yyyy, HH:mm:ss'); }
+
+/** แปลงค่าจากชีทเป็นข้อความวันที่ ไม่ว่าจะเก็บมาเป็น Date หรือ string */
+function cellDate_(v, withTime) {
+  if (v instanceof Date) return withTime ? fmtStamp_(v) : fmtDate_(v);
+  return s_(v);
+}
+
+// ── เลขรันของรหัสรายการ ───────────────────────────────────────────────────
+
+function nextSeq_() {
+  var props = PropertiesService.getScriptProperties();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var cur = Number(props.getProperty('seq') || 0);
+    if (!cur) cur = scanMaxSeq_();
+    cur = cur + 1;
+    props.setProperty('seq', String(cur));
+    return cur;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** ครั้งแรกสุด: ไล่ดูรหัสรายการเดิมในชีทเพื่อหาเลขล่าสุด */
+function scanMaxSeq_() {
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var max = 1000;
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    sh.getRange(2, CFG.COL.REC.ID, last - 1, 1).getValues().forEach(function (r) {
+      var m = /-(\d+)$/.exec(s_(r[0]));
+      if (m) max = Math.max(max, Number(m[1]));
+    });
+  }
+  return max;
+}
+
+function makeRecordId_(topicId, when) {
+  return topicId + '-' + Utilities.formatDate(when, CFG.TZ, 'yyyyMMdd') + '-' + nextSeq_();
+}
+
+// ── อ่านบันทึกทั้งหมด ─────────────────────────────────────────────────────
+
+function allRecords_() {
+  var C = CFG.COL.REC;
+  return readRows_(dataSS_(), CFG.D.RECORDS).map(function (r) {
+    return {
+      id:       s_(r[C.ID - 1]),
+      ts:       cellDate_(r[C.TS - 1], true),
+      date:     cellDate_(r[C.DATE - 1], false),
+      shift:    s_(r[C.SHIFT - 1]),
+      empId:    s_(r[C.EMP_ID - 1]),
+      empName:  s_(r[C.EMP_NAME - 1]),
+      dept:     s_(r[C.DEPT - 1]),
+      topic:    s_(r[C.TOPIC - 1]),
+      action:   s_(r[C.ACTION - 1]),
+      qty:      Number(r[C.QTY - 1]) || 0,
+      codes:    s_(r[C.CODES - 1]),
+      result:   s_(r[C.RESULT - 1]),
+      issue:    s_(r[C.ISSUE - 1]),
+      note:     s_(r[C.NOTE - 1]),
+      photoN:   Number(r[C.PHOTO_N - 1]) || 0,
+      folder:   s_(r[C.FOLDER - 1]),
+      gps:      s_(r[C.GPS - 1]),
+      ref:      s_(r[C.REF - 1]),
+      sent:     s_(r[C.SENT - 1])
+    };
+  }).filter(function (x) { return x.id; });
+}
+
+function allPhotos_() {
+  var C = CFG.COL.PHOTO;
+  return readRows_(dataSS_(), CFG.D.PHOTOS).map(function (r) {
+    return {
+      rec:  s_(r[C.REC - 1]),
+      slot: s_(r[C.SLOT - 1]),
+      url:  s_(r[C.URL - 1]),
+      time: cellDate_(r[C.TIME - 1], false),
+      gps:  s_(r[C.GPS - 1])
+    };
+  }).filter(function (x) { return x.rec; });
+}
+
+/**
+ * รายการที่ยังไม่คืน — ตรรกะเดียวกับสูตร FILTER ในชีท "ค้างคืน":
+ * แถวที่สถานะใช้งาน = "เบิก" และยังไม่มีแถวไหนอ้างอิงรหัสรายการนี้
+ */
+function openJobs_(records, empId) {
+  var referenced = {};
+  records.forEach(function (r) { if (r.ref) referenced[r.ref] = true; });
+  return records.filter(function (r) {
+    if (r.action !== CFG.V.BORROW) return false;
+    if (referenced[r.id]) return false;
+    if (empId && r.empId !== empId) return false;
+    return true;
+  }).map(function (r) {
+    return {
+      id: r.id, codes: r.codes, qty: r.qty, topic: r.topic,
+      empId: r.empId, empName: r.empName, dept: r.dept,
+      date: r.date, ts: r.ts,
+      time: (/(\d{1,2}:\d{2})/.exec(r.ts) || [, ''])[1]
+    };
+  }).reverse();
+}
+
+// ── เขียนบันทึก ───────────────────────────────────────────────────────────
+
+/**
+ * @param {Object} p  ข้อมูลรายการ (ผ่านการตรวจสอบมาแล้วจาก Api.gs)
+ * @param {Array}  photoRows  [{slot,url,time,gps}, ...]
+ */
+function writeRecord_(p, photoRows) {
+  var ss = dataSS_();
+  var shR = ss.getSheetByName(CFG.D.RECORDS);
+  var C = CFG.COL.REC;
+  var now = new Date();
+
+  var row = [];
+  row[C.ID - 1]       = p.recordId;
+  row[C.TS - 1]       = fmtStamp_(now);
+  row[C.DATE - 1]     = fmtDate_(now);
+  row[C.SHIFT - 1]    = p.shift;
+  row[C.EMP_ID - 1]   = p.empId;
+  row[C.EMP_NAME - 1] = p.empName;
+  row[C.DEPT - 1]     = p.dept;
+  row[C.TOPIC - 1]    = p.topicName;
+  row[C.ACTION - 1]   = p.action;
+  row[C.QTY - 1]      = p.qty;
+  row[C.CODES - 1]    = p.codes;
+  row[C.RESULT - 1]   = p.result;
+  row[C.ISSUE - 1]    = p.issue || '';
+  row[C.NOTE - 1]     = p.note || '';
+  row[C.PHOTO_N - 1]  = photoRows.length;
+  row[C.FOLDER - 1]   = p.folderUrl || '';
+  row[C.GPS - 1]      = p.gps || '';
+  row[C.REF - 1]      = p.ref || '';
+  row[C.SENT - 1]     = CFG.V.SENT;
+
+  for (var i = 0; i < C.SENT; i++) if (row[i] === undefined) row[i] = '';
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    shR.appendRow(row);
+    // บังคับให้รหัสพนักงานเป็นข้อความ กันชีทตัดเลข 0 นำหน้า
+    shR.getRange(shR.getLastRow(), C.EMP_ID).setNumberFormat('@').setValue(p.empId);
+
+    if (photoRows.length) {
+      var shP = ss.getSheetByName(CFG.D.PHOTOS);
+      var start = shP.getLastRow() + 1;
+      var vals = photoRows.map(function (ph) {
+        return [p.recordId, ph.slot, ph.url, ph.time, ph.gps || ''];
+      });
+      shP.getRange(start, 1, vals.length, 5).setValues(vals);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  return p.recordId;
+}
+
+
+// ==========================================================================
+//  Photos.gs
+// ==========================================================================
+
+/**
+ * Photos.gs — เก็บรูปลง Google Drive
+ *
+ * โครงโฟลเดอร์:  <โฟลเดอร์แม่>/รูปถ่ายหน้างาน/2026-08-06/PP-20260806-1275/
+ * รูปถูกประทับวันเวลา+พิกัด+รหัสเครื่องมาแล้วจากฝั่งมือถือ (canvas) ก่อนอัปโหลด
+ */
+
+function folderChild_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+function photoRoot_() {
+  var parent = DriveApp.getFolderById(CFG.DRIVE_PARENT_ID);
+  return folderChild_(parent, CFG.PHOTO_ROOT_NAME);
+}
+
+/** โฟลเดอร์ของรายการหนึ่ง ๆ — สร้างเมื่อเรียกครั้งแรก */
+function recordFolder_(recordId, when) {
+  var day = Utilities.formatDate(when || new Date(), CFG.TZ, 'yyyy-MM-dd');
+  return folderChild_(folderChild_(photoRoot_(), day), recordId);
+}
+
+/**
+ * บันทึกรูป 1 ใบ
+ *
+ * รับ folder เข้ามาเลย เพราะการหาโฟลเดอร์ซ้ำทุกใบทำให้ช้ามาก
+ * (การส่ง 1 ครั้งมี 5–6 รูป — เรียก Drive API ซ้ำหลายสิบครั้งโดยไม่จำเป็น)
+ *
+ * @param {Folder} folder    โฟลเดอร์ของรายการ จาก recordFolder_()
+ * @param {string} recordId
+ * @param {string} slot      ชื่อช่องถ่าย เช่น "กุญแจ"
+ * @param {string} dataUrl   "data:image/jpeg;base64,...."
+ * @returns {{url:string, id:string}}
+ */
+function savePhoto_(folder, recordId, slot, dataUrl, seq) {
+  var m = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(dataUrl || '');
+  if (!m) throw new Error('รูปไม่ถูกต้อง (' + slot + ')');
+
+  var mime = m[1];
+  var bytes = Utilities.base64Decode(m[2]);
+  var ext = mime.indexOf('png') >= 0 ? 'png' : 'jpg';
+  var name = recordId + '-' + pad2_(seq || 1) + '-' + safeName_(slot) + '.' + ext;
+
+  var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
+
+  return {
+    id: file.getId(),
+    url: 'https://drive.google.com/open?id=' + file.getId()
+  };
+}
+
+function pad2_(n) { return (n < 10 ? '0' : '') + n; }
+
+function safeName_(s) {
+  return String(s || 'photo').replace(/[\\\/:*?"<>|]+/g, '-').slice(0, 40);
+}
+
+/**
+ * ลบรูปทั้งหมดของรายการ (ปุ่ม "ลบรูป" ในหน้าแอดมิน) เพื่อคืนพื้นที่ Drive
+ *
+ * เก็บร่องรอยไว้ครบ: แถวในชีท "รูปภาพ" ไม่ถูกลบ ลิงก์รูปเดิมยังอยู่
+ * พร้อมช่องถ่าย เวลา และพิกัด — ใช้เป็นหลักฐานย้อนหลังได้ว่าเคยถ่ายอะไรไว้
+ * แค่กดลิงก์แล้วจะไม่เห็นภาพหลังไฟล์ถูกลบถาวรจากถังขยะ (Drive ล้างเองใน 30 วัน)
+ */
+function deleteRecordPhotos_(recordId) {
+  var recs = allRecords_();
+  var rec = null;
+  for (var i = 0; i < recs.length; i++) if (recs[i].id === recordId) rec = recs[i];
+  if (!rec) throw new Error('ไม่พบรายการ ' + recordId);
+
+  var n = 0;
+  if (rec.folder) {
+    var fid = (/[-\w]{25,}/.exec(rec.folder) || [])[0];
+    if (fid) {
+      try {
+        var folder = DriveApp.getFolderById(fid);
+        var files = folder.getFiles();
+        while (files.hasNext()) { files.next().setTrashed(true); n++; }
+      } catch (e) { /* โฟลเดอร์ถูกลบไปแล้ว */ }
+    }
+  }
+
+  // ทำเครื่องหมายในชีทบันทึกว่ารูปถูกลบแล้ว — คงจำนวนรูปเดิมไว้ให้รู้ว่าเคยมีกี่ใบ
+  var shR = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var row = findRow_(shR, CFG.COL.REC.ID, recordId);
+  if (row) shR.getRange(row, CFG.COL.REC.FOLDER).setValue('ลบรูปแล้ว');
+
+  return n;
+}
+
+
+// ==========================================================================
+//  Api.gs
+// ==========================================================================
+
+/**
+ * Api.gs — ทางเข้าเดียวของเว็บแอพ + ฟังก์ชันที่หน้าบ้านเรียกผ่าน google.script.run
+ *
+ * ทุกฟังก์ชัน api* คืนค่าเป็น {ok:true, ...} หรือ {ok:false, error:'ข้อความไทย'}
+ * ไม่มีการโยน exception ข้ามไปหน้าบ้าน เพื่อให้หน้าจอแสดงข้อความที่อ่านรู้เรื่อง
+ */
+
+function doGet(e) {
+  var page = (e && e.parameter && e.parameter.page) || 'app';
+  var file = page === 'admin' ? 'admin' : 'app';
+  var t = HtmlService.createTemplateFromFile(file);
+  t.webAppUrl = ScriptApp.getService().getUrl();
+  return t.evaluate()
+    .setTitle(page === 'admin' ? 'เว็บแอดมิน · ระบบถ่ายรูปอัพเดทงาน' : 'ระบบถ่ายรูปอัพเดทงาน')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function include(name) {
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+/**
+ * doPost — ทางเข้าสำหรับหน้าเว็บที่โฮสต์อยู่ที่อื่น (GitHub Pages)
+ *
+ * หน้าเว็บที่เสิร์ฟจาก Apps Script เองใช้ google.script.run ได้ตรง ๆ
+ * แต่หน้าเว็บที่อยู่คนละโดเมนต้องยิง fetch เข้ามาที่นี่แทน
+ *
+ * body: {"fn":"apiLogin","args":["730075"]}
+ * ส่งมาเป็น Content-Type: text/plain เพื่อไม่ให้เบราว์เซอร์ยิง preflight (OPTIONS)
+ * ซึ่ง Apps Script ตอบไม่ได้
+ */
+function doPost(e) {
+  var out;
+  try {
+    var raw = (e && e.postData && e.postData.contents) || '{}';
+    var body = JSON.parse(raw);
+    var fn = apiDispatch_(String(body.fn || ''));
+    if (!fn) throw new Error('ไม่รู้จักคำสั่ง "' + s_(body.fn) + '"');
+    out = fn.apply(null, body.args || []);
+  } catch (err) {
+    console.error(err && err.stack ? err.stack : err);
+    out = err_((err && err.message) ? err.message : err);
+  }
+  return ContentService.createTextOutput(JSON.stringify(out))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** รายชื่อฟังก์ชันที่ยอมให้เรียกจากภายนอกได้ (อย่างอื่นเรียกไม่ได้) */
+function apiDispatch_(name) {
+  var map = {
+    apiHello: apiHello,
+    apiLogin: apiLogin,
+    apiRefresh: apiRefresh,
+    apiSubmit: apiSubmit,
+    apiAdminLoad: apiAdminLoad,
+    apiAdminDeletePhotos: apiAdminDeletePhotos,
+    apiSaveStaff: apiSaveStaff,
+    apiDeleteStaff: apiDeleteStaff,
+    apiSaveAsset: apiSaveAsset,
+    apiDeleteAsset: apiDeleteAsset,
+    apiSaveTopic: apiSaveTopic,
+    apiDeleteTopic: apiDeleteTopic,
+    apiSaveSlots: apiSaveSlots,
+    apiSetRule: apiSetRule
+  };
+  return Object.prototype.hasOwnProperty.call(map, name) ? map[name] : null;
+}
+
+function ok_(obj)  { return Object.assign({ ok: true }, obj || {}); }
+function err_(msg) { return { ok: false, error: String(msg) }; }
+
+function wrap_(fn) {
+  try { return fn(); }
+  catch (e) {
+    console.error(e && e.stack ? e.stack : e);
+    return err_((e && e.message) ? e.message : e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ผู้ใช้
+// ══════════════════════════════════════════════════════════════════════════
+
+function findUser_(master, empId) {
+  var id = s_(empId);
+  if (!id) return null;
+  for (var i = 0; i < master.staff.length; i++) {
+    if (master.staff[i].id === id) return master.staff[i];
+  }
+  return null;
+}
+
+function requireUser_(master, empId) {
+  var u = findUser_(master, empId);
+  if (!u) throw new Error('ไม่พบรหัสนี้ในชีททะเบียนพนักงาน');
+  if (u.status === CFG.V.SUSPENDED) throw new Error('รหัสนี้ถูกระงับการใช้งาน ติดต่อแอดมิน');
+  return u;
+}
+
+function requireAdmin_(master, empId) {
+  var u = requireUser_(master, empId);
+  if (u.role !== CFG.V.ROLE_ADMIN && u.role !== CFG.V.ROLE_LEAD) {
+    throw new Error('บัญชีนี้ไม่มีสิทธิ์เข้าเว็บแอดมิน');
+  }
+  return u;
+}
+
+function canWriteMaster_(u) { return u.role === CFG.V.ROLE_ADMIN; }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  แอพมือถือ
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ข้อมูลตั้งต้นของหน้าล็อกอิน — ไม่ต้องมีรหัสก็เรียกได้
+ *
+ * รายชื่อ "รหัสสำหรับทดลอง" จะโผล่เฉพาะตอนเปิดโหมดสาธิตเท่านั้น
+ * (รหัสพนักงานคือรหัสผ่าน จึงไม่ควรโชว์บนหน้าที่ใครก็เปิดได้)
+ * เปิดโหมดสาธิตด้วยการรัน enableDemoPins() ใน Apps Script editor
+ */
+function apiHello() {
+  return wrap_(function () {
+    var demo = [];
+    if (PropertiesService.getScriptProperties().getProperty('SHOW_DEMO') === 'true') {
+      var m = getMaster_();
+      demo = m.staff.slice(0, 2).concat(m.staff.filter(function (p) {
+        return p.role === CFG.V.ROLE_ADMIN;
+      }).slice(0, 1)).map(function (p) {
+        return { id: p.id, name: p.name, role: p.role };
+      });
+    }
+    return ok_({
+      serverTime: fmtStamp_(new Date()),
+      today: fmtDate_(new Date()),
+      demo: demo
+    });
+  });
+}
+
+function enableDemoPins()  { PropertiesService.getScriptProperties().setProperty('SHOW_DEMO', 'true'); }
+function disableDemoPins() { PropertiesService.getScriptProperties().deleteProperty('SHOW_DEMO'); }
+
+/** เข้าสู่ระบบด้วยรหัสพนักงาน แล้วส่งข้อมูลทุกอย่างที่แอพต้องใช้กลับไปทีเดียว */
+function apiLogin(empId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireUser_(m, empId);
+    return ok_(sessionPayload_(m, u));
+  });
+}
+
+/** เรียกซ้ำเพื่อรีเฟรชรายการค้างคืน/ทะเบียนเครื่อง โดยไม่ต้องล็อกอินใหม่ */
+function apiRefresh(empId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireUser_(m, empId);
+    return ok_(sessionPayload_(m, u));
+  });
+}
+
+function sessionPayload_(m, u) {
+  var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
+  var recs = allRecords_();
+
+  // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
+  var mine = openJobs_(recs, isAdmin || u.role === CFG.V.ROLE_LEAD ? null : u.id);
+
+  return {
+    user: u,
+    isAdmin: isAdmin,
+    topics: m.topics.filter(function (t) { return t.on; }),
+    allTopics: m.topics,
+    assets: m.assets,
+    shifts: m.shifts,
+    issueTags: m.issueTags,
+    openJobs: mine,
+    today: fmtDate_(new Date()),
+    serverTime: fmtStamp_(new Date())
+  };
+}
+
+/**
+ * ส่งรายการเข้าชีท — ทำทีเดียวจบ: อัปโหลดรูป → เขียนแถวบันทึก → เขียนแถวรูป
+ *
+ * payload = {
+ *   empId, topicId, action, ref, shift, qty, codes:[], result, issue, note, gps,
+ *   photos: [{slot, dataUrl, time, gps}], clientId
+ * }
+ */
+function apiSubmit(payload) {
+  return wrap_(function () {
+    var p = payload || {};
+    var m = getMaster_();
+    var u = requireUser_(m, p.empId);
+
+    var topic = null;
+    m.topics.forEach(function (t) { if (t.id === s_(p.topicId)) topic = t; });
+    if (!topic) throw new Error('ไม่พบหัวข้อ ' + s_(p.topicId) + ' ในชีทหัวข้อสำรวจ');
+    if (!topic.on) throw new Error('หัวข้อ "' + topic.name + '" ถูกปิดใช้งานอยู่');
+
+    var action = s_(p.action) || CFG.V.BORROW;
+    var isReturn = (action === CFG.V.RETURN);
+    var photos = (p.photos || []).filter(function (x) { return x && x.dataUrl; });
+    var recs = allRecords_();
+
+    // ── กันส่งซ้ำ (คิวออฟไลน์อาจยิงซ้ำ) ──────────────────────────────
+    if (p.clientId) {
+      var dup = alreadySubmitted_(p.clientId);
+      if (dup) return ok_({ recordId: dup, duplicate: true });
+    }
+
+    // ── ตรวจตามเงื่อนไขในชีท "เงื่อนไข" ─────────────────────────────
+    var R = topic.rules || {};
+
+    if (R.gps && !s_(p.gps)) {
+      throw new Error('หัวข้อนี้บังคับให้เปิดตำแหน่ง (GPS) ก่อนส่ง');
+    }
+
+    var result = s_(p.result);
+    if (result !== CFG.V.OK && result !== CFG.V.ISSUE) {
+      throw new Error('ยังไม่ได้เลือกสถานะเครื่อง (ปกติ / มีปัญหา)');
+    }
+
+    if (result === CFG.V.ISSUE) {
+      if (!s_(p.issue)) throw new Error('เลือก "มีปัญหา" ต้องอธิบายอาการด้วย');
+      if (R.issue) {
+        var hasIssuePhoto = photos.some(function (x) {
+          return s_(x.slot).indexOf('ปัญหา') >= 0;
+        });
+        if (!hasIssuePhoto) throw new Error('เลือก "มีปัญหา" ต้องแนบรูปจุดที่มีปัญหา');
+      }
+    }
+
+    // ช่องถ่ายรูปที่บังคับ
+    var need = topic.slots.filter(function (sl) { return sl.req && !sl.onIssue; });
+    var have = {};
+    photos.forEach(function (x) { have[s_(x.slot)] = true; });
+    var missing = need.filter(function (sl) { return !have[sl.th]; });
+    if (missing.length) {
+      throw new Error('ยังถ่ายไม่ครบ: ' + missing.map(function (x) { return x.th; }).join(', '));
+    }
+
+    // จำนวน / รหัสเครื่อง
+    var codes = (p.codes || []).map(s_).filter(Boolean);
+    var qty = Number(p.qty) || codes.length;
+    if (topic.countMode) {
+      if (!(qty > 0)) throw new Error('ต้องกรอกจำนวนเครื่องที่เบิก');
+    } else {
+      if (!codes.length) throw new Error('ต้องเลือกรหัสเครื่องอย่างน้อย 1 รายการ');
+      qty = codes.length;
+    }
+
+    // ── ตอนคืน: ต้องอ้างอิงรายการเบิกที่ยังค้างอยู่จริง ─────────────
+    var ref = '';
+    if (isReturn) {
+      ref = s_(p.ref);
+      if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
+      var open = openJobs_(recs, null);
+      var found = open.filter(function (j) { return j.id === ref; })[0];
+      if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
+      if (!codes.length) codes = found.codes ? found.codes.split(/\s*,\s*/) : [];
+      if (!topic.countMode) qty = codes.length;
+    }
+
+    // ── เตือนกรณีถ่ายนอกกะ (บันทึกเป็นข้อยกเว้น ไม่บล็อก) ───────────
+    var note = s_(p.note);
+    if (R.shift && !inShift_(s_(p.shift), new Date())) {
+      note = (note ? note + ' · ' : '') + '[นอกกะ] ส่งเมื่อ ' + fmtTime_(new Date());
+    }
+
+    // ── อัปโหลดรูป ───────────────────────────────────────────────────
+    var recordId = makeRecordId_(topic.id, new Date());
+    var photoRows = [], folderUrl = '';
+    if (photos.length) {
+      var folder = recordFolder_(recordId);
+      folderUrl = folder.getUrl();
+      photos.forEach(function (ph, i) {
+        var saved = savePhoto_(folder, recordId, s_(ph.slot), ph.dataUrl, i + 1);
+        photoRows.push({
+          slot: s_(ph.slot), url: saved.url,
+          time: s_(ph.time) || fmtTime_(new Date()),
+          gps: s_(ph.gps) || s_(p.gps)
+        });
+      });
+    }
+
+    // ── เขียนชีท ─────────────────────────────────────────────────────
+    writeRecord_({
+      recordId: recordId,
+      shift: s_(p.shift) || u.shift,
+      empId: u.id, empName: u.name, dept: u.dept,
+      topicName: topic.name,
+      action: action,
+      qty: qty,
+      codes: codes.join(', '),
+      result: result,
+      issue: result === CFG.V.ISSUE ? s_(p.issue) : '',
+      note: note,
+      folderUrl: folderUrl,
+      gps: s_(p.gps),
+      ref: ref
+    }, photoRows);
+
+    if (p.clientId) rememberSubmitted_(p.clientId, recordId);
+
+    return ok_({
+      recordId: recordId,
+      folderUrl: folderUrl,
+      photoCount: photoRows.length,
+      ts: fmtStamp_(new Date())
+    });
+  });
+}
+
+/** true ถ้าเวลาปัจจุบันอยู่ในกะที่ระบุ (รองรับกะข้ามเที่ยงคืน) */
+function inShift_(shiftText, when) {
+  var m = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/.exec(shiftText || '');
+  if (!m) return true; // อ่านกะไม่ออก = ไม่เตือน
+  var mins = Number(Utilities.formatDate(when, CFG.TZ, 'H')) * 60 +
+             Number(Utilities.formatDate(when, CFG.TZ, 'm'));
+  var a = Number(m[1]) * 60 + Number(m[2]);
+  var b = Number(m[3]) * 60 + Number(m[4]);
+  return a <= b ? (mins >= a && mins <= b) : (mins >= a || mins <= b);
+}
+
+// กันส่งซ้ำ: จำ clientId ที่ส่งสำเร็จแล้ว 6 ชั่วโมง
+function rememberSubmitted_(clientId, recordId) {
+  try { CacheService.getScriptCache().put('sub:' + clientId, recordId, 21600); } catch (e) {}
+}
+function alreadySubmitted_(clientId) {
+  try { return CacheService.getScriptCache().get('sub:' + clientId); } catch (e) { return null; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  เว็บแอดมิน
+// ══════════════════════════════════════════════════════════════════════════
+
+function apiAdminLoad(empId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    var recs = allRecords_();
+    var photos = allPhotos_();
+
+    return ok_({
+      user: u,
+      canEdit: canWriteMaster_(u),
+      master: m,
+      pairs: buildPairs_(recs, photos),
+      records: recs,
+      openJobs: openJobs_(recs, null),
+      today: fmtDate_(new Date())
+    });
+  });
+}
+
+/**
+ * จับคู่ "เบิก" กับ "คืน" ให้เป็นรายการเดียว เพื่อให้หน้าแอดมินดูรูปสองฝั่งได้
+ * แถวคืนจะอ้างอิงรหัสรายการเบิกในคอลัมน์ "อ้างอิงรายการเบิก"
+ */
+function buildPairs_(recs, photos) {
+  var byRec = {};
+  photos.forEach(function (ph) {
+    (byRec[ph.rec] = byRec[ph.rec] || []).push(ph);
+  });
+
+  var side = function (r) {
+    if (!r) return null;
+    return {
+      recordId: r.id, time: (/(\d{1,2}:\d{2})/.exec(r.ts) || [, r.ts])[1],
+      ts: r.ts, qty: r.qty, photoN: r.photoN, folder: r.folder,
+      deleted: r.folder === 'ลบรูปแล้ว',
+      gps: r.gps,
+      photos: (byRec[r.id] || []).map(function (ph) {
+        return { slot: ph.slot, url: ph.url, time: ph.time, gps: ph.gps };
+      })
+    };
+  };
+
+  var returns = {};
+  recs.forEach(function (r) { if (r.ref) returns[r.ref] = r; });
+
+  return recs.filter(function (r) { return r.action === CFG.V.BORROW; })
+    .map(function (r) {
+      var back = returns[r.id] || null;
+      return {
+        id: r.id, topic: r.topic, date: r.date, shift: r.shift,
+        empId: r.empId, name: r.empName, dept: r.dept,
+        codes: (back && back.codes) || r.codes,
+        qty: r.qty, qtyBack: back ? back.qty : null,
+        status: (back && back.result === CFG.V.ISSUE) ? CFG.V.ISSUE : r.result,
+        issue: (back && back.issue) || r.issue,
+        note: [r.note, back && back.note].filter(Boolean).join(' · '),
+        out: side(r), back: side(back)
+      };
+    }).reverse();
+}
+
+function apiAdminDeletePhotos(empId, recordId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ลบรูปไม่ได้');
+    var n = deleteRecordPhotos_(s_(recordId));
+    return ok_({ deleted: n });
+  });
+}
+
+// ── แก้ทะเบียน/หัวข้อ/เงื่อนไข ────────────────────────────────────────────
+
+function adminGuard_(empId) {
+  var m = getMaster_();
+  var u = requireAdmin_(m, empId);
+  if (!canWriteMaster_(u)) throw new Error('บัญชีนี้แก้ไขข้อมูลตั้งค่าไม่ได้');
+  return m;
+}
+
+function apiSaveStaff(empId, p) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    if (!s_(p.id) || !s_(p.name)) throw new Error('ต้องมีรหัสพนักงานและชื่อ');
+    masterUpsert_(CFG.M.STAFF, CFG.COL.STAFF.ID, s_(p.id), [
+      s_(p.id), s_(p.name), s_(p.dept), s_(p.shift),
+      s_(p.role) || CFG.V.ROLE_FIELD, s_(p.status) || CFG.V.ACTIVE
+    ]);
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+function apiDeleteStaff(empId, id) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    if (s_(id) === s_(empId)) throw new Error('ลบบัญชีตัวเองไม่ได้');
+    masterDelete_(CFG.M.STAFF, CFG.COL.STAFF.ID, s_(id));
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+function apiSaveAsset(empId, p) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    if (!s_(p.code)) throw new Error('ต้องมีรหัสเครื่อง');
+    masterUpsert_(CFG.M.ASSETS, CFG.COL.ASSET.CODE, s_(p.code), [
+      s_(p.code), s_(p.type), s_(p.dept),
+      s_(p.status) || CFG.V.ASSET_READY, s_(p.note)
+    ]);
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+function apiDeleteAsset(empId, code) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    masterDelete_(CFG.M.ASSETS, CFG.COL.ASSET.CODE, s_(code));
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+function apiSaveTopic(empId, p) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    if (!s_(p.id)) throw new Error('ต้องมีรหัสหัวข้อ');
+    masterUpsert_(CFG.M.TOPICS, CFG.COL.TOPIC.ID, s_(p.id), [
+      s_(p.id), s_(p.name), s_(p.desc), p.on ? 'TRUE' : 'FALSE', Number(p.order) || 99
+    ]);
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+function apiDeleteTopic(empId, id) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    masterDelete_(CFG.M.TOPICS, CFG.COL.TOPIC.ID, s_(id));
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+/** ช่องถ่ายรูป: คีย์คือ รหัสหัวข้อ + ชื่อช่อง (ไทย) — เขียนทับทั้งหัวข้อทีเดียว */
+function apiSaveSlots(empId, topicId, slots) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    var sh = masterSS_().getSheetByName(CFG.M.SLOTS);
+    var C = CFG.COL.SLOT;
+    var last = sh.getLastRow();
+
+    // ลบของเดิมของหัวข้อนี้
+    if (last >= 2) {
+      var col = sh.getRange(2, C.TOPIC, last - 1, 1).getValues();
+      for (var r = col.length - 1; r >= 0; r--) {
+        if (s_(col[r][0]) === s_(topicId)) sh.deleteRow(r + 2);
+      }
+    }
+    // เขียนของใหม่ต่อท้าย
+    var rows = (slots || []).map(function (sl, i) {
+      return [
+        s_(topicId), i + 1, s_(sl.th), s_(sl.en),
+        sl.onIssue ? 'เมื่อมีปัญหา' : (sl.req ? 'TRUE' : 'FALSE'),
+        s_(sl.hint)
+      ];
+    });
+    if (rows.length) {
+      sh.getRange(sh.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+    }
+    clearMasterCache_();
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+function apiSetRule(empId, topicId, ruleId, ruleName, on) {
+  return wrap_(function () {
+    adminGuard_(empId);
+    var sh = masterSS_().getSheetByName(CFG.M.RULES);
+    var C = CFG.COL.RULE;
+    var last = sh.getLastRow();
+    var row = 0;
+    if (last >= 2) {
+      var vals = sh.getRange(2, 1, last - 1, 4).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        if (s_(vals[i][C.TOPIC - 1]) === s_(topicId) && s_(vals[i][C.ID - 1]) === s_(ruleId)) {
+          row = i + 2; break;
+        }
+      }
+    }
+    if (!row) row = sh.getLastRow() + 1;
+    sh.getRange(row, 1, 1, 4).setValues([[
+      s_(topicId), s_(ruleId), s_(ruleName), on ? 'TRUE' : 'FALSE'
+    ]]);
+    clearMasterCache_();
+    return ok_({ master: getMaster_(true) });
+  });
+}
+
+
+// ==========================================================================
+//  Setup.gs
+// ==========================================================================
+
+/**
+ * Setup.gs — รันครั้งเดียวตอนติดตั้ง แล้วใช้ตรวจสุขภาพระบบภายหลัง
+ *
+ * วิธีใช้: เปิด Apps Script editor → เลือกฟังก์ชัน → กด Run
+ */
+
+/** ตรวจว่าชีทและคอลัมน์ทุกอันตรงกับที่โค้ดคาดไว้ */
+function checkSetup() {
+  var out = [];
+  var expect = [
+    [CFG.MASTER_ID, CFG.M.STAFF,  ['รหัสพนักงาน', 'ชื่อ-สกุล', 'แผนก', 'กะการทำงาน', 'บทบาท', 'สถานะ']],
+    [CFG.MASTER_ID, CFG.M.ASSETS, ['รหัสเครื่อง', 'ประเภท', 'แผนกประจำ', 'สถานะ', 'หมายเหตุ']],
+    [CFG.MASTER_ID, CFG.M.TOPICS, ['รหัสหัวข้อ', 'ชื่อหัวข้อ', 'คำอธิบาย', 'เปิดใช้งาน', 'ลำดับ']],
+    [CFG.MASTER_ID, CFG.M.SLOTS,  ['รหัสหัวข้อ', 'ลำดับ', 'ชื่อช่อง (ไทย)', 'ชื่อช่อง (EN)', 'บังคับ', 'คำแนะนำบนจอ']],
+    [CFG.MASTER_ID, CFG.M.RULES,  ['รหัสหัวข้อ', 'รหัสเงื่อนไข', 'ชื่อเงื่อนไข', 'ค่า']],
+    [CFG.DATA_ID,   CFG.D.RECORDS, ['รหัสรายการ', 'ประทับเวลา', 'วันที่เบิกคืน', 'กะการทำงาน', 'รหัสพนักงาน',
+       'ชื่อผู้เบิก', 'แผนก', 'หัวข้อ', 'สถานะใช้งาน', 'จำนวนเครื่อง', 'รหัสเครื่อง', 'ผลตรวจ', 'อาการ',
+       'ข้อมูลเพิ่มเติม', 'จำนวนรูป', 'ลิงก์โฟลเดอร์รูป', 'พิกัด GPS', 'อ้างอิงรายการเบิก', 'สถานะส่ง']],
+    [CFG.DATA_ID,   CFG.D.PHOTOS, ['รหัสรายการ', 'ช่องถ่าย', 'ลิงก์รูป', 'เวลาถ่าย', 'พิกัด']]
+  ];
+
+  expect.forEach(function (row) {
+    var ssId = row[0], name = row[1], cols = row[2];
+    try {
+      var sh = SpreadsheetApp.openById(ssId).getSheetByName(name);
+      if (!sh) { out.push('✗ ไม่พบชีท "' + name + '"'); return; }
+      var head = sh.getRange(1, 1, 1, cols.length).getValues()[0].map(function (x) { return String(x).trim(); });
+      var bad = [];
+      cols.forEach(function (c, i) { if (head[i] !== c) bad.push((i + 1) + ': คาดว่า "' + c + '" แต่เจอ "' + head[i] + '"'); });
+      out.push((bad.length ? '✗ ' : '✓ ') + name + (bad.length ? ' — ' + bad.join(' | ') : ''));
+    } catch (e) {
+      out.push('✗ ' + name + ' — ' + e.message);
+    }
+  });
+
+  try {
+    var f = DriveApp.getFolderById(CFG.DRIVE_PARENT_ID);
+    out.push('✓ โฟลเดอร์ Drive: ' + f.getName());
+  } catch (e) {
+    out.push('✗ เปิดโฟลเดอร์ Drive ไม่ได้ — ' + e.message);
+  }
+
+  try {
+    var m = getMaster_(true);
+    out.push('✓ อ่าน MASTER ได้: พนักงาน ' + m.staff.length + ' คน, เครื่อง ' + m.assets.length +
+             ', หัวข้อเปิดใช้ ' + m.topics.filter(function (t) { return t.on; }).length + '/' + m.topics.length);
+    m.topics.forEach(function (t) {
+      out.push('   · ' + t.id + ' "' + t.name + '" — ช่องบังคับ ' +
+        t.slots.filter(function (x) { return x.req && !x.onIssue; }).length +
+        ', เงื่อนไขเปิด ' + Object.keys(t.rules).filter(function (k) { return t.rules[k]; }).join(','));
+    });
+  } catch (e) {
+    out.push('✗ อ่าน MASTER ไม่ได้ — ' + e.message);
+  }
+
+  try {
+    out.push('✓ URL เว็บแอพ: ' + (ScriptApp.getService().getUrl() || '(ยังไม่ได้ deploy)'));
+  } catch (e) {}
+
+  var msg = out.join('\n');
+  console.log(msg);
+  return msg;
+}
+
+/** วางสูตร FILTER ในชีท "ค้างคืน" และลบแถวคำอธิบายทิ้ง */
+function installOpenReturnsFormula() {
+  var sh = dataSS_().getSheetByName(CFG.D.OPEN);
+  if (!sh) throw new Error('ไม่พบชีท ' + CFG.D.OPEN);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).clearContent();
+  sh.getRange('A2').setFormula(
+    '=FILTER({บันทึก!A2:A, บันทึก!K2:K, บันทึก!F2:F, บันทึก!G2:G, บันทึก!B2:B}, ' +
+    'บันทึก!I2:I="เบิก", COUNTIF(บันทึก!R2:R, บันทึก!A2:A)=0, บันทึก!A2:A<>"")'
+  );
+  return 'วางสูตรแล้ว';
+}
+
+/** ล้างแคช MASTER — ใช้เมื่อแก้ชีทเองแล้วอยากให้แอพเห็นทันที */
+function refreshCache() {
+  clearMasterCache_();
+  return 'ล้างแคชแล้ว — แอพจะอ่านชีทใหม่ในการเรียกครั้งถัดไป';
+}
+
+/** ตั้งเลขรันของรหัสรายการใหม่ (ปกติไม่ต้องแตะ) */
+function resetSequence() {
+  PropertiesService.getScriptProperties().deleteProperty('seq');
+  return 'จะไล่หาเลขล่าสุดจากชีทใหม่ในการส่งครั้งถัดไป (ล่าสุดตอนนี้: ' + scanMaxSeq_() + ')';
+}
+
+/** เมนูในชีท MASTER เพื่อกดใช้งานได้โดยไม่ต้องเปิด Apps Script editor */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('ระบบถ่ายรูป')
+    .addItem('ตรวจการติดตั้ง', 'menuCheck')
+    .addItem('ล้างแคชตั้งค่า', 'menuRefresh')
+    .addSeparator()
+    .addItem('เปิดเว็บแอดมิน', 'menuAdmin')
+    .addToUi();
+}
+function menuCheck()   { SpreadsheetApp.getUi().alert(checkSetup()); }
+function menuRefresh() { SpreadsheetApp.getUi().alert(refreshCache()); }
+function menuAdmin() {
+  var url = ScriptApp.getService().getUrl() + '?page=admin';
+  SpreadsheetApp.getUi().showModalDialog(
+    HtmlService.createHtmlOutput('<a href="' + url + '" target="_blank">เปิดเว็บแอดมิน</a>').setHeight(80),
+    'เว็บแอดมิน'
+  );
+}

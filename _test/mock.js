@@ -1,0 +1,117 @@
+/* ตัวจำลองฝั่งเซิร์ฟเวอร์ Apps Script สำหรับทดสอบหน้าจอในเบราว์เซอร์ */
+window.__ERRORS = [];
+window.addEventListener('error', function (e) { window.__ERRORS.push(String(e.message) + ' @ ' + e.lineno); });
+window.addEventListener('unhandledrejection', function (e) { window.__ERRORS.push('reject: ' + (e.reason && e.reason.message)); });
+
+var SLOTS_PP = [
+  { topic: 'PP', order: 1, th: 'กุญแจ', en: 'Key', req: true, onIssue: false, hint: 'ให้เห็นกุญแจเสียบที่เครื่อง + เลขตัวเครื่อง' },
+  { topic: 'PP', order: 2, th: 'ด้านหน้า', en: 'Front', req: true, onIssue: false, hint: 'ยืนห่าง 2 เมตร ให้เห็นทั้งคัน' },
+  { topic: 'PP', order: 3, th: 'ด้านหลัง', en: 'Rear', req: true, onIssue: false, hint: 'ยืนห่าง 2 เมตร ให้เห็นทั้งคัน' },
+  { topic: 'PP', order: 4, th: 'ด้านซ้าย', en: 'Left', req: true, onIssue: false, hint: 'ยืนห่าง 2 เมตร ให้เห็นทั้งคัน' },
+  { topic: 'PP', order: 5, th: 'ด้านขวา', en: 'Right', req: true, onIssue: false, hint: 'ยืนห่าง 2 เมตร ให้เห็นทั้งคัน' },
+  { topic: 'PP', order: 6, th: 'จุดที่มีปัญหา', en: 'Issue', req: true, onIssue: true, hint: 'ถ่ายใกล้จุดเสีย' }
+];
+var TOPIC_PP = {
+  id: 'PP', name: 'Power Pallet', desc: 'ตรวจเครื่อง + กุญแจ + รอบคัน', on: true, order: 1,
+  abbr: 'PP', assetType: 'Power Pallet', slots: SLOTS_PP,
+  rules: { live: true, gps: true, stamp: true, shift: true, issue: true, draft: true }, countMode: false
+};
+var TOPIC_ID = {
+  id: 'IDATA', name: 'IDATA / ไอดาต้า', desc: 'เบิก–คืนเครื่องยิงบาร์โค้ด', on: true, order: 2,
+  abbr: 'ID', assetType: 'ไอดาต้า',
+  slots: [
+    { topic: 'IDATA', order: 1, th: 'ชุดเครื่องที่เบิก', en: 'Device set', req: true, onIssue: false, hint: 'วางเรียงให้เห็นครบ' },
+    { topic: 'IDATA', order: 2, th: 'หน้าจอเปิดติด', en: 'Screen on', req: true, onIssue: false, hint: 'ให้เห็นหน้าจอสว่าง' },
+    { topic: 'IDATA', order: 3, th: 'จุดที่มีปัญหา', en: 'Issue', req: true, onIssue: true, hint: 'ถ่ายใกล้เครื่องที่เสีย' }
+  ],
+  rules: { live: true, gps: false, stamp: true, count: true, issue: true, draft: true }, countMode: true
+};
+
+var STAFF = [
+  { id: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', shift: 'กะ 03:00 - 12:00 น.', role: 'พนักงานหน้างาน', status: 'ใช้งาน' },
+  { id: '600112', name: 'ธนกฤต ศรีสุข', dept: 'ทุกแผนก', shift: 'กะ 09:00 - 18:00 น.', role: 'แอดมิน', status: 'ใช้งาน' }
+];
+var ASSETS = [
+  { code: 'PP-INLHBG-01', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
+  { code: 'PP-INLHBG-02', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
+  { code: 'REPACK 01', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' }
+];
+var OPEN = [{ id: 'PP-20260806-1250', codes: 'PP-INLHBG-02', qty: 1, topic: 'Power Pallet',
+  empId: '730075', empName: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', date: '6/8/2026', ts: '6/8/2026, 09:12:31', time: '09:12' }];
+
+function session(u) {
+  return {
+    ok: true, user: u, isAdmin: u.role === 'แอดมิน',
+    topics: [TOPIC_PP, TOPIC_ID], allTopics: [TOPIC_PP, TOPIC_ID],
+    assets: ASSETS, shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.', 'กะ 15:00 - 00:00 น.'],
+    issueTags: ['แบตไม่เก็บไฟ', 'ยกไม่ขึ้น', 'ล้อชำรุด'],
+    openJobs: OPEN, today: '6/8/2026', serverTime: '6/8/2026, 16:12:04'
+  };
+}
+
+var SIDE = function (t, n) {
+  return { recordId: 'PP-20260806-1250', time: t, ts: '6/8/2026, ' + t, qty: 1, photoN: n,
+    folder: 'https://drive.google.com/drive/folders/xxx', deleted: false, gps: '13.6812, 100.6109',
+    photos: SLOTS_PP.slice(0, n).map(function (s) { return { slot: s.th, url: 'https://drive.google.com/open?id=x', time: t, gps: '' }; }) };
+};
+
+var API = {
+  apiHello: function () { return { ok: true, serverTime: '6/8/2026, 16:12:04', today: '6/8/2026',
+    demo: STAFF.map(function (p) { return { id: p.id, name: p.name, role: p.role }; }) }; },
+  apiLogin: function (pin) {
+    var u = STAFF.filter(function (p) { return p.id === String(pin); })[0];
+    if (!u) return { ok: false, error: 'ไม่พบรหัสนี้ในชีททะเบียนพนักงาน' };
+    return session(u);
+  },
+  apiRefresh: function (id) { return API.apiLogin(id); },
+  apiSubmit: function (p) {
+    console.log('SUBMIT', JSON.parse(JSON.stringify(p, function (k, v) {
+      return k === 'dataUrl' ? '<' + String(v).length + ' bytes>' : v; })));
+    return { ok: true, recordId: 'PP-20260806-1275', folderUrl: 'https://drive.google.com/drive/folders/yyy',
+      photoCount: (p.photos || []).length, ts: '6/8/2026, 16:12:04' };
+  },
+  apiAdminLoad: function (id) {
+    var u = STAFF.filter(function (p) { return p.id === String(id); })[0];
+    if (!u || u.role !== 'แอดมิน') return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าเว็บแอดมิน' };
+    return { ok: true, user: u, canEdit: true,
+      master: { staff: STAFF, assets: ASSETS, topics: [TOPIC_PP, TOPIC_ID], slots: SLOTS_PP, rules: [],
+        depts: ['IN LH+BG', 'REPACK', 'ทุกแผนก'], shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.'],
+        issueTags: ['แบตไม่เก็บไฟ'] },
+      pairs: [{ id: 'PP-20260806-1250', topic: 'Power Pallet', date: '6/8/2026', shift: 'กะ 03:00 - 12:00 น.',
+        empId: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', codes: 'PP-INLHBG-02',
+        qty: 1, qtyBack: 1, status: 'มีปัญหา', issue: 'แบตไม่เก็บไฟ', note: 'จอดช่อง B2',
+        out: SIDE('09:12', 5), back: SIDE('16:12', 6) },
+        { id: 'PP-20260806-1268', topic: 'Power Pallet', date: '6/8/2026', shift: 'กะ 03:00 - 12:00 น.',
+          empId: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', codes: 'PP-INLHBG-05',
+          qty: 2, qtyBack: null, status: 'ปกติ', issue: '', note: '', out: SIDE('09:40', 5), back: null }],
+      records: [], openJobs: OPEN, today: '6/8/2026' };
+  },
+  apiSaveStaff: function () { return { ok: true }; },
+  apiSaveAsset: function () { return { ok: true }; },
+  apiSaveTopic: function () { return { ok: true }; },
+  apiSaveSlots: function () { return { ok: true }; },
+  apiSetRule: function () { return { ok: true }; },
+  apiDeleteStaff: function () { return { ok: true }; },
+  apiDeleteAsset: function () { return { ok: true }; },
+  apiDeleteTopic: function () { return { ok: true }; },
+  apiAdminDeletePhotos: function () { return { ok: true, deleted: 5 }; }
+};
+
+window.google = { script: { run: (function () {
+  var okCb = null, failCb = null;
+  var runner = {
+    withSuccessHandler: function (f) { okCb = f; return runner; },
+    withFailureHandler: function (f) { failCb = f; return runner; }
+  };
+  Object.keys(API).forEach(function (k) {
+    runner[k] = function () {
+      var args = arguments, s = okCb, f = failCb;
+      okCb = null; failCb = null;
+      setTimeout(function () {
+        try { s && s(API[k].apply(null, args)); }
+        catch (e) { f && f(e); }
+      }, 30);
+    };
+  });
+  return runner;
+})() } };

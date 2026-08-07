@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<base target="_top">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#201e1d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="ถ่ายรูปงาน">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;800&family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap">
+<!-- ===== css.html ===== -->
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   Modernist — โทเคนและคลาสจากดีไซน์ซิสเต็มของโปรเจกต์
+   (คัดมาจาก _ds/modernist-.../styles.css แล้วเพิ่มฟอนต์ไทย)
+
+   ฟอนต์โหลดด้วย <link> ใน <head> ของ app.html / admin.html ไม่ใช่ @import ตรงนี้
+   เพราะ @import ในไฟล์ CSS ทำให้เบราว์เซอร์ต้องอ่าน CSS จบก่อนถึงจะเริ่มโหลดฟอนต์ (ช้ากว่ามาก)
+   ══════════════════════════════════════════════════════════════════ */
+
+:root{
+  --color-bg:#f3f2f2;
+  --color-surface:#eae9e9;
+  --color-text:#201e1d;
+  --color-accent:#ec3013;
+  --color-accent-2:#e15b47;
+  --color-divider:color-mix(in srgb,#201e1d 40%,transparent);
+
+  --color-neutral-100:#f8f4f4; --color-neutral-200:#eae7e7; --color-neutral-300:#d7d3d3;
+  --color-neutral-400:#bab6b6; --color-neutral-500:#9b9797; --color-neutral-600:#7d7979;
+  --color-neutral-700:#605d5d; --color-neutral-800:#444141; --color-neutral-900:#2d2b2b;
+
+  --color-accent-100:#fff2ef; --color-accent-200:#ffe0d9; --color-accent-300:#ffc4b8;
+  --color-accent-400:#ff9783; --color-accent-500:#ff563c; --color-accent-600:#dd2b0f;
+  --color-accent-700:#ae1800; --color-accent-800:#7c1405; --color-accent-900:#4d170e;
+
+  --font-heading:"Archivo","IBM Plex Sans Thai",system-ui,sans-serif;
+  --font-body:"Archivo","IBM Plex Sans Thai",system-ui,sans-serif;
+
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px; --space-8:32px;
+  --radius-sm:0px; --radius-md:0px; --radius-lg:0px;
+
+  --shadow-sm:0 1px 2px color-mix(in srgb,#2d2b2b 14%,transparent);
+  --shadow-md:0 3px 10px color-mix(in srgb,#2d2b2b 16%,transparent);
+  --shadow-lg:0 12px 32px color-mix(in srgb,#2d2b2b 22%,transparent);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--color-bg); color:var(--color-text);
+  font-family:var(--font-body); font-size:15px; line-height:1.55;
+  -webkit-text-size-adjust:100%;
+}
+h1,h2,h3,h4,h5,h6{
+  font-family:var(--font-heading); font-weight:800;
+  line-height:1.14; letter-spacing:-0.015em; margin:0 0 var(--space-2);
+}
+h1{font-size:32px} h2{font-size:25px} h3{font-size:20px} h4{font-size:17px}
+p{margin:0 0 var(--space-3)}
+a{color:var(--color-accent-700);text-decoration:none}
+a:hover{color:var(--color-accent)}
+img{display:block;max-width:100%}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+::selection{background:color-mix(in srgb,var(--color-accent) 30%,transparent)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--color-text) 25%,transparent)}
+
+.hr{height:2px;border:0;margin:var(--space-4) 0;background:var(--color-divider)}
+.muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.kicker{font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent)}
+.label{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:.6;margin-bottom:6px;display:block}
+.mono{font-variant-numeric:tabular-nums}
+.grayscale{filter:grayscale(1) contrast(1.08)}
+.hide{display:none !important}
+
+/* — ปุ่ม — */
+.btn{
+  display:inline-flex;align-items:center;justify-content:flex-start;gap:6px;
+  cursor:pointer;text-decoration:none;font-family:var(--font-heading);font-weight:800;
+  font-size:14px;line-height:1.2;color:var(--color-text);
+  background:transparent;border:1px solid transparent;
+  padding:var(--space-2) calc(var(--space-3) * 1.2);border-radius:0;
+}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--color-accent);color:var(--color-bg);border-color:var(--color-accent)}
+.btn-primary:hover:not(:disabled){background:var(--color-accent-600)}
+.btn-secondary{border-color:var(--color-divider)}
+.btn-secondary:hover:not(:disabled){background:color-mix(in srgb,var(--color-text) 7%,transparent)}
+.btn-dark{background:var(--color-text);color:var(--color-bg)}
+.btn-ghost{color:var(--color-accent);padding-inline:var(--space-1)}
+.btn-block{width:100%;justify-content:flex-start}
+.btn-lg{height:52px;padding:0 20px;font-size:15px}
+
+/* — ฟอร์ม — */
+.input,select.input,textarea.input{
+  width:100%;min-height:38px;padding:8px 10px;font:inherit;font-size:14px;
+  color:var(--color-text);caret-color:var(--color-accent);
+  background:var(--color-surface);border:1px solid var(--color-divider);border-radius:0;
+}
+textarea.input{min-height:90px;resize:vertical}
+.input:focus-visible{border-color:var(--color-accent)}
+
+.chip{
+  padding:7px 11px;font-size:12px;cursor:pointer;font-family:var(--font-body);
+  border:1px solid var(--color-divider);background:transparent;color:var(--color-text);
+}
+.chip.on{border-color:var(--color-accent);background:var(--color-accent);color:var(--color-bg)}
+
+.toggle{
+  width:46px;height:26px;flex:none;border:1px solid var(--color-divider);
+  background:transparent;cursor:pointer;padding:2px;display:flex;justify-content:flex-start;
+}
+.toggle.on{border-color:var(--color-accent);background:var(--color-accent);justify-content:flex-end}
+.toggle > span{display:block;width:20px;height:20px;background:var(--color-text);opacity:.5}
+.toggle.on > span{background:var(--color-bg);opacity:1}
+
+/* — การ์ด / ตาราง — */
+.card{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3);background:var(--color-surface)}
+.surface{background:var(--color-surface)}
+.table{width:100%;border-collapse:collapse;font-size:14px}
+.table th{
+  text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--color-text) 60%,transparent);
+  padding:var(--space-2);border-bottom:2px solid var(--color-divider);white-space:nowrap;
+}
+.table td{padding:var(--space-2);border-bottom:1px solid var(--color-divider);vertical-align:top}
+.table tbody tr:hover{background:color-mix(in srgb,var(--color-text) 4%,transparent)}
+
+.tag{display:inline-block;padding:2px 8px;font-size:11px;letter-spacing:.06em;background:var(--color-surface)}
+.tag-issue{background:var(--color-accent);color:var(--color-bg)}
+
+.stat{border-top:2px solid var(--color-text);padding-top:8px}
+.stat .v{font-family:var(--font-heading);font-weight:800;font-size:26px;line-height:1}
+.stat .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.6}
+
+/* — แถบแจ้งเตือน — */
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
+  max-width:min(520px,92vw);padding:12px 16px;z-index:200;
+  background:var(--color-text);color:var(--color-bg);font-size:13px;line-height:1.5;
+  box-shadow:var(--shadow-lg);
+}
+.toast.err{background:var(--color-accent)}
+
+.overlay{
+  position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,#201e1d 55%,transparent);padding:20px;
+}
+.overlay .box{background:var(--color-bg);padding:20px;max-width:min(440px,94vw);width:100%;box-shadow:var(--shadow-lg)}
+
+.spin{
+  width:18px;height:18px;border:2px solid var(--color-bg);border-top-color:transparent;
+  border-radius:50%;animation:sp .7s linear infinite;display:inline-block;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+
+<style>
+  html,body{height:100%}
+  body{overscroll-behavior-y:contain}
+  #shell{display:flex;flex-direction:column;height:100dvh;max-width:520px;margin:0 auto;
+         background:var(--color-bg);border-left:1px solid var(--color-divider);border-right:1px solid var(--color-divider)}
+  #bar{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;
+       font-size:12px;font-weight:600;background:var(--color-text);color:var(--color-bg)}
+  #head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:2px solid var(--color-divider)}
+  #head .t{font-family:var(--font-heading);font-weight:800;font-size:16px;margin-right:auto}
+  #body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+  #foot{border-top:2px solid var(--color-divider);padding:12px 16px;display:flex;gap:10px;align-items:center;background:var(--color-bg)}
+  #foot .hint{font-size:11px;line-height:1.3;flex:1;opacity:.7}
+  .pane{padding:16px;display:flex;flex-direction:column;gap:16px}
+  .iconbtn{border:1px solid var(--color-divider);background:transparent;width:32px;height:32px;
+           cursor:pointer;font-size:16px;color:var(--color-text);display:flex;align-items:center;justify-content:center}
+  .pinbox{flex:1;height:52px;display:flex;align-items:center;justify-content:center;
+          font-family:var(--font-heading);font-weight:800;font-size:22px;border:2px solid var(--color-divider)}
+  .pinbox.f{background:var(--color-surface)}
+  .pinbox.c{border-color:var(--color-accent)}
+  .key{height:56px;font-family:var(--font-heading);font-weight:800;font-size:20px;cursor:pointer;
+       color:var(--color-text);background:var(--color-surface);border:0}
+  .key:active{background:color-mix(in srgb,var(--color-text) 14%,transparent)}
+  .cam{position:relative;width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+       overflow:hidden;background:#201e1d;color:#fff;text-align:center}
+  .cam.empty{outline:2px solid var(--color-text);outline-offset:-10px}
+  .cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .camtop{position:absolute;left:0;right:0;top:0;padding:7px 10px;background:rgba(0,0,0,.6);
+          color:#fff;font-size:10px;letter-spacing:.04em;display:flex;align-items:center;gap:6px;z-index:2}
+  .tile{display:flex;flex-direction:column;padding:0;cursor:pointer;font-family:var(--font-body);
+        color:var(--color-text);background:transparent;border:2px solid var(--color-divider);text-align:left}
+  .tile.on{border-color:var(--color-accent)}
+  .tile .th{width:100%;aspect-ratio:4/3;background:var(--color-surface);object-fit:cover;display:block}
+  .topiccard{display:flex;padding:14px;background:transparent;border:2px solid var(--color-text);
+             cursor:pointer;font-family:var(--font-body);color:var(--color-text);width:100%;text-align:left}
+  .gal{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .gal .cell{position:relative}
+  .gal img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+  .gal .x{position:absolute;right:0;top:0;width:22px;height:22px;border:0;
+          background:var(--color-text);color:var(--color-bg);font-size:12px;cursor:pointer}
+  .gal .bd{position:absolute;left:0;bottom:0;font-size:9px;letter-spacing:.06em;padding:2px 5px;
+           background:var(--color-accent);color:var(--color-bg)}
+</style>
+</head>
+<body>
+
+<div id="shell">
+  <div id="bar"><span id="bar-l">—</span><span id="bar-r">—</span></div>
+
+  <div id="head">
+    <button class="iconbtn hide" id="btn-back" aria-label="ย้อนกลับ">←</button>
+    <div class="t" id="head-title">ระบบถ่ายรูปอัพเดทงาน</div>
+    <div style="font-size:11px;opacity:.6" id="head-sub"></div>
+  </div>
+
+  <div id="body">
+
+    <!-- ══ เข้าสู่ระบบ ══ -->
+    <section class="pane hide" data-screen="login">
+      <div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:24px;line-height:1.15">ใส่รหัสพนักงาน</div>
+        <div style="font-size:13px;opacity:.7;margin-top:6px">ระบบดึงชื่อ แผนก และกะการทำงานจากชีททะเบียนพนักงานให้อัตโนมัติ</div>
+      </div>
+      <div style="display:flex;gap:6px" id="pin-boxes"></div>
+      <div style="min-height:18px;font-size:12px;color:var(--color-accent-700)" id="pin-err"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px" id="keypad"></div>
+      <button id="remember" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;cursor:pointer;
+              font-family:var(--font-body);font-size:13px;text-align:left;color:var(--color-text);background:transparent;
+              border:2px solid var(--color-divider)">
+        <span id="remember-box" style="width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;
+              font-size:12px;color:var(--color-bg);border:2px solid var(--color-divider)"></span>
+        <span style="flex:1">จำการเข้าสู่ระบบไว้ในเครื่องนี้<br><span style="font-size:11px;opacity:.65">เปิดแอพครั้งหน้าไม่ต้องใส่รหัสซ้ำ</span></span>
+      </button>
+      <div style="border-top:2px solid var(--color-divider);padding-top:10px" id="demo-wrap">
+        <div class="label">รหัสสำหรับทดลอง</div>
+        <div style="display:flex;flex-direction:column;gap:4px" id="demo-list"></div>
+      </div>
+    </section>
+
+    <!-- ══ หน้าหลัก ══ -->
+    <section class="pane hide" data-screen="home">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px" class="surface">
+        <div id="u-init" style="width:40px;height:40px;flex:none;background:var(--color-text);color:var(--color-bg);
+             display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-weight:800"></div>
+        <div style="line-height:1.3;flex:1">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:15px" id="u-name"></div>
+          <div style="font-size:12px;opacity:.7" id="u-meta"></div>
+          <div style="font-size:12px;opacity:.7" id="u-shift"></div>
+        </div>
+        <button class="btn btn-secondary" id="btn-logout" style="font-size:11px;padding:6px 8px">ออกระบบ</button>
+      </div>
+
+      <div id="admin-note" class="hide" style="padding:8px 10px;background:var(--color-accent-100);
+           border-top:2px solid var(--color-accent);font-size:11.5px;line-height:1.5">
+        เข้าด้วยบัญชีแอดมิน — ใช้ทดสอบฟลว์หน้างานได้ทุกขั้นตอน งานจริงแอดมินทำบนเว็บ
+        <a id="admin-link" href="#" target="_blank" style="text-decoration:underline">เปิดเว็บแอดมิน</a>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:baseline;
+           border-bottom:2px solid var(--color-divider);padding-bottom:6px">
+        <div class="label" style="margin:0" id="today-label">วันนี้</div>
+        <div style="font-size:12px;font-weight:600" id="open-count">ค้างคืน 0 รายการ</div>
+      </div>
+
+      <div id="open-wrap">
+        <div class="kicker" style="margin-bottom:8px">ค้างคืน / TO RETURN</div>
+        <div style="border-top:2px solid var(--color-text)" id="open-list"></div>
+      </div>
+
+      <div>
+        <div class="kicker" style="margin-bottom:8px">เลือกหัวข้อ / SELECT TOPIC</div>
+        <div style="display:flex;flex-direction:column;gap:10px" id="topic-list"></div>
+      </div>
+
+      <button id="btn-queue" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
+              border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
+        <span style="font-size:13px;font-weight:600">คิวรอส่ง / OFFLINE QUEUE</span>
+        <span id="queue-badge" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;font-size:13px;
+              background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
+      </button>
+    </section>
+
+    <!-- ══ ข้อมูลงาน ══ -->
+    <section class="pane hide" data-screen="form">
+      <div style="font-size:12px;padding:8px 10px" class="surface" id="form-top"></div>
+
+      <div style="border:1px solid var(--color-divider)">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px" class="surface">
+          <div class="label" style="margin:0">ข้อมูลอัตโนมัติ</div>
+          <div style="margin-left:auto;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+               background:var(--color-text);color:var(--color-bg);padding:2px 6px">ล็อก</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr" id="auto-info"></div>
+      </div>
+
+      <div id="shift-wrap" class="hide">
+        <span class="label">เลือกกะ · เฉพาะแอดมิน</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="shift-chips"></div>
+      </div>
+
+      <div id="qty-wrap" class="hide">
+        <span class="label">จำนวนเครื่องที่เบิก (บังคับ)</span>
+        <div style="display:flex;align-items:stretch;border:2px solid var(--color-text)">
+          <button id="qty-dec" style="width:56px;border:0;border-right:2px solid var(--color-text);background:transparent;
+                  font-family:var(--font-heading);font-weight:800;font-size:22px;cursor:pointer;color:var(--color-text)">−</button>
+          <div id="qty-val" style="flex:1;display:flex;align-items:center;justify-content:center;
+               font-family:var(--font-heading);font-weight:800;font-size:26px;padding:10px 0">1</div>
+          <button id="qty-inc" style="width:56px;border:0;border-left:2px solid var(--color-text);background:transparent;
+                  font-family:var(--font-heading);font-weight:800;font-size:22px;cursor:pointer;color:var(--color-text)">+</button>
+        </div>
+      </div>
+
+      <div id="codes-wrap">
+        <span class="label" id="codes-label">รหัสเครื่อง</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="code-chips"></div>
+        <div style="margin-top:8px;font-size:12px;display:flex;justify-content:space-between;
+             border-top:2px solid var(--color-divider);padding-top:8px">
+          <span>จำนวนเครื่อง</span><strong id="codes-count">0 เครื่อง</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ ถ่ายรูป (ทีละสเต็ป) ══ -->
+    <section class="hide" data-screen="shoot">
+      <div style="display:flex;gap:3px;padding:12px 16px 10px" id="progress"></div>
+
+      <div class="pane" style="padding-top:0" id="step-cam">
+        <div class="cam empty" id="cam">
+          <div class="camtop"><span style="background:var(--color-accent);padding:1px 5px;font-size:9px">ล็อก</span>
+            <span id="cam-stamp"></span></div>
+          <div id="cam-placeholder" style="font-size:13px;line-height:1.6;opacity:.85;padding:0 20px">
+            กรอบกล้อง<br><span style="font-size:11px;opacity:.7">เวลาและพิกัดล็อกจากระบบ แก้ไม่ได้</span>
+          </div>
+        </div>
+        <div style="font-size:13px;line-height:1.55;padding:10px" class="surface" id="cam-hint"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-lg" id="btn-shoot" style="flex:1">ถ่ายรูป</button>
+          <button class="btn btn-secondary btn-lg hide" id="btn-retake">ถ่ายใหม่</button>
+        </div>
+        <div style="display:flex;gap:5px" id="pips"></div>
+      </div>
+
+      <div class="pane hide" style="padding-top:0" id="step-gallery">
+        <div style="font-size:13px;line-height:1.55;padding:10px" class="surface" id="gal-hint"></div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:7px 10px;
+             background:var(--color-text);color:var(--color-bg)">
+          <span style="background:var(--color-accent);padding:1px 5px;font-size:9px">ล็อก</span>
+          <span id="gal-stamp"></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-lg" id="btn-gal-cam" style="flex:1">ถ่ายรูป</button>
+          <button class="btn btn-secondary btn-lg" id="btn-gal-up" style="flex:1;border-width:2px;border-color:var(--color-text)">อัปโหลด</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;border-top:2px solid var(--color-divider);padding-top:8px">
+          <div style="font-size:12px;font-weight:600" id="gal-count">แนบแล้ว 0 รูป</div>
+          <button class="btn btn-secondary hide" id="btn-gal-clear" style="margin-left:auto;font-size:11px;padding:4px 9px">ล้างทั้งหมด</button>
+        </div>
+        <div class="gal" id="gal-grid"></div>
+      </div>
+
+      <div class="pane hide" style="padding-top:0" id="step-status">
+        <div style="font-size:13px;opacity:.75">เลือกสถานะของเครื่องที่ตรวจ</div>
+        <button class="tile" id="st-ok" style="padding:14px"><div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">ใช้งานปกติ</div>
+          <div style="font-size:12px;opacity:.7">NORMAL — ไม่พบความผิดปกติ</div></div></button>
+        <button class="tile" id="st-issue" style="padding:14px"><div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">มีปัญหา</div>
+          <div style="font-size:12px;opacity:.7">ISSUE — ต้องระบุอาการ + แนบรูปปัญหา</div></div></button>
+
+        <div class="hide" id="issue-wrap" style="border-top:2px solid var(--color-accent);padding-top:12px;
+             display:flex;flex-direction:column;gap:10px">
+          <div>
+            <span class="label">เป็นอะไร (บังคับกรอก)</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px" id="issue-tags"></div>
+            <textarea class="input" rows="3" id="issue-text" placeholder="อธิบายอาการ เช่น แบตไม่เก็บไฟ ใช้ได้ 2 ชม."></textarea>
+          </div>
+          <div id="issue-photo-wrap">
+            <span class="label">รูปจุดที่มีปัญหา (บังคับ)</span>
+            <button id="btn-issue-photo" style="display:flex;align-items:center;justify-content:flex-start;width:100%;
+                    padding:12px;font-size:13px;cursor:pointer;font-family:var(--font-heading);font-weight:800;
+                    color:var(--color-text);background:transparent;border:2px dashed var(--color-divider)">＋ ถ่ายรูปจุดที่มีปัญหา</button>
+            <img id="issue-photo-img" class="hide" style="margin-top:8px;width:100%;max-height:220px;object-fit:cover">
+          </div>
+        </div>
+      </div>
+
+      <div class="pane hide" style="padding-top:0" id="step-note">
+        <div>
+          <span class="label">ข้อมูลเพิ่มเติม (ไม่บังคับ)</span>
+          <textarea class="input" rows="5" id="note-text" placeholder="เช่น ส่งต่อกะถัดไป / จอดไว้ช่อง B2"></textarea>
+        </div>
+        <div style="border:1px solid var(--color-divider);padding:12px;font-size:12px;line-height:1.7" id="note-summary"></div>
+      </div>
+    </section>
+
+    <!-- ══ ตรวจทาน ══ -->
+    <section class="pane hide" data-screen="review">
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">ตรวจทานก่อนส่ง</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="review-thumbs"></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody id="review-rows"></tbody></table>
+    </section>
+
+    <!-- ══ ส่งแล้ว ══ -->
+    <section class="pane hide" data-screen="done" style="padding:24px 16px;align-items:flex-start">
+      <div style="width:56px;height:56px;background:var(--color-accent);color:var(--color-bg);display:flex;
+           align-items:center;justify-content:center;font-size:28px;font-family:var(--font-heading);font-weight:800">✓</div>
+      <div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:22px" id="done-title"></div>
+        <div style="font-size:13px;opacity:.75;margin-top:4px" id="done-sub"></div>
+      </div>
+      <hr class="hr" style="width:100%;margin:0">
+      <div style="font-size:12px;line-height:1.9;width:100%" id="done-info"></div>
+      <div style="font-size:11px;opacity:.55;line-height:1.5">รูปถูกส่งขึ้นระบบและลบออกจากเครื่องแล้ว ดูย้อนหลังได้ที่เว็บแอดมิน</div>
+      <button class="btn btn-primary btn-block btn-lg" id="btn-home">กลับหน้าหลัก</button>
+    </section>
+
+    <!-- ══ คิวรอส่ง ══ -->
+    <section class="pane hide" data-screen="queue">
+      <div style="font-size:12px;opacity:.75">รายการที่บันทึกไว้ในเครื่อง จะส่งเข้าชีทอัตโนมัติเมื่อสัญญาณกลับมา</div>
+      <div style="display:flex;flex-direction:column;gap:10px" id="queue-list"></div>
+      <button class="btn btn-primary btn-block btn-lg" id="btn-sync">ส่งทั้งหมดตอนนี้</button>
+    </section>
+
+  </div>
+
+  <div id="foot" class="hide">
+    <div class="hint" id="foot-hint"></div>
+    <button class="btn btn-primary btn-lg" id="btn-primary">ถัดไป</button>
+  </div>
+</div>
+
+<input type="file" accept="image/*" capture="environment" id="file-cam" style="display:none">
+<input type="file" accept="image/*" multiple id="file-up" style="display:none">
+
+<script>
+window.API_URL   = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
+window.ADMIN_URL = './admin.html';
+var WEBAPP_URL   = './';
+</script>
+<!-- ===== js-common.html ===== -->
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   js-common — ตัวช่วยที่ทั้งแอพมือถือและเว็บแอดมินใช้ร่วมกัน
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * เรียกฟังก์ชันฝั่งเซิร์ฟเวอร์แบบ Promise
+ *
+ * หน้านี้รันได้ 2 ที่ โค้ดชุดเดียวกัน:
+ *   · เสิร์ฟจาก Apps Script  → ใช้ google.script.run (เร็วกว่า ไม่ต้องข้ามโดเมน)
+ *   · เสิร์ฟจาก GitHub Pages → ใช้ fetch ยิงไปที่ doPost ของ Apps Script
+ */
+var API_URL = window.API_URL || '';
+function useFetch() {
+  return !(typeof google !== 'undefined' && google.script && google.script.run);
+}
+
+function rpc(name) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return useFetch() ? rpcFetch(name, args) : rpcNative(name, args);
+}
+
+function rpcNative(name, args) {
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok === false) reject(new Error(res.error || 'ทำรายการไม่สำเร็จ'));
+        else resolve(res);
+      })
+      .withFailureHandler(function (e) {
+        reject(new Error((e && e.message) ? e.message : 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+      })[name].apply(null, args);
+  });
+}
+
+function rpcFetch(name, args) {
+  if (!API_URL) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า API_URL'));
+  // ส่งเป็น text/plain เพื่อให้เป็น "simple request" เบราว์เซอร์จะได้ไม่ยิง preflight
+  // (Apps Script ตอบ OPTIONS ไม่ได้)
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ fn: name, args: args }),
+    redirect: 'follow'
+  }).catch(function () {
+    throw new Error('ติดต่อเซิร์ฟเวอร์ไม่ได้');
+  }).then(function (r) {
+    if (!r.ok) throw new Error('เซิร์ฟเวอร์ตอบกลับผิดพลาด (' + r.status + ')');
+    return r.text();
+  }).then(function (t) {
+    var res;
+    try { res = JSON.parse(t); }
+    catch (e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกรูปแบบ'); }
+    if (res && res.ok === false) throw new Error(res.error || 'ทำรายการไม่สำเร็จ');
+    return res;
+  });
+}
+
+var $  = function (sel, root) { return (root || document).querySelector(sel); };
+var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+function el(tag, attrs, children) {
+  var n = document.createElement(tag);
+  if (attrs) Object.keys(attrs).forEach(function (k) {
+    if (k === 'style') n.style.cssText = attrs[k];
+    else if (k === 'class') n.className = attrs[k];
+    else if (k === 'html') n.innerHTML = attrs[k];
+    else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+    else if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+  });
+  (children || []).forEach(function (c) {
+    if (c === null || c === undefined || c === false) return;
+    n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return n;
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+var _toastTimer = null;
+function toast(msg, isErr, ms) {
+  var old = $('.toast'); if (old) old.remove();
+  var t = el('div', { class: 'toast' + (isErr ? ' err' : '') }, [String(msg)]);
+  document.body.appendChild(t);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function () { t.remove(); }, ms || (isErr ? 6000 : 3200));
+}
+
+var store = {
+  get: function (k, d) { try { var v = localStorage.getItem('ppr.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set: function (k, v) { try { localStorage.setItem('ppr.' + k, JSON.stringify(v)); } catch (e) {} },
+  del: function (k) { try { localStorage.removeItem('ppr.' + k); } catch (e) {} }
+};
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+function nowParts() {
+  var d = new Date();
+  return {
+    date: pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear(),
+    time: pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()),
+    hhmm: pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+  };
+}
+
+function uid(p) { return (p || 'x') + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+/* ── ตำแหน่ง GPS ────────────────────────────────────────────────────── */
+
+var geo = {
+  last: null,
+  watchId: null,
+  start: function () {
+    if (!navigator.geolocation || this.watchId !== null) return;
+    var self = this;
+    this.watchId = navigator.geolocation.watchPosition(
+      function (p) { self.last = p.coords.latitude.toFixed(5) + ', ' + p.coords.longitude.toFixed(5); },
+      function () { /* ผู้ใช้ไม่อนุญาต — ปล่อยให้เป็น null */ },
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 }
+    );
+  },
+  text: function () { return this.last || ''; }
+};
+
+/* ── ย่อรูป + ประทับวันเวลา/พิกัด/รหัสเครื่องลงบนภาพ ────────────────── */
+
+// ตั้งไว้ประหยัดพื้นที่ Drive: ~100 KB/รูป (จากเดิม 1400px/0.72 = ~280 KB)
+// ยังอ่านรหัสเครื่องและเห็นสภาพเครื่องชัด ถ้าอยากได้ละเอียดกว่านี้ค่อยขยับขึ้น
+var MAX_EDGE = 1000;   // ด้านยาวสุดหลังย่อ
+var JPEG_Q   = 0.6;
+
+/**
+ * @param {File|Blob} file
+ * @param {string[]} lines  ข้อความที่จะประทับ (บรรทัดบนสุดคือบรรทัดแรก)
+ * @returns {Promise<string>} data URL
+ */
+function stampPhoto(file, lines) {
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var sc = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+        var w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        var x = c.getContext('2d');
+        x.drawImage(img, 0, 0, w, h);
+
+        var txt = (lines || []).filter(Boolean);
+        if (txt.length) {
+          var fs = Math.max(13, Math.round(w * 0.028));
+          var pad = Math.round(fs * 0.55);
+          var lh = Math.round(fs * 1.38);
+          var boxH = lh * txt.length + pad * 2;
+
+          x.fillStyle = 'rgba(0,0,0,0.58)';
+          x.fillRect(0, h - boxH, w, boxH);
+          x.fillStyle = '#ffffff';
+          x.font = '600 ' + fs + 'px "IBM Plex Sans Thai", Archivo, sans-serif';
+          x.textBaseline = 'top';
+          txt.forEach(function (line, i) {
+            x.fillText(line, pad, h - boxH + pad + i * lh, w - pad * 2);
+          });
+
+          // แถบสีแบรนด์ด้านซ้าย เพื่อให้เห็นชัดว่าเป็นรูปจากระบบ
+          x.fillStyle = '#ec3013';
+          x.fillRect(0, h - boxH, Math.max(3, Math.round(w * 0.008)), boxH);
+        }
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', JPEG_Q));
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('เปิดไฟล์รูปไม่ได้')); };
+    img.src = url;
+  });
+}
+
+/* ── คิวออฟไลน์ (IndexedDB — localStorage เล็กเกินไปสำหรับรูป) ───────── */
+
+var Q = {
+  db: null,
+  open: function () {
+    var self = this;
+    if (self.db) return Promise.resolve(self.db);
+    return new Promise(function (resolve, reject) {
+      var rq = indexedDB.open('ppr-queue', 1);
+      rq.onupgradeneeded = function () {
+        rq.result.createObjectStore('jobs', { keyPath: 'clientId' });
+      };
+      rq.onsuccess = function () { self.db = rq.result; resolve(self.db); };
+      rq.onerror = function () { reject(rq.error); };
+    });
+  },
+  tx: function (mode, fn) {
+    return this.open().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var t = db.transaction('jobs', mode);
+        var out = fn(t.objectStore('jobs'));
+        t.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
+        t.onerror = function () { reject(t.error); };
+      });
+    });
+  },
+  put:  function (job) { return this.tx('readwrite', function (s) { return s.put(job); }); },
+  del:  function (id)  { return this.tx('readwrite', function (s) { return s.delete(id); }); },
+  all:  function ()    { return this.tx('readonly',  function (s) { return s.getAll(); }); },
+  count:function ()    { return this.all().then(function (a) { return a.length; }); }
+};
+
+/** พยายามส่งทุกงานในคิว คืนจำนวนที่ส่งสำเร็จ */
+function flushQueue(onProgress) {
+  return Q.all().then(function (jobs) {
+    var sent = 0;
+    return jobs.reduce(function (chain, job) {
+      return chain.then(function () {
+        if (onProgress) onProgress(job, sent, jobs.length);
+        return rpc('apiSubmit', job.payload)
+          .then(function () { sent++; return Q.del(job.clientId); })
+          .catch(function (e) {
+            // ข้อมูลผิดกติกา (เช่นรายการถูกคืนไปแล้ว) — เอาออกจากคิว ไม่ลองซ้ำวนไม่จบ
+            if (/ถูกคืนไปแล้ว|ไม่พบ|ปิดใช้งาน/.test(e.message)) return Q.del(job.clientId);
+            throw e;
+          });
+      });
+    }, Promise.resolve()).then(function () { return sent; })
+      .catch(function () { return sent; });
+  });
+}
+</script>
+
+<!-- ===== js-app.html ===== -->
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   js-app — ตรรกะแอพมือถือหน้างาน
+   ══════════════════════════════════════════════════════════════════ */
+
+var S = {
+  screen: 'login',
+  pin: '', pinErr: '', remember: store.get('remember', true),
+  user: null, isAdmin: false,
+  topics: [], assets: [], shifts: [], issueTags: [], openJobs: [], today: '',
+
+  topic: null,            // หัวข้อที่กำลังทำ
+  action: 'เบิก',
+  ref: '',                // รหัสรายการเบิก ตอนกดคืน
+  shift: '',
+  picked: [],             // รหัสเครื่องที่เลือก
+  qty: 1,
+  step: 0,
+  shots: {},              // { ชื่อช่อง: {dataUrl, time, gps} }
+  extra: [],              // รูปแนบเพิ่ม [{id, dataUrl, time, gps, src}]
+  result: '', issueText: '', note: '',
+  busy: false, queueCount: 0
+};
+
+var CAP = null; // เป้าหมายของรูปที่กำลังจะถ่าย
+
+// ── ตัวช่วยจากสถานะ ───────────────────────────────────────────────────
+
+function reqSlots()  { return S.topic ? S.topic.slots.filter(function (x) { return x.req && !x.onIssue; }) : []; }
+function issueSlot() { return S.topic ? S.topic.slots.filter(function (x) { return x.onIssue; })[0] : null; }
+function issueSlotName() { var s = issueSlot(); return s ? s.th : 'จุดที่มีปัญหา'; }
+function rule(id)    { return !!(S.topic && S.topic.rules && S.topic.rules[id]); }
+function galleryMode() { return !!S.topic && (reqSlots().length === 0 || S.topic.countMode); }
+
+function steps() {
+  var out = reqSlots().map(function (sl) { return { type: 'cam', slot: sl }; });
+  if (galleryMode()) out.push({ type: 'gallery' });
+  out.push({ type: 'status' });
+  out.push({ type: 'note' });
+  return out;
+}
+function curStep() { var a = steps(); return a[Math.min(S.step, a.length - 1)] || null; }
+
+function codesText() {
+  if (S.picked.length) return S.picked.join(', ');
+  if (S.topic && S.topic.countMode) return S.topic.name + ' ' + S.qty + ' เครื่อง';
+  return '—';
+}
+
+function shotCount() {
+  return reqSlots().filter(function (sl) { return S.shots[sl.th]; }).length;
+}
+
+function issueOk() {
+  if (S.result !== 'มีปัญหา') return true;
+  if (!S.issueText.trim()) return false;
+  if (rule('issue') && !S.shots[issueSlotName()]) return false;
+  return true;
+}
+function readyToSend() {
+  if (shotCount() !== reqSlots().length) return false;
+  if (!S.result) return false;
+  if (!issueOk()) return false;
+  if (rule('gps') && !geo.text()) return false;
+  return true;
+}
+
+// ── การนำทาง ──────────────────────────────────────────────────────────
+
+function go(screen) { S.screen = screen; render(); window.scrollTo(0, 0); $('#body').scrollTop = 0; }
+
+function resetJob() {
+  S.topic = null; S.action = 'เบิก'; S.ref = ''; S.picked = []; S.qty = 1;
+  S.step = 0; S.shots = {}; S.extra = []; S.result = ''; S.issueText = ''; S.note = '';
+}
+
+function openTopic(t) {
+  resetJob();
+  S.topic = t;
+  S.shift = S.user.shift;
+  go('form');
+}
+
+function startReturn(job) {
+  var t = S.topics.filter(function (x) { return x.name === job.topic; })[0] || S.topics[0];
+  resetJob();
+  S.topic = t;
+  S.action = 'คืน';
+  S.ref = job.id;
+  S.picked = job.codes ? job.codes.split(/\s*,\s*/).filter(Boolean) : [];
+  S.qty = job.qty || S.picked.length || 1;
+  S.shift = S.user.shift;
+  go('shoot');
+}
+
+function back() {
+  if (S.screen === 'shoot' && S.step > 0) { S.step--; render(); return; }
+  if (S.screen === 'shoot') { go(S.action === 'คืน' ? 'home' : 'form'); return; }
+  if (S.screen === 'review') { S.step = steps().length - 1; go('shoot'); return; }
+  if (S.screen === 'form') { go('home'); return; }
+  go('home');
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════════════════════
+
+var TITLES = {
+  login: ['เข้าสู่ระบบ', 'SIGN IN'], home: ['อัพเดทงาน', 'HOME'],
+  form: ['ข้อมูลงาน', 'JOB INFO'], shoot: ['ถ่ายรูป', 'CAPTURE'],
+  review: ['ตรวจทาน', 'REVIEW'], done: ['ส่งแล้ว', 'SUBMITTED'], queue: ['คิวรอส่ง', 'QUEUE']
+};
+
+function render() {
+  $$('[data-screen]').forEach(function (n) {
+    n.classList.toggle('hide', n.getAttribute('data-screen') !== S.screen);
+  });
+
+  var t = TITLES[S.screen] || ['', ''];
+  $('#head-title').textContent = S.screen === 'shoot' ? shootTitle() : t[0];
+  $('#head-sub').textContent = S.screen === 'shoot' ? (S.step + 1) + '/' + steps().length : t[1];
+  $('#btn-back').classList.toggle('hide', S.screen === 'home' || S.screen === 'login');
+
+  $('#bar-l').textContent = navigator.onLine ? '5G' : 'ไม่มีสัญญาณ';
+  $('#bar-r').textContent = geo.text() ? 'GPS ' + geo.text() : 'ยังไม่มีพิกัด';
+
+  if (S.screen === 'login')  renderLogin();
+  if (S.screen === 'home')   renderHome();
+  if (S.screen === 'form')   renderForm();
+  if (S.screen === 'shoot')  renderShoot();
+  if (S.screen === 'review') renderReview();
+  if (S.screen === 'queue')  renderQueue();
+
+  renderFooter();
+}
+
+function shootTitle() {
+  var st = curStep();
+  if (!st) return 'ถ่ายรูป';
+  if (st.type === 'cam')     return 'ถ่าย: ' + st.slot.th;
+  if (st.type === 'gallery') return 'แนบรูปเพิ่มเติม';
+  if (st.type === 'status')  return 'สถานะการใช้งาน';
+  return 'ข้อมูลเพิ่มเติม';
+}
+
+// ── หน้าล็อกอิน ───────────────────────────────────────────────────────
+
+function renderLogin() {
+  var wrap = $('#pin-boxes'); wrap.innerHTML = '';
+  for (var i = 0; i < 6; i++) {
+    wrap.appendChild(el('div', {
+      class: 'pinbox' + (S.pin[i] ? ' f' : '') + (S.pin.length === i ? ' c' : '')
+    }, [S.pin[i] || '']));
+  }
+  $('#pin-err').textContent = S.pinErr;
+
+  var kp = $('#keypad');
+  if (!kp.childNodes.length) {
+    ['1','2','3','4','5','6','7','8','9','','0','⌫'].forEach(function (k) {
+      var b = el('button', { class: 'key', style: k ? '' : 'visibility:hidden' }, [k]);
+      b.addEventListener('click', function () {
+        if (!k) return;
+        if (k === '⌫') S.pin = S.pin.slice(0, -1); else S.pin = (S.pin + k).slice(0, 6);
+        S.pinErr = ''; render();
+      });
+      kp.appendChild(b);
+    });
+  }
+
+  $('#remember').style.borderColor = S.remember ? 'var(--color-accent)' : 'var(--color-divider)';
+  var box = $('#remember-box');
+  box.style.background = S.remember ? 'var(--color-accent)' : 'transparent';
+  box.style.borderColor = S.remember ? 'var(--color-accent)' : 'var(--color-divider)';
+  box.textContent = S.remember ? '✓' : '';
+}
+
+// ── หน้าหลัก ──────────────────────────────────────────────────────────
+
+function renderHome() {
+  var u = S.user;
+  $('#u-init').textContent = u.name.slice(0, 2);
+  $('#u-name').textContent = u.name;
+  $('#u-meta').textContent = u.id + ' · ' + u.role + ' · ' + u.dept;
+  $('#u-shift').textContent = u.shift;
+  $('#admin-note').classList.toggle('hide', !S.isAdmin);
+  // เสิร์ฟจาก GitHub Pages จะมี ADMIN_URL ให้ ไม่งั้นต่อท้าย URL ของ Apps Script เอง
+  $('#admin-link').href = window.ADMIN_URL || (WEBAPP_URL + '?page=admin');
+  $('#today-label').textContent = 'วันนี้ · ' + S.today;
+  $('#open-count').textContent = 'ค้างคืน ' + S.openJobs.length + ' รายการ';
+
+  var list = $('#open-list'); list.innerHTML = '';
+  $('#open-wrap').classList.toggle('hide', !S.openJobs.length);
+  S.openJobs.forEach(function (j) {
+    var b = el('button', { class: 'btn btn-primary', style: 'padding:9px 16px;font-size:13px' }, ['คืน']);
+    b.addEventListener('click', function () { startReturn(j); });
+    list.appendChild(el('div', {
+      style: 'display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)'
+    }, [
+      el('div', { style: 'flex:1;line-height:1.35' }, [
+        el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' }, [j.codes || j.id]),
+        el('div', { style: 'font-size:11px;opacity:.65' }, [
+          'เบิกเมื่อ ' + (j.time || '—') + ' น. · ' + j.topic + (j.empName !== S.user.name ? ' · ' + j.empName : '')
+        ])
+      ]), b
+    ]));
+  });
+  if (!S.openJobs.length) {
+    list.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่มีรายการค้างคืน']));
+    $('#open-wrap').classList.remove('hide');
+  }
+
+  var tl = $('#topic-list'); tl.innerHTML = '';
+  S.topics.forEach(function (t) {
+    var card = el('button', { class: 'topiccard' }, [
+      el('div', { style: 'display:flex;align-items:flex-start;gap:12px;width:100%' }, [
+        el('div', {
+          style: 'width:44px;height:44px;flex:none;background:var(--color-text);color:var(--color-bg);' +
+                 'display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-weight:800;font-size:13px'
+        }, [t.abbr]),
+        el('div', { style: 'flex:1;text-align:left;line-height:1.35' }, [
+          el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:16px' }, [t.name]),
+          el('div', { style: 'font-size:12px;opacity:.7' }, [t.desc])
+        ]),
+        el('div', {
+          style: 'font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 6px;' +
+                 'background:var(--color-accent);color:var(--color-bg);white-space:nowrap'
+        }, ['พร้อมใช้'])
+      ])
+    ]);
+    card.addEventListener('click', function () { openTopic(t); });
+    tl.appendChild(card);
+  });
+  if (!S.topics.length) {
+    tl.appendChild(el('div', { class: 'surface', style: 'padding:12px;font-size:12px' },
+      ['ยังไม่มีหัวข้อที่เปิดใช้งาน — แอดมินเปิดได้ที่ชีท "หัวข้อสำรวจ"']));
+  }
+
+  $('#queue-badge').textContent = S.queueCount;
+}
+
+// ── หน้าข้อมูลงาน ─────────────────────────────────────────────────────
+
+function renderForm() {
+  var t = S.topic, u = S.user;
+  $('#form-top').innerHTML = '<strong>' + esc(t.name) + '</strong> — ข้อมูลจะถูกส่งเข้าชีทอัตโนมัติ';
+
+  var info = [
+    ['วันที่', S.today], ['กะการทำงาน', S.shift], ['ผู้เบิก', u.name],
+    ['รหัสพนักงาน', u.id], ['แผนก', u.dept], ['สถานะใช้งาน', S.action]
+  ];
+  var ai = $('#auto-info'); ai.innerHTML = '';
+  info.forEach(function (kv) {
+    ai.appendChild(el('div', {
+      style: 'padding:5px 10px;font-size:11.5px;display:flex;gap:6px;' +
+             'border-top:1px solid color-mix(in srgb,var(--color-text) 12%,transparent)'
+    }, [
+      el('span', { style: 'opacity:.55' }, [kv[0]]),
+      el('strong', { style: 'margin-left:auto;text-align:right' }, [kv[1]])
+    ]));
+  });
+
+  // เลือกกะได้เฉพาะแอดมิน
+  $('#shift-wrap').classList.toggle('hide', !S.isAdmin);
+  if (S.isAdmin) {
+    var sc = $('#shift-chips'); sc.innerHTML = '';
+    S.shifts.forEach(function (sh) {
+      var b = el('button', { class: 'chip' + (sh === S.shift ? ' on' : '') },
+        [sh.replace('กะ ', '').replace(' น.', '')]);
+      b.addEventListener('click', function () { S.shift = sh; render(); });
+      sc.appendChild(b);
+    });
+  }
+
+  // จำนวนเครื่อง (หัวข้อที่นับจำนวนแทนการเลือกทีละรหัส)
+  $('#qty-wrap').classList.toggle('hide', !t.countMode);
+  $('#qty-val').textContent = S.qty;
+
+  // รหัสเครื่องจากทะเบียน กรองตามประเภทของหัวข้อ + แผนกของผู้ใช้
+  var pool = S.assets.filter(function (a) {
+    return a.status === 'พร้อมใช้' && (a.type === t.assetType || a.type === t.name);
+  });
+  var mine = pool.filter(function (a) { return a.dept === S.user.dept; });
+  var list = mine.length ? mine : pool;
+
+  $('#codes-label').textContent = t.countMode
+    ? 'รหัสเครื่อง (ถ้ามีในทะเบียน — ไม่บังคับ)' : 'รหัสเครื่อง (เลือกได้หลายคัน)';
+  var cw = $('#code-chips'); cw.innerHTML = '';
+  list.forEach(function (a) {
+    var on = S.picked.indexOf(a.code) >= 0;
+    var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code]);
+    b.addEventListener('click', function () {
+      S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
+      if (!t.countMode) S.qty = S.picked.length;
+      render();
+    });
+    cw.appendChild(b);
+  });
+  if (!list.length) {
+    cw.appendChild(el('div', { style: 'font-size:12px;opacity:.7' },
+      ['ไม่มีเครื่องสถานะ "พร้อมใช้" ในทะเบียนสำหรับหัวข้อนี้']));
+  }
+  $('#codes-count').textContent = (t.countMode ? S.qty : S.picked.length) + ' เครื่อง';
+}
+
+// ── หน้าถ่ายรูป ───────────────────────────────────────────────────────
+
+function renderShoot() {
+  var all = steps(), st = curStep();
+
+  var pg = $('#progress'); pg.innerHTML = '';
+  all.forEach(function (_, i) {
+    pg.appendChild(el('div', {
+      style: 'height:4px;flex:1;background:' + (i <= S.step ? 'var(--color-accent)' : 'var(--color-divider)')
+    }));
+  });
+
+  ['cam', 'gallery', 'status', 'note'].forEach(function (k) {
+    $('#step-' + k).classList.toggle('hide', !st || st.type !== k);
+  });
+
+  if (st.type === 'cam')     renderCamStep(st.slot);
+  if (st.type === 'gallery') renderGalleryStep();
+  if (st.type === 'status')  renderStatusStep();
+  if (st.type === 'note')    renderNoteStep();
+}
+
+function stampNow() {
+  var n = nowParts();
+  return { date: n.date, time: n.time, gps: geo.text() };
+}
+
+function renderCamStep(slot) {
+  var shot = S.shots[slot.th];
+  var cam = $('#cam');
+  $$('img', cam).forEach(function (n) { n.remove(); });
+  cam.classList.toggle('empty', !shot);
+  $('#cam-placeholder').classList.toggle('hide', !!shot);
+  if (shot) cam.appendChild(el('img', { src: shot.dataUrl, alt: slot.th }));
+
+  var n = nowParts();
+  $('#cam-stamp').textContent = shot
+    ? (shot.date + ' ' + shot.time + (shot.gps ? ' · GPS ' + shot.gps : ''))
+    : (n.date + ' ' + n.time + (geo.text() ? ' · GPS ' + geo.text() : ' · ยังไม่มีพิกัด'));
+
+  $('#cam-hint').textContent = slot.hint || ('ถ่ายให้เห็น ' + slot.th + ' ชัดเจน');
+  $('#btn-shoot').textContent = shot ? 'ถ่ายแล้ว — ไปต่อ' : 'ถ่าย ' + slot.th;
+  $('#btn-retake').classList.toggle('hide', !shot);
+
+  var pips = $('#pips'); pips.innerHTML = '';
+  reqSlots().forEach(function (sl, i) {
+    var on = !!S.shots[sl.th];
+    var b = el('button', {
+      style: 'flex:1;height:30px;font-size:12px;cursor:pointer;font-family:var(--font-heading);font-weight:800;' +
+             'border:1px solid ' + (i === S.step ? 'var(--color-text)' : 'var(--color-divider)') + ';' +
+             'background:' + (on ? 'var(--color-accent)' : 'transparent') + ';' +
+             'color:' + (on ? 'var(--color-bg)' : 'var(--color-text)')
+    }, [String(i + 1)]);
+    b.addEventListener('click', function () { S.step = i; render(); });
+    pips.appendChild(b);
+  });
+}
+
+function renderGalleryStep() {
+  var n = nowParts();
+  $('#gal-hint').textContent = rule('live')
+    ? 'หัวข้อนี้บังคับถ่ายสดจากกล้อง — เลือกจากคลังภาพไม่ได้'
+    : 'แนบได้หลายรูป จะถ่ายสดหรือเลือกจากคลังภาพก็ได้ ผสมกันได้ — ไม่บังคับ';
+  $('#gal-stamp').textContent = (geo.text() ? 'GPS ' + geo.text() + ' · ' : '') + n.date + ' ' + n.time;
+  $('#btn-gal-up').classList.toggle('hide', rule('live'));
+  $('#gal-count').textContent = 'แนบแล้ว ' + S.extra.length + ' รูป';
+  $('#btn-gal-clear').classList.toggle('hide', !S.extra.length);
+
+  var g = $('#gal-grid'); g.innerHTML = '';
+  S.extra.forEach(function (p) {
+    var x = el('button', { class: 'x' }, ['✕']);
+    x.addEventListener('click', function () {
+      S.extra = S.extra.filter(function (y) { return y.id !== p.id; }); render();
+    });
+    g.appendChild(el('div', { class: 'cell' }, [
+      el('img', { src: p.dataUrl, class: 'grayscale' }),
+      el('div', { class: 'bd' }, [(p.src === 'cam' ? 'ถ่าย' : 'อัปโหลด') + ' ' + p.time]),
+      x
+    ]));
+  });
+}
+
+function renderStatusStep() {
+  $('#st-ok').classList.toggle('on', S.result === 'ปกติ');
+  $('#st-issue').classList.toggle('on', S.result === 'มีปัญหา');
+  $('#issue-wrap').classList.toggle('hide', S.result !== 'มีปัญหา');
+
+  var tags = $('#issue-tags'); tags.innerHTML = '';
+  S.issueTags.forEach(function (x) {
+    var b = el('button', { class: 'chip' + (S.issueText === x ? ' on' : '') }, [x]);
+    b.addEventListener('click', function () { S.issueText = x; $('#issue-text').value = x; render(); });
+    tags.appendChild(b);
+  });
+  if ($('#issue-text').value !== S.issueText) $('#issue-text').value = S.issueText;
+
+  var need = rule('issue');
+  $('#issue-photo-wrap').classList.toggle('hide', !need);
+  var shot = S.shots[issueSlotName()];
+  var btn = $('#btn-issue-photo');
+  btn.textContent = shot ? 'ถ่ายรูปปัญหาแล้ว ✓ (แตะเพื่อถ่ายใหม่)' : '＋ ถ่ายรูป' + issueSlotName();
+  btn.style.background = shot ? 'var(--color-accent)' : 'transparent';
+  btn.style.color = shot ? 'var(--color-bg)' : 'var(--color-text)';
+  btn.style.borderColor = shot ? 'var(--color-accent)' : 'var(--color-divider)';
+  var img = $('#issue-photo-img');
+  img.classList.toggle('hide', !shot);
+  if (shot) img.src = shot.dataUrl;
+}
+
+function renderNoteStep() {
+  if ($('#note-text').value !== S.note) $('#note-text').value = S.note;
+  $('#note-summary').innerHTML =
+    '<div style="font-family:var(--font-heading);font-weight:800;margin-bottom:6px">สรุปก่อนส่ง</div>' +
+    row2('รูปครบ', shotCount() + '/' + reqSlots().length + (S.extra.length ? ' (+' + S.extra.length + ')' : '')) +
+    row2('สถานะ', S.result || 'ยังไม่เลือก') +
+    row2('เครื่อง', (S.topic.countMode ? S.qty : S.picked.length) + ' เครื่อง') +
+    row2('พิกัด', geo.text() || 'ยังไม่มี');
+}
+function row2(k, v) {
+  return '<div style="display:flex;justify-content:space-between"><span style="opacity:.6">' +
+    esc(k) + '</span><strong>' + esc(v) + '</strong></div>';
+}
+
+// ── หน้าตรวจทาน ───────────────────────────────────────────────────────
+
+function renderReview() {
+  var th = $('#review-thumbs'); th.innerHTML = '';
+  allPhotoList().forEach(function (p) {
+    th.appendChild(el('div', { style: 'width:84px' }, [
+      el('img', { src: p.dataUrl, class: 'grayscale', style: 'width:84px;height:84px;object-fit:cover' }),
+      el('div', { style: 'font-size:10px;margin-top:3px;opacity:.7' }, [p.slot])
+    ]));
+  });
+
+  var n = nowParts();
+  var rows = [
+    ['ประทับเวลา', n.date + ', ' + n.time],
+    ['วันที่เบิกคืน', n.date],
+    ['กะการทำงาน', S.shift],
+    ['ชื่อผู้เบิก', S.user.name],
+    ['รหัสพนักงาน', S.user.id],
+    ['แผนก', S.user.dept],
+    ['หัวข้อ', S.topic.name],
+    ['สถานะใช้งาน', S.action],
+    ['จำนวนเครื่อง', String(S.topic.countMode ? S.qty : S.picked.length)],
+    ['รหัสเครื่อง', codesText()],
+    ['ผลตรวจ', S.result === 'มีปัญหา' ? 'มีปัญหา: ' + (S.issueText || '—') : 'ปกติ'],
+    ['ข้อมูลเพิ่มเติม', S.note || '—'],
+    ['จำนวนรูป', allPhotoList().length + ' ไฟล์'],
+    ['พิกัด GPS', geo.text() || '—']
+  ];
+  if (S.action === 'คืน') rows.push(['อ้างอิงรายการเบิก', S.ref]);
+
+  var tb = $('#review-rows'); tb.innerHTML = '';
+  rows.forEach(function (r) {
+    tb.appendChild(el('tr', {}, [
+      el('td', { style: 'padding:6px 0;border-bottom:1px solid var(--color-divider);opacity:.65;width:44%' }, [r[0]]),
+      el('td', { style: 'padding:6px 0;border-bottom:1px solid var(--color-divider);font-weight:600' }, [r[1]])
+    ]));
+  });
+}
+
+/** รูปทั้งหมดที่จะส่ง เรียงตามลำดับช่องในชีท แล้วต่อด้วยรูปปัญหาและรูปแนบ */
+function allPhotoList() {
+  var out = [];
+  reqSlots().forEach(function (sl) {
+    var s = S.shots[sl.th];
+    if (s) out.push({ slot: sl.th, dataUrl: s.dataUrl, time: s.time, gps: s.gps });
+  });
+  var isu = S.shots[issueSlotName()];
+  if (isu) out.push({ slot: issueSlotName(), dataUrl: isu.dataUrl, time: isu.time, gps: isu.gps });
+  S.extra.forEach(function (p) {
+    out.push({ slot: 'เพิ่มเติม', dataUrl: p.dataUrl, time: p.time, gps: p.gps });
+  });
+  return out;
+}
+
+// ── คิวรอส่ง ──────────────────────────────────────────────────────────
+
+function renderQueue() {
+  Q.all().then(function (jobs) {
+    var w = $('#queue-list'); w.innerHTML = '';
+    if (!jobs.length) {
+      w.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่มีรายการค้างในคิว']));
+      return;
+    }
+    jobs.forEach(function (j) {
+      w.appendChild(el('div', {
+        style: 'border:1px solid var(--color-divider);padding:10px;display:flex;gap:10px;align-items:center'
+      }, [
+        el('div', { style: 'line-height:1.35;flex:1' }, [
+          el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' }, [j.title]),
+          el('div', { style: 'font-size:11px;opacity:.7' }, [j.meta])
+        ]),
+        el('div', {
+          style: 'font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 6px;' +
+                 'background:var(--color-accent);color:var(--color-bg)'
+        }, ['รอส่ง'])
+      ]));
+    });
+  });
+}
+
+// ── แถบล่าง ───────────────────────────────────────────────────────────
+
+function renderFooter() {
+  var foot = $('#foot'), btn = $('#btn-primary'), hint = $('#foot-hint');
+  var show = true, label = 'ถัดไป', okState = true, hintText = '';
+
+  if (S.screen === 'login') {
+    label = 'เข้าใช้งาน'; okState = S.pin.length === 6;
+    hintText = S.pinErr || 'ทะเบียนพนักงานดึงจากชีท "พนักงาน"';
+  } else if (S.screen === 'form') {
+    label = 'ไปถ่ายรูป';
+    okState = S.topic.countMode ? S.qty > 0 : S.picked.length > 0;
+    hintText = S.topic.countMode
+      ? ('เบิก ' + S.qty + ' เครื่อง' + (S.picked.length ? ' · ระบุรหัส ' + S.picked.length : ''))
+      : (S.picked.length ? 'เลือกแล้ว ' + S.picked.length + ' คัน' : 'เลือกรหัสเครื่องอย่างน้อย 1 คัน');
+  } else if (S.screen === 'shoot') {
+    var st = curStep(), last = S.step >= steps().length - 1;
+    label = last ? 'ตรวจทาน' : 'ถัดไป';
+    if (st.type === 'cam')          { okState = !!S.shots[st.slot.th]; hintText = 'ต้องถ่ายครบ ' + reqSlots().length + ' จุด'; }
+    else if (st.type === 'gallery') { okState = true; hintText = 'แนบรูปเพิ่มได้ ไม่บังคับ'; }
+    else if (st.type === 'status')  { okState = !!S.result && issueOk(); hintText = okState ? 'เลือกแล้ว' : 'เลือกสถานะเครื่องก่อน'; }
+    else                            { okState = readyToSend(); hintText = readyToSend() ? 'ครบแล้ว ไปตรวจทานได้' : missingText(); }
+  } else if (S.screen === 'review') {
+    label = navigator.onLine ? 'ส่งเข้าชีท' : 'บันทึกเข้าคิว';
+    hintText = navigator.onLine ? 'เขียนลงชีทอัตโนมัติ' : 'สัญญาณไม่ดี จะส่งให้อัตโนมัติเมื่อกลับมา';
+    okState = readyToSend();
+  } else {
+    show = false;
+  }
+
+  foot.classList.toggle('hide', !show);
+  if (!show) return;
+  btn.textContent = label;
+  btn.disabled = !okState || S.busy;
+  hint.textContent = S.busy ? 'กำลังส่ง…' : hintText;
+}
+
+function missingText() {
+  if (shotCount() !== reqSlots().length) return 'ยังถ่ายไม่ครบ ' + shotCount() + '/' + reqSlots().length;
+  if (!S.result) return 'ยังไม่เลือกสถานะเครื่อง';
+  if (!issueOk()) return 'แจ้งปัญหาต้องมีอาการ + รูปจุดที่มีปัญหา';
+  if (rule('gps') && !geo.text()) return 'หัวข้อนี้บังคับเปิดตำแหน่ง (GPS)';
+  return '';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  การถ่ายรูป
+// ══════════════════════════════════════════════════════════════════════
+
+function stampLines(slotName) {
+  if (!rule('stamp')) return [];   // หัวข้อนี้ปิดการประทับข้อความบนรูป
+  var n = nowParts();
+  return [
+    n.date + ' ' + n.time + (geo.text() ? ' · GPS ' + geo.text() : ' · ไม่มีพิกัด'),
+    slotName + ' · ' + codesText(),
+    S.user.name + ' (' + S.user.id + ') · ' + S.user.dept + ' · ' + S.action
+  ];
+}
+
+function capture(target, slotName, useCamera) {
+  CAP = { target: target, slot: slotName };
+  var input = useCamera ? $('#file-cam') : $('#file-up');
+  input.value = '';
+  input.click();
+}
+
+function handleFiles(files, fromCamera) {
+  if (!files.length || !CAP) return;
+  var cap = CAP;
+  S.busy = true; renderFooter();
+
+  var jobs = Array.prototype.slice.call(files).map(function (f) {
+    return stampPhoto(f, stampLines(cap.slot)).then(function (dataUrl) {
+      var n = nowParts();
+      return { dataUrl: dataUrl, date: n.date, time: n.time, gps: geo.text(), src: fromCamera ? 'cam' : 'upload' };
+    });
+  });
+
+  Promise.all(jobs).then(function (list) {
+    if (cap.target === 'slot') {
+      S.shots[cap.slot] = list[0];
+      // ถ่ายเสร็จเลื่อนไปช่องถัดไปที่ยังว่างโดยอัตโนมัติ
+      var req = reqSlots();
+      for (var j = 1; j <= req.length; j++) {
+        var i = (S.step + j) % req.length;
+        if (!S.shots[req[i].th]) { S.step = i; break; }
+      }
+    } else if (cap.target === 'issue') {
+      S.shots[cap.slot] = list[0];
+    } else {
+      list.forEach(function (p) { S.extra.push(Object.assign({ id: uid('p') }, p)); });
+    }
+    S.busy = false; CAP = null; render();
+  }).catch(function (e) {
+    S.busy = false; CAP = null; render();
+    toast(e.message || 'ประมวลผลรูปไม่สำเร็จ', true);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ส่งข้อมูล
+// ══════════════════════════════════════════════════════════════════════
+
+function buildPayload() {
+  return {
+    clientId: uid('s'),
+    empId: S.user.id,
+    topicId: S.topic.id,
+    action: S.action,
+    ref: S.ref,
+    shift: S.shift,
+    qty: S.topic.countMode ? S.qty : S.picked.length,
+    codes: S.picked,
+    result: S.result,
+    issue: S.result === 'มีปัญหา' ? S.issueText : '',
+    note: S.note,
+    gps: geo.text(),
+    photos: allPhotoList()
+  };
+}
+
+function submit() {
+  if (!readyToSend()) { toast(missingText(), true); return; }
+  var payload = buildPayload();
+  var n = nowParts();
+  var meta = {
+    clientId: payload.clientId,
+    title: S.topic.name + ' · ' + S.action + ' · ' + S.user.dept,
+    meta: n.date + ' ' + n.hhmm + ' · ' + payload.photos.length + ' รูป',
+    payload: payload
+  };
+
+  if (!navigator.onLine) {
+    Q.put(meta).then(function () {
+      refreshQueueCount();
+      showDone({ queued: true, photoCount: payload.photos.length });
+    });
+    return;
+  }
+
+  S.busy = true; renderFooter();
+  rpc('apiSubmit', payload).then(function (res) {
+    S.busy = false;
+    // ลบรายการค้างคืนที่เพิ่งปิดออกจากหน้าจอทันที ไม่ต้องรอโหลดใหม่
+    if (S.action === 'คืน') S.openJobs = S.openJobs.filter(function (j) { return j.id !== S.ref; });
+    showDone(res);
+    refresh();
+  }).catch(function (e) {
+    S.busy = false;
+    // ส่งไม่ผ่านเพราะเน็ต → เก็บเข้าคิว; ผิดกติกา → บอกให้แก้
+    if (/เซิร์ฟเวอร์|network|timeout/i.test(e.message)) {
+      Q.put(meta).then(function () {
+        refreshQueueCount();
+        showDone({ queued: true, photoCount: payload.photos.length });
+      });
+    } else {
+      renderFooter();
+      toast(e.message, true);
+    }
+  });
+}
+
+function showDone(res) {
+  var n = nowParts();
+  $('#done-title').textContent = res.queued ? 'บันทึกไว้ในเครื่องแล้ว'
+    : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย');
+  $('#done-sub').textContent = res.queued
+    ? 'อยู่ในคิว จะส่งอัตโนมัติเมื่อสัญญาณกลับมา'
+    : (S.action === 'คืน'
+        ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
+        : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน');
+  $('#done-info').innerHTML =
+    row2('ประทับเวลา', res.ts || (n.date + ', ' + n.time)) +
+    row2('รูปที่แนบ', (res.photoCount || 0) + ' รูป') +
+    row2('สถานะเครื่อง', S.result || '—') +
+    (res.recordId ? row2('รหัสรายการ', res.recordId) : '');
+
+  // ทิ้งรูปออกจากหน่วยความจำทันทีที่ส่งสำเร็จ — แอพหน้างานไม่เก็บและไม่เปิดดูรูปย้อนหลัง
+  // (ถ้าเข้าคิวออฟไลน์ ยังต้องถือรูปไว้จนกว่าจะส่งได้)
+  if (!res.queued) dropPhotos();
+
+  go('done');
+}
+
+/** ล้างรูปทั้งหมดออกจาก state และคืนหน่วยความจำ */
+function dropPhotos() {
+  Object.keys(S.shots).forEach(function (k) { delete S.shots[k]; });
+  S.extra.length = 0;
+}
+
+function refreshQueueCount() {
+  Q.count().then(function (n) { S.queueCount = n; if (S.screen === 'home') $('#queue-badge').textContent = n; });
+}
+
+function refresh() {
+  if (!S.user) return Promise.resolve();
+  return rpc('apiRefresh', S.user.id).then(function (r) {
+    applySession(r);
+    if (S.screen === 'home') renderHome();
+  }).catch(function () { /* ออฟไลน์ — ใช้ข้อมูลเดิมไปก่อน */ });
+}
+
+function applySession(r, fromCache) {
+  S.user = r.user; S.isAdmin = r.isAdmin;
+  S.topics = r.topics; S.assets = r.assets; S.shifts = r.shifts;
+  S.issueTags = r.issueTags; S.openJobs = r.openJobs; S.today = r.today;
+  if (!S.shift) S.shift = r.user.shift;
+
+  // จำข้อมูลตั้งค่าไว้ในเครื่อง เพื่อให้เปิดแอพครั้งหน้าขึ้นหน้าหลักทันทีโดยไม่ต้องรอเซิร์ฟเวอร์
+  // (เก็บเฉพาะทะเบียน/หัวข้อ/รายการค้างคืน — ไม่มีรูปอยู่ในนี้)
+  if (!fromCache) {
+    store.set('session', {
+      user: r.user, isAdmin: r.isAdmin, topics: r.topics, assets: r.assets,
+      shifts: r.shifts, issueTags: r.issueTags, openJobs: r.openJobs, today: r.today
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  เชื่อมปุ่ม
+// ══════════════════════════════════════════════════════════════════════
+
+function bind() {
+  $('#btn-back').addEventListener('click', back);
+  $('#remember').addEventListener('click', function () {
+    S.remember = !S.remember; store.set('remember', S.remember); render();
+  });
+  $('#btn-logout').addEventListener('click', function () {
+    if (!confirm('ออกจากระบบ?\nรายการค้างคืนยังอยู่ในระบบ เข้ามาใหม่ด้วยรหัสเดิมได้ตลอด')) return;
+    store.del('empId'); store.del('session');
+    S.user = null; S.pin = ''; resetJob(); dropPhotos(); go('login');
+  });
+  $('#btn-queue').addEventListener('click', function () { go('queue'); });
+  $('#btn-home').addEventListener('click', function () { resetJob(); refresh(); go('home'); });
+
+  $('#qty-inc').addEventListener('click', function () { S.qty = Math.min(S.qty + 1, 99); render(); });
+  $('#qty-dec').addEventListener('click', function () { S.qty = Math.max(S.qty - 1, 1); render(); });
+
+  $('#btn-shoot').addEventListener('click', function () {
+    var st = curStep();
+    if (st.type !== 'cam') return;
+    if (S.shots[st.slot.th]) { nextStep(); return; }
+    capture('slot', st.slot.th, true);
+  });
+  $('#btn-retake').addEventListener('click', function () {
+    var st = curStep(); if (st.type === 'cam') capture('slot', st.slot.th, true);
+  });
+  $('#btn-gal-cam').addEventListener('click', function () { capture('extra', 'เพิ่มเติม', true); });
+  $('#btn-gal-up').addEventListener('click', function () { capture('extra', 'เพิ่มเติม', false); });
+  $('#btn-gal-clear').addEventListener('click', function () { S.extra = []; render(); });
+
+  $('#st-ok').addEventListener('click', function () { S.result = 'ปกติ'; render(); });
+  $('#st-issue').addEventListener('click', function () { S.result = 'มีปัญหา'; render(); });
+  $('#issue-text').addEventListener('input', function (e) { S.issueText = e.target.value; renderFooter(); });
+  $('#btn-issue-photo').addEventListener('click', function () { capture('issue', issueSlotName(), true); });
+  $('#note-text').addEventListener('input', function (e) { S.note = e.target.value; });
+
+  $('#file-cam').addEventListener('change', function (e) { handleFiles(e.target.files, true); });
+  $('#file-up').addEventListener('change', function (e) { handleFiles(e.target.files, false); });
+
+  $('#btn-sync').addEventListener('click', function () {
+    if (!navigator.onLine) { toast('ยังไม่มีสัญญาณ', true); return; }
+    toast('กำลังส่ง…');
+    flushQueue().then(function (n) {
+      refreshQueueCount(); renderQueue(); refresh();
+      toast(n ? 'ส่งสำเร็จ ' + n + ' รายการ' : 'ยังส่งไม่ได้ ลองใหม่อีกครั้ง', !n);
+    });
+  });
+
+  $('#btn-primary').addEventListener('click', function () {
+    if (S.screen === 'login')  return doLogin();
+    if (S.screen === 'form')   { S.step = 0; return go('shoot'); }
+    if (S.screen === 'shoot')  return nextStep();
+    if (S.screen === 'review') return submit();
+  });
+
+  window.addEventListener('online', function () {
+    render();
+    Q.count().then(function (n) { if (n) flushQueue().then(function (k) {
+      refreshQueueCount(); if (k) { toast('ส่งคิวค้าง ' + k + ' รายการแล้ว'); refresh(); }
+    }); });
+  });
+  window.addEventListener('offline', render);
+}
+
+function nextStep() {
+  var all = steps(), st = curStep();
+  if (st.type === 'cam' && !S.shots[st.slot.th]) return;
+  if (st.type === 'status' && (!S.result || !issueOk())) return;
+  if (S.step >= all.length - 1) {
+    if (!readyToSend()) { toast(missingText(), true); return; }
+    return go('review');
+  }
+  S.step++; render();
+}
+
+function doLogin() {
+  S.busy = true; renderFooter();
+  rpc('apiLogin', S.pin).then(function (r) {
+    S.busy = false;
+    if (S.remember) store.set('empId', r.user.id); else store.del('empId');
+    applySession(r);
+    S.pin = ''; S.pinErr = '';
+    go('home');
+  }).catch(function (e) {
+    S.busy = false; S.pin = ''; S.pinErr = e.message; render();
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  เริ่มทำงาน
+// ══════════════════════════════════════════════════════════════════════
+
+(function boot() {
+  bind();
+  geo.start();
+  // อัปเดตแถบบนสุด (สัญญาณ/พิกัด) โดยไม่วาดหน้าจอใหม่ทั้งหมด
+  setInterval(function () {
+    $('#bar-l').textContent = navigator.onLine ? '5G' : 'ไม่มีสัญญาณ';
+    $('#bar-r').textContent = geo.text() ? 'GPS ' + geo.text() : 'ยังไม่มีพิกัด';
+  }, 4000);
+  refreshQueueCount();
+
+  var saved = store.get('empId', '');
+  if (!saved) { go('login'); loadDemo(); return; }
+
+  // 1) ขึ้นหน้าหลักทันทีจากข้อมูลที่จำไว้ในเครื่อง — ไม่ต้องรอเซิร์ฟเวอร์
+  var cached = store.get('session', null);
+  if (cached && cached.user && cached.user.id === saved) {
+    applySession(cached, true);
+    go('home');
+  }
+
+  // 2) แล้วค่อยดึงของจริงมาทับเงียบ ๆ (ทะเบียน/หัวข้อ/รายการค้างคืนอาจเปลี่ยน)
+  rpc('apiLogin', saved).then(function (r) {
+    applySession(r);
+    if (S.screen === 'home') renderHome(); else go('home');
+    if (navigator.onLine) flushQueue().then(function (n) { if (n) { refreshQueueCount(); refresh(); } });
+  }).catch(function () {
+    // ไม่มีสัญญาณ: ถ้ามีข้อมูลที่จำไว้ก็ใช้ต่อได้ ถ้าไม่มีค่อยกลับไปหน้าล็อกอิน
+    if (!S.user) { store.del('empId'); go('login'); loadDemo(); }
+  });
+})();
+
+function loadDemo() {
+  rpc('apiHello').then(function (r) {
+    var w = $('#demo-list'); w.innerHTML = '';
+    (r.demo || []).forEach(function (p) {
+      var b = el('button', {
+        style: 'text-align:left;padding:6px 8px;font-size:12px;background:transparent;' +
+               'border:1px solid var(--color-divider);cursor:pointer;color:var(--color-text);font-family:var(--font-body)'
+      }, [p.id + ' · ' + p.name + ' · ' + p.role]);
+      b.addEventListener('click', function () { S.pin = p.id; S.pinErr = ''; render(); });
+      w.appendChild(b);
+    });
+    $('#demo-wrap').classList.toggle('hide', !(r.demo || []).length);
+  }).catch(function (e) { toast(e.message, true); });
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* ไม่รองรับก็ใช้งานได้ปกติ */ });
+  });
+}
+</script>
+</body>
+</html>

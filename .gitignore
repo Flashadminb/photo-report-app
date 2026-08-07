@@ -1,0 +1,11 @@
+# หน้าทดสอบที่สร้างจาก _test/build.ps1 — สร้างใหม่ได้ตลอด ไม่ต้องเก็บ
+_test/app.html
+_test/admin.html
+_test/raw/
+
+# ไฟล์ต้นแบบที่ดึงมาจาก Claude Design — ของจริงอยู่ในโปรเจกต์ดีไซน์แล้ว
+_design/
+
+# Windows
+Thumbs.db
+desktop.ini

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<base target="_top">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;800&family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap">
+<?!= include('css'); ?>
+<style>
+  html,body{height:100%}
+  body{overscroll-behavior-y:contain}
+  #shell{display:flex;flex-direction:column;height:100dvh;max-width:520px;margin:0 auto;
+         background:var(--color-bg);border-left:1px solid var(--color-divider);border-right:1px solid var(--color-divider)}
+  #bar{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;
+       font-size:12px;font-weight:600;background:var(--color-text);color:var(--color-bg)}
+  #head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:2px solid var(--color-divider)}
+  #head .t{font-family:var(--font-heading);font-weight:800;font-size:16px;margin-right:auto}
+  #body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+  #foot{border-top:2px solid var(--color-divider);padding:12px 16px;display:flex;gap:10px;align-items:center;background:var(--color-bg)}
+  #foot .hint{font-size:11px;line-height:1.3;flex:1;opacity:.7}
+  .pane{padding:16px;display:flex;flex-direction:column;gap:16px}
+  .iconbtn{border:1px solid var(--color-divider);background:transparent;width:32px;height:32px;
+           cursor:pointer;font-size:16px;color:var(--color-text);display:flex;align-items:center;justify-content:center}
+  .pinbox{flex:1;height:52px;display:flex;align-items:center;justify-content:center;
+          font-family:var(--font-heading);font-weight:800;font-size:22px;border:2px solid var(--color-divider)}
+  .pinbox.f{background:var(--color-surface)}
+  .pinbox.c{border-color:var(--color-accent)}
+  .key{height:56px;font-family:var(--font-heading);font-weight:800;font-size:20px;cursor:pointer;
+       color:var(--color-text);background:var(--color-surface);border:0}
+  .key:active{background:color-mix(in srgb,var(--color-text) 14%,transparent)}
+  .cam{position:relative;width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+       overflow:hidden;background:#201e1d;color:#fff;text-align:center}
+  .cam.empty{outline:2px solid var(--color-text);outline-offset:-10px}
+  .cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .camtop{position:absolute;left:0;right:0;top:0;padding:7px 10px;background:rgba(0,0,0,.6);
+          color:#fff;font-size:10px;letter-spacing:.04em;display:flex;align-items:center;gap:6px;z-index:2}
+  .tile{display:flex;flex-direction:column;padding:0;cursor:pointer;font-family:var(--font-body);
+        color:var(--color-text);background:transparent;border:2px solid var(--color-divider);text-align:left}
+  .tile.on{border-color:var(--color-accent)}
+  .tile .th{width:100%;aspect-ratio:4/3;background:var(--color-surface);object-fit:cover;display:block}
+  .topiccard{display:flex;padding:14px;background:transparent;border:2px solid var(--color-text);
+             cursor:pointer;font-family:var(--font-body);color:var(--color-text);width:100%;text-align:left}
+  .gal{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .gal .cell{position:relative}
+  .gal img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+  .gal .x{position:absolute;right:0;top:0;width:22px;height:22px;border:0;
+          background:var(--color-text);color:var(--color-bg);font-size:12px;cursor:pointer}
+  .gal .bd{position:absolute;left:0;bottom:0;font-size:9px;letter-spacing:.06em;padding:2px 5px;
+           background:var(--color-accent);color:var(--color-bg)}
+</style>
+</head>
+<body>
+
+<div id="shell">
+  <div id="bar"><span id="bar-l">—</span><span id="bar-r">—</span></div>
+
+  <div id="head">
+    <button class="iconbtn hide" id="btn-back" aria-label="ย้อนกลับ">←</button>
+    <div class="t" id="head-title">ระบบถ่ายรูปอัพเดทงาน</div>
+    <div style="font-size:11px;opacity:.6" id="head-sub"></div>
+  </div>
+
+  <div id="body">
+
+    <!-- ══ เข้าสู่ระบบ ══ -->
+    <section class="pane hide" data-screen="login">
+      <div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:24px;line-height:1.15">ใส่รหัสพนักงาน</div>
+        <div style="font-size:13px;opacity:.7;margin-top:6px">ระบบดึงชื่อ แผนก และกะการทำงานจากชีททะเบียนพนักงานให้อัตโนมัติ</div>
+      </div>
+      <div style="display:flex;gap:6px" id="pin-boxes"></div>
+      <div style="min-height:18px;font-size:12px;color:var(--color-accent-700)" id="pin-err"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px" id="keypad"></div>
+      <button id="remember" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;cursor:pointer;
+              font-family:var(--font-body);font-size:13px;text-align:left;color:var(--color-text);background:transparent;
+              border:2px solid var(--color-divider)">
+        <span id="remember-box" style="width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;
+              font-size:12px;color:var(--color-bg);border:2px solid var(--color-divider)"></span>
+        <span style="flex:1">จำการเข้าสู่ระบบไว้ในเครื่องนี้<br><span style="font-size:11px;opacity:.65">เปิดแอพครั้งหน้าไม่ต้องใส่รหัสซ้ำ</span></span>
+      </button>
+      <div style="border-top:2px solid var(--color-divider);padding-top:10px" id="demo-wrap">
+        <div class="label">รหัสสำหรับทดลอง</div>
+        <div style="display:flex;flex-direction:column;gap:4px" id="demo-list"></div>
+      </div>
+    </section>
+
+    <!-- ══ หน้าหลัก ══ -->
+    <section class="pane hide" data-screen="home">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px" class="surface">
+        <div id="u-init" style="width:40px;height:40px;flex:none;background:var(--color-text);color:var(--color-bg);
+             display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-weight:800"></div>
+        <div style="line-height:1.3;flex:1">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:15px" id="u-name"></div>
+          <div style="font-size:12px;opacity:.7" id="u-meta"></div>
+          <div style="font-size:12px;opacity:.7" id="u-shift"></div>
+        </div>
+        <button class="btn btn-secondary" id="btn-logout" style="font-size:11px;padding:6px 8px">ออกระบบ</button>
+      </div>
+
+      <div id="admin-note" class="hide" style="padding:8px 10px;background:var(--color-accent-100);
+           border-top:2px solid var(--color-accent);font-size:11.5px;line-height:1.5">
+        เข้าด้วยบัญชีแอดมิน — ใช้ทดสอบฟลว์หน้างานได้ทุกขั้นตอน งานจริงแอดมินทำบนเว็บ
+        <a id="admin-link" href="#" target="_blank" style="text-decoration:underline">เปิดเว็บแอดมิน</a>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:baseline;
+           border-bottom:2px solid var(--color-divider);padding-bottom:6px">
+        <div class="label" style="margin:0" id="today-label">วันนี้</div>
+        <div style="font-size:12px;font-weight:600" id="open-count">ค้างคืน 0 รายการ</div>
+      </div>
+
+      <div id="open-wrap">
+        <div class="kicker" style="margin-bottom:8px">ค้างคืน / TO RETURN</div>
+        <div style="border-top:2px solid var(--color-text)" id="open-list"></div>
+      </div>
+
+      <div>
+        <div class="kicker" style="margin-bottom:8px">เลือกหัวข้อ / SELECT TOPIC</div>
+        <div style="display:flex;flex-direction:column;gap:10px" id="topic-list"></div>
+      </div>
+
+      <button id="btn-queue" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
+              border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
+        <span style="font-size:13px;font-weight:600">คิวรอส่ง / OFFLINE QUEUE</span>
+        <span id="queue-badge" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;font-size:13px;
+              background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
+      </button>
+    </section>
+
+    <!-- ══ ข้อมูลงาน ══ -->
+    <section class="pane hide" data-screen="form">
+      <div style="font-size:12px;padding:8px 10px" class="surface" id="form-top"></div>
+
+      <div style="border:1px solid var(--color-divider)">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px" class="surface">
+          <div class="label" style="margin:0">ข้อมูลอัตโนมัติ</div>
+          <div style="margin-left:auto;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+               background:var(--color-text);color:var(--color-bg);padding:2px 6px">ล็อก</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr" id="auto-info"></div>
+      </div>
+
+      <div id="shift-wrap" class="hide">
+        <span class="label">เลือกกะ · เฉพาะแอดมิน</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="shift-chips"></div>
+      </div>
+
+      <div id="qty-wrap" class="hide">
+        <span class="label">จำนวนเครื่องที่เบิก (บังคับ)</span>
+        <div style="display:flex;align-items:stretch;border:2px solid var(--color-text)">
+          <button id="qty-dec" style="width:56px;border:0;border-right:2px solid var(--color-text);background:transparent;
+                  font-family:var(--font-heading);font-weight:800;font-size:22px;cursor:pointer;color:var(--color-text)">−</button>
+          <div id="qty-val" style="flex:1;display:flex;align-items:center;justify-content:center;
+               font-family:var(--font-heading);font-weight:800;font-size:26px;padding:10px 0">1</div>
+          <button id="qty-inc" style="width:56px;border:0;border-left:2px solid var(--color-text);background:transparent;
+                  font-family:var(--font-heading);font-weight:800;font-size:22px;cursor:pointer;color:var(--color-text)">+</button>
+        </div>
+      </div>
+
+      <div id="codes-wrap">
+        <span class="label" id="codes-label">รหัสเครื่อง</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="code-chips"></div>
+        <div style="margin-top:8px;font-size:12px;display:flex;justify-content:space-between;
+             border-top:2px solid var(--color-divider);padding-top:8px">
+          <span>จำนวนเครื่อง</span><strong id="codes-count">0 เครื่อง</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ ถ่ายรูป (ทีละสเต็ป) ══ -->
+    <section class="hide" data-screen="shoot">
+      <div style="display:flex;gap:3px;padding:12px 16px 10px" id="progress"></div>
+
+      <div class="pane" style="padding-top:0" id="step-cam">
+        <div class="cam empty" id="cam">
+          <div class="camtop"><span style="background:var(--color-accent);padding:1px 5px;font-size:9px">ล็อก</span>
+            <span id="cam-stamp"></span></div>
+          <div id="cam-placeholder" style="font-size:13px;line-height:1.6;opacity:.85;padding:0 20px">
+            กรอบกล้อง<br><span style="font-size:11px;opacity:.7">เวลาและพิกัดล็อกจากระบบ แก้ไม่ได้</span>
+          </div>
+        </div>
+        <div style="font-size:13px;line-height:1.55;padding:10px" class="surface" id="cam-hint"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-lg" id="btn-shoot" style="flex:1">ถ่ายรูป</button>
+          <button class="btn btn-secondary btn-lg hide" id="btn-retake">ถ่ายใหม่</button>
+        </div>
+        <div style="display:flex;gap:5px" id="pips"></div>
+      </div>
+
+      <div class="pane hide" style="padding-top:0" id="step-gallery">
+        <div style="font-size:13px;line-height:1.55;padding:10px" class="surface" id="gal-hint"></div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:7px 10px;
+             background:var(--color-text);color:var(--color-bg)">
+          <span style="background:var(--color-accent);padding:1px 5px;font-size:9px">ล็อก</span>
+          <span id="gal-stamp"></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-lg" id="btn-gal-cam" style="flex:1">ถ่ายรูป</button>
+          <button class="btn btn-secondary btn-lg" id="btn-gal-up" style="flex:1;border-width:2px;border-color:var(--color-text)">อัปโหลด</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;border-top:2px solid var(--color-divider);padding-top:8px">
+          <div style="font-size:12px;font-weight:600" id="gal-count">แนบแล้ว 0 รูป</div>
+          <button class="btn btn-secondary hide" id="btn-gal-clear" style="margin-left:auto;font-size:11px;padding:4px 9px">ล้างทั้งหมด</button>
+        </div>
+        <div class="gal" id="gal-grid"></div>
+      </div>
+
+      <div class="pane hide" style="padding-top:0" id="step-status">
+        <div style="font-size:13px;opacity:.75">เลือกสถานะของเครื่องที่ตรวจ</div>
+        <button class="tile" id="st-ok" style="padding:14px"><div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">ใช้งานปกติ</div>
+          <div style="font-size:12px;opacity:.7">NORMAL — ไม่พบความผิดปกติ</div></div></button>
+        <button class="tile" id="st-issue" style="padding:14px"><div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">มีปัญหา</div>
+          <div style="font-size:12px;opacity:.7">ISSUE — ต้องระบุอาการ + แนบรูปปัญหา</div></div></button>
+
+        <div class="hide" id="issue-wrap" style="border-top:2px solid var(--color-accent);padding-top:12px;
+             display:flex;flex-direction:column;gap:10px">
+          <div>
+            <span class="label">เป็นอะไร (บังคับกรอก)</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px" id="issue-tags"></div>
+            <textarea class="input" rows="3" id="issue-text" placeholder="อธิบายอาการ เช่น แบตไม่เก็บไฟ ใช้ได้ 2 ชม."></textarea>
+          </div>
+          <div id="issue-photo-wrap">
+            <span class="label">รูปจุดที่มีปัญหา (บังคับ)</span>
+            <button id="btn-issue-photo" style="display:flex;align-items:center;justify-content:flex-start;width:100%;
+                    padding:12px;font-size:13px;cursor:pointer;font-family:var(--font-heading);font-weight:800;
+                    color:var(--color-text);background:transparent;border:2px dashed var(--color-divider)">＋ ถ่ายรูปจุดที่มีปัญหา</button>
+            <img id="issue-photo-img" class="hide" style="margin-top:8px;width:100%;max-height:220px;object-fit:cover">
+          </div>
+        </div>
+      </div>
+
+      <div class="pane hide" style="padding-top:0" id="step-note">
+        <div>
+          <span class="label">ข้อมูลเพิ่มเติม (ไม่บังคับ)</span>
+          <textarea class="input" rows="5" id="note-text" placeholder="เช่น ส่งต่อกะถัดไป / จอดไว้ช่อง B2"></textarea>
+        </div>
+        <div style="border:1px solid var(--color-divider);padding:12px;font-size:12px;line-height:1.7" id="note-summary"></div>
+      </div>
+    </section>
+
+    <!-- ══ ตรวจทาน ══ -->
+    <section class="pane hide" data-screen="review">
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">ตรวจทานก่อนส่ง</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="review-thumbs"></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody id="review-rows"></tbody></table>
+    </section>
+
+    <!-- ══ ส่งแล้ว ══ -->
+    <section class="pane hide" data-screen="done" style="padding:24px 16px;align-items:flex-start">
+      <div style="width:56px;height:56px;background:var(--color-accent);color:var(--color-bg);display:flex;
+           align-items:center;justify-content:center;font-size:28px;font-family:var(--font-heading);font-weight:800">✓</div>
+      <div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:22px" id="done-title"></div>
+        <div style="font-size:13px;opacity:.75;margin-top:4px" id="done-sub"></div>
+      </div>
+      <hr class="hr" style="width:100%;margin:0">
+      <div style="font-size:12px;line-height:1.9;width:100%" id="done-info"></div>
+      <div style="font-size:11px;opacity:.55;line-height:1.5">รูปถูกส่งขึ้นระบบและลบออกจากเครื่องแล้ว ดูย้อนหลังได้ที่เว็บแอดมิน</div>
+      <button class="btn btn-primary btn-block btn-lg" id="btn-home">กลับหน้าหลัก</button>
+    </section>
+
+    <!-- ══ คิวรอส่ง ══ -->
+    <section class="pane hide" data-screen="queue">
+      <div style="font-size:12px;opacity:.75">รายการที่บันทึกไว้ในเครื่อง จะส่งเข้าชีทอัตโนมัติเมื่อสัญญาณกลับมา</div>
+      <div style="display:flex;flex-direction:column;gap:10px" id="queue-list"></div>
+      <button class="btn btn-primary btn-block btn-lg" id="btn-sync">ส่งทั้งหมดตอนนี้</button>
+    </section>
+
+  </div>
+
+  <div id="foot" class="hide">
+    <div class="hint" id="foot-hint"></div>
+    <button class="btn btn-primary btn-lg" id="btn-primary">ถัดไป</button>
+  </div>
+</div>
+
+<input type="file" accept="image/*" capture="environment" id="file-cam" style="display:none">
+<input type="file" accept="image/*" multiple id="file-up" style="display:none">
+
+<script>var WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;</script>
+<?!= include('js-common'); ?>
+<?!= include('js-app'); ?>
+</body>
+</html>

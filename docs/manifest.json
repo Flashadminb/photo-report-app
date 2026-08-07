@@ -1,0 +1,26 @@
+{
+  "name": "ระบบถ่ายรูปอัพเดทงาน",
+  "short_name": "ถ่ายรูปงาน",
+  "description": "ถ่ายรูปเบิก–คืนอุปกรณ์หน้างาน ส่งเข้าชีทอัตโนมัติ",
+  "lang": "th",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3f2f2",
+  "theme_color": "#201e1d",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "เว็บแอดมิน",
+      "short_name": "แอดมิน",
+      "url": "./admin.html",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

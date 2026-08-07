@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_top">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;800&family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap">
+<?!= include('css'); ?>
+<style>
+  #top{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:2px solid var(--color-divider);
+       position:sticky;top:0;background:var(--color-bg);z-index:20}
+  #brand{font-family:var(--font-heading);font-weight:800;font-size:18px;letter-spacing:-.02em;margin-right:auto}
+  #tabs{display:flex;gap:0;padding:0 24px;border-bottom:2px solid var(--color-divider);
+        position:sticky;top:57px;background:var(--color-bg);z-index:19;overflow-x:auto}
+  #tabs button{padding:12px 18px;border:0;background:transparent;cursor:pointer;white-space:nowrap;
+       font-family:var(--font-heading);font-weight:800;font-size:14px;color:var(--color-text);
+       border-bottom:3px solid transparent;margin-bottom:-2px}
+  #tabs button.on{color:var(--color-accent);border-bottom-color:var(--color-accent)}
+  #view{padding:24px;max-width:1400px;margin:0 auto}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:18px}
+  .group{border:2px solid var(--color-divider);margin-bottom:18px}
+  .group > h4{margin:0;padding:12px 14px;background:var(--color-surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .group > .in{padding:14px}
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .shots figure img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--color-surface)}
+  .wrap{overflow-x:auto}
+  #gate{max-width:420px;margin:12vh auto;padding:24px;border:2px solid var(--color-text)}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="kicker">Admin · เว็บบนคอมพิวเตอร์</div>
+  <h2 style="margin-top:8px">เข้าเว็บแอดมิน</h2>
+  <p style="font-size:13px;opacity:.75">ใส่รหัสพนักงานที่มีบทบาท "แอดมิน" หรือ "หัวหน้างาน" ในชีททะเบียนพนักงาน</p>
+  <input class="input" id="gate-pin" inputmode="numeric" placeholder="รหัสพนักงาน" autocomplete="off">
+  <div style="min-height:20px;font-size:12px;color:var(--color-accent-700);margin-top:6px" id="gate-err"></div>
+  <button class="btn btn-primary btn-block btn-lg" id="gate-go">เข้าใช้งาน</button>
+</div>
+
+<div id="app" class="hide">
+  <div id="top">
+    <div id="brand">ระบบถ่ายรูปอัพเดทงาน <span style="color:var(--color-accent)">/ ADMIN</span></div>
+    <div style="font-size:12px;text-align:right;line-height:1.4" id="who"></div>
+    <button class="btn btn-secondary" id="btn-reload">โหลดใหม่</button>
+    <button class="btn btn-secondary" id="btn-out">ออกระบบ</button>
+  </div>
+  <div id="tabs"></div>
+  <div id="view"></div>
+</div>
+
+<script>var WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;</script>
+<?!= include('js-common'); ?>
+<?!= include('js-admin'); ?>
+</body>
+</html>
