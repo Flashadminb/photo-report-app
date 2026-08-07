@@ -655,24 +655,34 @@ var Q = {
     var self = this;
     if (self.db) return Promise.resolve(self.db);
     return new Promise(function (resolve, reject) {
-      var rq = indexedDB.open('ppr-queue', 1);
+      var rq = indexedDB.open('ppr-queue', 2);
       rq.onupgradeneeded = function () {
-        rq.result.createObjectStore('jobs', { keyPath: 'clientId' });
+        var db = rq.result;
+        if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'clientId' });
+        // งานที่ทำค้างไว้ (ยังไม่กดส่ง) — Android มักฆ่าหน้าเว็บทิ้งตอนเปิดกล้อง
+        // เก็บไว้ที่นี่เพื่อกู้กลับมาให้ถ่ายต่อจากจุดเดิมได้
+        if (!db.objectStoreNames.contains('draft')) db.createObjectStore('draft');
       };
       rq.onsuccess = function () { self.db = rq.result; resolve(self.db); };
       rq.onerror = function () { reject(rq.error); };
     });
   },
-  tx: function (mode, fn) {
+  tx: function (mode, fn, store) {
+    var name = store || 'jobs';
     return this.open().then(function (db) {
       return new Promise(function (resolve, reject) {
-        var t = db.transaction('jobs', mode);
-        var out = fn(t.objectStore('jobs'));
+        var t = db.transaction(name, mode);
+        var out = fn(t.objectStore(name));
         t.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
         t.onerror = function () { reject(t.error); };
       });
     });
   },
+
+  // ── งานที่ทำค้างไว้ ────────────────────────────────────────────────
+  putDraft: function (d) { return this.tx('readwrite', function (s) { return s.put(d, 'current'); }, 'draft'); },
+  getDraft: function ()  { return this.tx('readonly',  function (s) { return s.get('current'); }, 'draft'); },
+  delDraft: function ()  { return this.tx('readwrite', function (s) { return s.delete('current'); }, 'draft'); },
   put:  function (job) { return this.tx('readwrite', function (s) { return s.put(job); }); },
   del:  function (id)  { return this.tx('readwrite', function (s) { return s.delete(id); }); },
   all:  function ()    { return this.tx('readonly',  function (s) { return s.getAll(); }); },
@@ -1351,6 +1361,9 @@ function stampLines(slotName) {
 
 function capture(target, slotName, useCamera) {
   CAP = { target: target, slot: slotName };
+  // สำคัญ: เซฟก่อนเปิดกล้อง เพราะระบบอาจฆ่าหน้าเว็บทิ้งระหว่างที่กล้องเปิดอยู่
+  saveDraft();
+  try { sessionStorage.setItem('ppr.cap', JSON.stringify(CAP)); } catch (e) {}
   var input = useCamera ? $('#file-cam') : $('#file-up');
   input.value = '';
   input.click();
@@ -1382,7 +1395,7 @@ function handleFiles(files, fromCamera) {
     } else {
       list.forEach(function (p) { S.extra.push(Object.assign({ id: uid('p') }, p)); });
     }
-    S.busy = false; CAP = null; render();
+    S.busy = false; CAP = null; render(); saveDraft();
   }).catch(function (e) {
     S.busy = false; CAP = null; render();
     toast(e.message || 'ประมวลผลรูปไม่สำเร็จ', true);
@@ -1520,6 +1533,7 @@ function showDone(res) {
   // ทิ้งรูปออกจากหน่วยความจำทันทีที่ส่งสำเร็จ — แอพหน้างานไม่เก็บและไม่เปิดดูรูปย้อนหลัง
   // (ถ้าเข้าคิวออฟไลน์ ยังต้องถือรูปไว้จนกว่าจะส่งได้)
   if (!res.queued) dropPhotos();
+  clearDraft();
 
   go('done');
 }
@@ -1529,6 +1543,50 @@ function dropPhotos() {
   Object.keys(S.shots).forEach(function (k) { delete S.shots[k]; });
   S.extra.length = 0;
   S.issueShots.length = 0;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  กู้งานที่ทำค้างไว้
+//
+//  Android (ซัมซุงเป็นเยอะ) ชอบฆ่าหน้าเว็บทิ้งตอนเปิดกล้อง เพื่อคืนหน่วยความจำ
+//  พอถ่ายเสร็จกลับมา หน้าเว็บโหลดใหม่ทั้งหมด งานที่ทำค้างจะหายเกลี้ยง
+//  จึงเก็บสถานะงาน (รวมรูปที่ถ่ายไปแล้ว) ลงเครื่องไว้ แล้วกู้กลับตอนเปิดมาใหม่
+// ══════════════════════════════════════════════════════════════════════
+
+function saveDraft() {
+  if (!S.user || !S.topic) return;
+  if (['form', 'shoot', 'review'].indexOf(S.screen) < 0) return;
+  Q.putDraft({
+    ts: Date.now(), empId: S.user.id,
+    screen: S.screen, step: S.step,
+    topicId: S.topic.id, action: S.action, ref: S.ref, shift: S.shift,
+    picked: S.picked, pickedExtra: S.pickedExtra, qty: S.qty,
+    shots: S.shots, extra: S.extra, issueShots: S.issueShots,
+    result: S.result, issueText: S.issueText, note: S.note
+  }).catch(function () { /* เต็มหรือเขียนไม่ได้ ก็ปล่อยไป ไม่ให้แอพสะดุด */ });
+}
+
+function clearDraft() { Q.delDraft().catch(function () {}); }
+
+function restoreDraft() {
+  return Q.getDraft().then(function (d) {
+    if (!d || !S.user || d.empId !== S.user.id) return false;
+    if (Date.now() - (d.ts || 0) > 12 * 3600 * 1000) { clearDraft(); return false; }  // ค้างข้ามวันถือว่าเลิกแล้ว
+    var t = S.topics.filter(function (x) { return x.id === d.topicId; })[0];
+    if (!t) { clearDraft(); return false; }
+
+    S.topic = t; S.action = d.action || 'เบิก'; S.ref = d.ref || '';
+    S.shift = d.shift || S.user.shift;
+    S.picked = d.picked || []; S.pickedExtra = d.pickedExtra || []; S.qty = d.qty || 1;
+    S.shots = d.shots || {}; S.extra = d.extra || []; S.issueShots = d.issueShots || [];
+    S.result = d.result || ''; S.issueText = d.issueText || ''; S.note = d.note || '';
+    S.step = d.step || 0;
+    go(d.screen || 'form');
+
+    var n = allPhotoList().length;
+    toast('กู้งานที่ทำค้างไว้แล้ว' + (n ? ' · รูป ' + n + ' ใบยังอยู่ครบ' : ''), false, 6000);
+    return true;
+  }).catch(function () { return false; });
 }
 
 function refreshQueueCount() {
@@ -1574,7 +1632,7 @@ function bind() {
     S.user = null; S.pin = ''; resetJob(); dropPhotos(); go('login');
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
-  $('#btn-home').addEventListener('click', function () { resetJob(); refresh(); go('home'); });
+  $('#btn-home').addEventListener('click', function () { clearDraft(); resetJob(); refresh(); go('home'); });
 
   $('#qty-inc').addEventListener('click', function () { S.qty = Math.min(S.qty + 1, 99); render(); });
   $('#qty-dec').addEventListener('click', function () { S.qty = Math.max(S.qty - 1, 1); render(); });
@@ -1626,6 +1684,12 @@ function bind() {
     }); });
   });
   window.addEventListener('offline', render);
+
+  // เซฟงานที่ทำค้างทุกครั้งที่แอพกำลังจะถูกพักหรือปิด
+  window.addEventListener('pagehide', saveDraft);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') saveDraft();
+  });
 }
 
 function nextStep() {
@@ -1637,7 +1701,7 @@ function nextStep() {
     if (!readyToSend()) { toast(missingText(), true); return; }
     return go('review');
   }
-  S.step++; render();
+  S.step++; render(); saveDraft();
 }
 
 function doLogin() {
@@ -1671,16 +1735,22 @@ function doLogin() {
   if (!saved) { go('login'); loadDemo(); return; }
 
   // 1) ขึ้นหน้าหลักทันทีจากข้อมูลที่จำไว้ในเครื่อง — ไม่ต้องรอเซิร์ฟเวอร์
+  var restored = false;
   var cached = store.get('session', null);
   if (cached && cached.user && cached.user.id === saved) {
     applySession(cached, true);
     go('home');
+    // 1.5) มีงานทำค้างไว้ไหม (เช่นระบบฆ่าหน้าเว็บทิ้งตอนเปิดกล้อง) — กู้กลับให้ทำต่อ
+    restoreDraft().then(function (ok) { restored = ok; });
   }
 
   // 2) แล้วค่อยดึงของจริงมาทับเงียบ ๆ (ทะเบียน/หัวข้อ/รายการค้างคืนอาจเปลี่ยน)
   rpc('apiLogin', saved).then(function (r) {
+    var wasWorking = ['form', 'shoot', 'review'].indexOf(S.screen) >= 0;
     applySession(r);
+    if (wasWorking) return;                       // กำลังทำงานค้างอยู่ อย่าเด้งกลับหน้าหลัก
     if (S.screen === 'home') renderHome(); else go('home');
+    if (!restored) restoreDraft();
     if (navigator.onLine) flushQueue().then(function (n) { if (n) { refreshQueueCount(); refresh(); } });
   }).catch(function () {
     // ไม่มีสัญญาณ: ถ้ามีข้อมูลที่จำไว้ก็ใช้ต่อได้ ถ้าไม่มีค่อยกลับไปหน้าล็อกอิน

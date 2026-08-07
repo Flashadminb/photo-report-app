@@ -403,24 +403,34 @@ var Q = {
     var self = this;
     if (self.db) return Promise.resolve(self.db);
     return new Promise(function (resolve, reject) {
-      var rq = indexedDB.open('ppr-queue', 1);
+      var rq = indexedDB.open('ppr-queue', 2);
       rq.onupgradeneeded = function () {
-        rq.result.createObjectStore('jobs', { keyPath: 'clientId' });
+        var db = rq.result;
+        if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'clientId' });
+        // งานที่ทำค้างไว้ (ยังไม่กดส่ง) — Android มักฆ่าหน้าเว็บทิ้งตอนเปิดกล้อง
+        // เก็บไว้ที่นี่เพื่อกู้กลับมาให้ถ่ายต่อจากจุดเดิมได้
+        if (!db.objectStoreNames.contains('draft')) db.createObjectStore('draft');
       };
       rq.onsuccess = function () { self.db = rq.result; resolve(self.db); };
       rq.onerror = function () { reject(rq.error); };
     });
   },
-  tx: function (mode, fn) {
+  tx: function (mode, fn, store) {
+    var name = store || 'jobs';
     return this.open().then(function (db) {
       return new Promise(function (resolve, reject) {
-        var t = db.transaction('jobs', mode);
-        var out = fn(t.objectStore('jobs'));
+        var t = db.transaction(name, mode);
+        var out = fn(t.objectStore(name));
         t.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
         t.onerror = function () { reject(t.error); };
       });
     });
   },
+
+  // ── งานที่ทำค้างไว้ ────────────────────────────────────────────────
+  putDraft: function (d) { return this.tx('readwrite', function (s) { return s.put(d, 'current'); }, 'draft'); },
+  getDraft: function ()  { return this.tx('readonly',  function (s) { return s.get('current'); }, 'draft'); },
+  delDraft: function ()  { return this.tx('readwrite', function (s) { return s.delete('current'); }, 'draft'); },
   put:  function (job) { return this.tx('readwrite', function (s) { return s.put(job); }); },
   del:  function (id)  { return this.tx('readwrite', function (s) { return s.delete(id); }); },
   all:  function ()    { return this.tx('readonly',  function (s) { return s.getAll(); }); },
