@@ -79,10 +79,14 @@ var API = {
     return { ok: true, recordId: 'PP-20260806-1275', folderUrl: 'https://drive.google.com/drive/folders/yyy',
       photoCount: (p.photos || []).length, ts: '6/8/2026, 16:12:04' };
   },
-  apiAdminLoad: function (id) {
+  apiAdminLoad: function (id, range) {
     var u = STAFF.filter(function (p) { return p.id === String(id); })[0];
     if (!u || u.role !== 'แอดมิน') return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าเว็บแอดมิน' };
+    MOCK_CALLS.push('adminLoad:' + JSON.stringify(range || null));
     return { ok: true, user: u, canEdit: true,
+      range: range || { mode: 'days', n: 7 },
+      periods: { months: ['2026-08', '2026-07', '2026-06'], years: ['2026', '2025'] },
+      totalRecords: 4,
       master: { staff: STAFF, assets: ASSETS, topics: [TOPIC_PP, TOPIC_ID], slots: SLOTS_PP, rules: [],
         depts: ['IN LH+BG', 'REPACK', 'ทุกแผนก'], shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.'],
         issueTags: ['แบตไม่เก็บไฟ'] },

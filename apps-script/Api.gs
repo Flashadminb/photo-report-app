@@ -166,10 +166,10 @@ function apiRefresh(empId) {
 
 function sessionPayload_(m, u) {
   var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
-  var recs = allRecords_();
 
   // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
-  var mine = openJobs_(recs, isAdmin || u.role === CFG.V.ROLE_LEAD ? null : u.id);
+  // ใช้ตัวที่อ่านเฉพาะคอลัมน์ที่ใช้ ไม่งั้นล็อกอินจะช้าลงเรื่อย ๆ ตามข้อมูลที่สะสม
+  var mine = openJobsFast_(isAdmin || u.role === CFG.V.ROLE_LEAD ? null : u.id);
 
   return {
     user: u,
@@ -438,23 +438,95 @@ function alreadySubmitted_(clientId) {
 //  เว็บแอดมิน
 // ══════════════════════════════════════════════════════════════════════════
 
-function apiAdminLoad(empId) {
+/**
+ * ข้อมูลทั้งหมดของหน้าเว็บแอดมิน
+ *
+ * ส่งเฉพาะช่วงเวลาที่เลือก (ค่าเริ่มต้น 7 วันล่าสุด) ไม่ได้ส่งทั้งหมดตั้งแต่วันแรก
+ * ไม่งั้นข้อมูลที่ต้องโหลดจะโตขึ้นทุกวันไม่มีที่สิ้นสุด จนสุดท้ายเปิดหน้าไม่ไหว
+ *
+ * ยกเว้น "ค้างคืน" ที่ยังดูจากทั้งหมดเสมอ เพราะของที่เบิกไปนานแล้วยังไม่คืน
+ * ต้องเห็นตลอดไม่ว่าจะเลือกช่วงไหน
+ */
+function apiAdminLoad(empId, range) {
   return wrap_(function () {
     var m = getMaster_();
     var u = requireAdmin_(m, empId);
     var recs = allRecords_();
-    var photos = allPhotos_();
+
+    var r = normRange_(range);
+    var picked = filterRecords_(recs, r);
+
+    var keep = {};
+    picked.forEach(function (x) { keep[x.id] = true; });
+    var photos = allPhotos_().filter(function (ph) { return keep[ph.rec]; });
 
     return ok_({
       user: u,
       canEdit: canWriteMaster_(u),
       master: m,
-      pairs: buildPairs_(recs, photos),
-      records: recs,
+      range: r,
+      periods: periods_(recs),
+      totalRecords: recs.length,
+      pairs: buildPairs_(picked, photos),
+      records: picked,
       openJobs: openJobs_(recs, null),
       today: fmtDate_(new Date())
     });
   });
+}
+
+/** ช่วงเวลาที่หน้าแอดมินขอมา — ไม่ส่งอะไรมาถือว่า 7 วันล่าสุด */
+function normRange_(range) {
+  var r = range || {};
+  var mode = s_(r.mode) || 'days';
+  if (mode === 'month') return { mode: 'month', y: Number(r.y), m: Number(r.m) };
+  if (mode === 'year')  return { mode: 'year',  y: Number(r.y) };
+  if (mode === 'all')   return { mode: 'all' };
+  return { mode: 'days', n: Number(r.n) || 7 };
+}
+
+function filterRecords_(recs, r) {
+  if (r.mode === 'all') return recs;
+
+  var from = null;
+  if (r.mode === 'days') {
+    from = new Date(); from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - (r.n - 1));
+  }
+
+  var keep = recs.filter(function (x) {
+    var d = recDay_(x);
+    if (!d) return false;
+    if (r.mode === 'month') return d.getFullYear() === r.y && (d.getMonth() + 1) === r.m;
+    if (r.mode === 'year')  return d.getFullYear() === r.y;
+    return d >= from;
+  });
+
+  // ดึงคู่ที่ขาดมาด้วย — เบิกเดือนก่อนแล้วมาคืนในช่วงนี้ ต้องเห็นทั้งคู่
+  var have = {}, need = {};
+  keep.forEach(function (x) { have[x.id] = true; });
+  keep.forEach(function (x) { if (x.ref && !have[x.ref]) need[x.ref] = true; });
+  recs.forEach(function (x) {
+    if (have[x.id]) return;
+    if (need[x.id] || (x.ref && have[x.ref])) { keep.push(x); have[x.id] = true; }
+  });
+  return keep;
+}
+
+/** เดือน/ปีที่มีข้อมูลจริง เอาไปทำดร็อปดาวน์ให้เลือกย้อนหลัง */
+function periods_(recs) {
+  var mo = {}, yr = {};
+  recs.forEach(function (x) {
+    var d = recDay_(x);
+    if (!d) return;
+    var y = d.getFullYear(), m = d.getMonth() + 1;
+    yr[y] = true;
+    mo[y + '-' + (m < 10 ? '0' + m : m)] = true;
+  });
+  return {
+    months: Object.keys(mo).sort().reverse(),
+    years: Object.keys(yr).sort().reverse()
+  };
 }
 
 /**

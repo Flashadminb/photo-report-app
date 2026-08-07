@@ -412,6 +412,66 @@ function openJobs_(records, empId) {
   }).reverse();
 }
 
+/**
+ * รายการค้างคืน แบบไม่ต้องอ่านชีททั้งใบ — ใช้ในแอพหน้างานตอนล็อกอิน/รีเฟรช
+ *
+ * ของเดิมเรียก allRecords_() ซึ่งอ่านครบ 19 คอลัมน์แล้วแปลงเป็นออบเจ็กต์ทุกแถว
+ * รวมถึงจัดรูปแบบวันที่ทีละแถว ยิ่งข้อมูลสะสมยิ่งช้าขึ้นเรื่อย ๆ ทั้งที่
+ * รายการค้างคืนจริง ๆ มีแค่ไม่กี่รายการ
+ *
+ * ตัวนี้อ่านเฉพาะคอลัมน์ที่ใช้ กรองจากตัวเลขดิบก่อน แล้วค่อยแปลงเป็นออบเจ็กต์
+ * เฉพาะแถวที่รอดจริง — ผลลัพธ์เหมือนเดิมทุกประการ
+ */
+function openJobsFast_(empId) {
+  var C = CFG.COL.REC;
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+
+  var n = last - 1;
+  var head = sh.getRange(2, 1, n, C.CODES).getValues();   // รหัสรายการ .. รหัสเครื่อง
+  var refs = sh.getRange(2, C.REF, n, 1).getValues();     // อ้างอิงรายการเบิก
+
+  var referenced = {};
+  for (var i = 0; i < n; i++) {
+    var rf = s_(refs[i][0]);
+    if (rf) referenced[rf] = true;
+  }
+
+  var out = [];
+  for (var j = 0; j < n; j++) {
+    var r = head[j];
+    var id = s_(r[C.ID - 1]);
+    if (!id) continue;
+    if (s_(r[C.ACTION - 1]) !== CFG.V.BORROW) continue;
+    if (referenced[id]) continue;
+    if (empId && s_(r[C.EMP_ID - 1]) !== empId) continue;
+
+    var ts = cellDate_(r[C.TS - 1], true);
+    out.push({
+      id: id,
+      codes: s_(r[C.CODES - 1]),
+      qty: Number(r[C.QTY - 1]) || 0,
+      topic: s_(r[C.TOPIC - 1]),
+      empId: s_(r[C.EMP_ID - 1]),
+      empName: s_(r[C.EMP_NAME - 1]),
+      dept: s_(r[C.DEPT - 1]),
+      date: cellDate_(r[C.DATE - 1], false),
+      ts: ts,
+      time: (/(\d{1,2}:\d{2})/.exec(ts) || [, ''])[1]
+    });
+  }
+  return out.reverse();
+}
+
+/** วันที่ของรายการ — อ่านจากรหัสรายการ (หัวข้อ-yyyyMMdd-เลขรัน) ไม่ต้องแปลงข้อความ */
+function recDay_(r) {
+  var m = /-(\d{4})(\d{2})(\d{2})-/.exec(s_(r.id));
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  var d = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s_(r.date));
+  return d ? new Date(Number(d[3]), Number(d[2]) - 1, Number(d[1])) : null;
+}
+
 // ── เขียนบันทึก ───────────────────────────────────────────────────────────
 
 /**
@@ -775,10 +835,10 @@ function apiRefresh(empId) {
 
 function sessionPayload_(m, u) {
   var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
-  var recs = allRecords_();
 
   // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
-  var mine = openJobs_(recs, isAdmin || u.role === CFG.V.ROLE_LEAD ? null : u.id);
+  // ใช้ตัวที่อ่านเฉพาะคอลัมน์ที่ใช้ ไม่งั้นล็อกอินจะช้าลงเรื่อย ๆ ตามข้อมูลที่สะสม
+  var mine = openJobsFast_(isAdmin || u.role === CFG.V.ROLE_LEAD ? null : u.id);
 
   return {
     user: u,
@@ -1047,23 +1107,95 @@ function alreadySubmitted_(clientId) {
 //  เว็บแอดมิน
 // ══════════════════════════════════════════════════════════════════════════
 
-function apiAdminLoad(empId) {
+/**
+ * ข้อมูลทั้งหมดของหน้าเว็บแอดมิน
+ *
+ * ส่งเฉพาะช่วงเวลาที่เลือก (ค่าเริ่มต้น 7 วันล่าสุด) ไม่ได้ส่งทั้งหมดตั้งแต่วันแรก
+ * ไม่งั้นข้อมูลที่ต้องโหลดจะโตขึ้นทุกวันไม่มีที่สิ้นสุด จนสุดท้ายเปิดหน้าไม่ไหว
+ *
+ * ยกเว้น "ค้างคืน" ที่ยังดูจากทั้งหมดเสมอ เพราะของที่เบิกไปนานแล้วยังไม่คืน
+ * ต้องเห็นตลอดไม่ว่าจะเลือกช่วงไหน
+ */
+function apiAdminLoad(empId, range) {
   return wrap_(function () {
     var m = getMaster_();
     var u = requireAdmin_(m, empId);
     var recs = allRecords_();
-    var photos = allPhotos_();
+
+    var r = normRange_(range);
+    var picked = filterRecords_(recs, r);
+
+    var keep = {};
+    picked.forEach(function (x) { keep[x.id] = true; });
+    var photos = allPhotos_().filter(function (ph) { return keep[ph.rec]; });
 
     return ok_({
       user: u,
       canEdit: canWriteMaster_(u),
       master: m,
-      pairs: buildPairs_(recs, photos),
-      records: recs,
+      range: r,
+      periods: periods_(recs),
+      totalRecords: recs.length,
+      pairs: buildPairs_(picked, photos),
+      records: picked,
       openJobs: openJobs_(recs, null),
       today: fmtDate_(new Date())
     });
   });
+}
+
+/** ช่วงเวลาที่หน้าแอดมินขอมา — ไม่ส่งอะไรมาถือว่า 7 วันล่าสุด */
+function normRange_(range) {
+  var r = range || {};
+  var mode = s_(r.mode) || 'days';
+  if (mode === 'month') return { mode: 'month', y: Number(r.y), m: Number(r.m) };
+  if (mode === 'year')  return { mode: 'year',  y: Number(r.y) };
+  if (mode === 'all')   return { mode: 'all' };
+  return { mode: 'days', n: Number(r.n) || 7 };
+}
+
+function filterRecords_(recs, r) {
+  if (r.mode === 'all') return recs;
+
+  var from = null;
+  if (r.mode === 'days') {
+    from = new Date(); from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - (r.n - 1));
+  }
+
+  var keep = recs.filter(function (x) {
+    var d = recDay_(x);
+    if (!d) return false;
+    if (r.mode === 'month') return d.getFullYear() === r.y && (d.getMonth() + 1) === r.m;
+    if (r.mode === 'year')  return d.getFullYear() === r.y;
+    return d >= from;
+  });
+
+  // ดึงคู่ที่ขาดมาด้วย — เบิกเดือนก่อนแล้วมาคืนในช่วงนี้ ต้องเห็นทั้งคู่
+  var have = {}, need = {};
+  keep.forEach(function (x) { have[x.id] = true; });
+  keep.forEach(function (x) { if (x.ref && !have[x.ref]) need[x.ref] = true; });
+  recs.forEach(function (x) {
+    if (have[x.id]) return;
+    if (need[x.id] || (x.ref && have[x.ref])) { keep.push(x); have[x.id] = true; }
+  });
+  return keep;
+}
+
+/** เดือน/ปีที่มีข้อมูลจริง เอาไปทำดร็อปดาวน์ให้เลือกย้อนหลัง */
+function periods_(recs) {
+  var mo = {}, yr = {};
+  recs.forEach(function (x) {
+    var d = recDay_(x);
+    if (!d) return;
+    var y = d.getFullYear(), m = d.getMonth() + 1;
+    yr[y] = true;
+    mo[y + '-' + (m < 10 ? '0' + m : m)] = true;
+  });
+  return {
+    months: Object.keys(mo).sort().reverse(),
+    years: Object.keys(yr).sort().reverse()
+  };
 }
 
 /**

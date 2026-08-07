@@ -9,6 +9,11 @@ var A = {
   master: null, pairs: [], records: [], openJobs: [], today: '',
   tab: 'vault',
   sel: {},          // ชุดรูปที่ติ๊กไว้เพื่อลบพร้อมกัน { รหัสรายการ: true }
+  // ช่วงเวลาที่ดึงจากชีท — เริ่มที่ 7 วันล่าสุด ย้อนหลังกว่านั้นเลือกเดือน/ปีเอา
+  // ถ้าดึงทั้งหมดทุกครั้ง ข้อมูลจะโตขึ้นทุกวันจนเปิดหน้าไม่ไหว
+  range: { mode: 'days', n: 7 },
+  periods: { months: [], years: [] },
+  totalRecords: 0,
   fTopic: 'ทั้งหมด', fDate: 'ทั้งหมด', fSearch: ''
 };
 
@@ -40,11 +45,69 @@ function gateGo() {
 }
 
 function load(empId) {
-  return rpc('apiAdminLoad', empId).then(function (r) {
+  return rpc('apiAdminLoad', empId, A.range).then(function (r) {
     A.empId = empId; A.user = r.user; A.canEdit = r.canEdit;
     A.master = r.master; A.pairs = r.pairs; A.records = r.records;
     A.openJobs = r.openJobs; A.today = r.today;
+    A.range = r.range; A.periods = r.periods; A.totalRecords = r.totalRecords;
   });
+}
+
+/** เปลี่ยนช่วงเวลาแล้วดึงข้อมูลใหม่จากชีท (ไม่ได้กรองในเครื่อง เพราะไม่ได้โหลดมาทั้งหมด) */
+function setRange(r) {
+  A.range = r; A.sel = {}; A.fDate = 'ทั้งหมด';
+  toast('กำลังโหลด…', false, 30000);
+  return reload().then(function () { toast(rangeText(A.range)); });
+}
+
+function rangeText(r) {
+  if (!r) return '';
+  if (r.mode === 'all')   return 'ทั้งหมดตั้งแต่วันแรก';
+  if (r.mode === 'year')  return 'ทั้งปี ' + r.y;
+  if (r.mode === 'month') return 'เดือน ' + r.m + '/' + r.y;
+  return r.n + ' วันล่าสุด';
+}
+
+/** แถบเลือกช่วงเวลา — ใช้ร่วมกันทั้งหน้าคลังรูปและหน้าข้อมูล */
+function rangeBar() {
+  var r = A.range || { mode: 'days', n: 7 };
+  var p = A.periods || { months: [], years: [] };
+  var TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+  var d7 = h('button', { class: 'btn ' + (r.mode === 'days' ? 'btn-primary' : 'btn-secondary') }, ['7 วันล่าสุด']);
+  d7.addEventListener('click', function () { setRange({ mode: 'days', n: 7 }); });
+
+  var selM = h('select', { class: 'input', style: 'width:auto' },
+    [h('option', { value: '' }, ['เลือกเดือน'])].concat(p.months.map(function (k) {
+      var y = Number(k.slice(0, 4)), m = Number(k.slice(5));
+      var on = r.mode === 'month' && r.y === y && r.m === m;
+      return h('option', { value: k, selected: on ? 'selected' : null }, [TH[m - 1] + ' ' + y]);
+    })));
+  selM.addEventListener('change', function (e) {
+    if (!e.target.value) return;
+    setRange({ mode: 'month', y: Number(e.target.value.slice(0, 4)), m: Number(e.target.value.slice(5)) });
+  });
+
+  var selY = h('select', { class: 'input', style: 'width:auto' },
+    [h('option', { value: '' }, ['เลือกปี'])].concat(p.years.map(function (y) {
+      return h('option', { value: y, selected: (r.mode === 'year' && r.y === Number(y)) ? 'selected' : null }, [y]);
+    })));
+  selY.addEventListener('change', function (e) {
+    if (e.target.value) setRange({ mode: 'year', y: Number(e.target.value) });
+  });
+
+  var all = h('button', { class: 'btn ' + (r.mode === 'all' ? 'btn-primary' : 'btn-secondary'), style: 'font-size:12px' }, ['ทั้งหมด']);
+  all.addEventListener('click', function () {
+    if (!confirm('โหลดข้อมูลทั้งหมดตั้งแต่วันแรก?\n\nถ้าเก็บมานานจะใช้เวลาโหลดพอสมควร\nปกติเลือกเดือนหรือปีจะเร็วกว่ามาก')) return;
+    setRange({ mode: 'all' });
+  });
+
+  return h('div', { class: 'bar', style: 'margin-bottom:10px' }, [
+    h('span', { class: 'label' }, ['ช่วงเวลา']),
+    d7, selM, selY, all,
+    h('div', { style: 'margin-left:auto;font-size:12px;opacity:.7' },
+      ['กำลังดู ' + rangeText(r) + ' · ในชีทมีทั้งหมด ' + (A.totalRecords || 0) + ' แถว'])
+  ]);
 }
 
 // ══ โครงหน้า ══════════════════════════════════════════════════════════
@@ -131,6 +194,7 @@ function viewVault(v) {
   var clear = h('button', { class: 'btn btn-secondary' }, ['ล้างตัวกรอง']);
   clear.addEventListener('click', function () { A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.sel = {}; renderAll(); });
 
+  v.appendChild(rangeBar());
   v.appendChild(h('div', { class: 'bar' }, [
     h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), selTopic]),
     h('div', {}, [h('span', { class: 'label' }, ['วันที่']), selDate]),
@@ -350,6 +414,7 @@ function viewData(v) {
   var csv = h('button', { class: 'btn btn-secondary' }, ['ดาวน์โหลด CSV']);
   csv.addEventListener('click', exportCsv);
 
+  v.appendChild(rangeBar());
   v.appendChild(h('div', { class: 'bar' }, [
     h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), selT]),
     h('div', {}, [h('span', { class: 'label' }, ['วันที่']), selD]),

@@ -115,6 +115,66 @@ function openJobs_(records, empId) {
   }).reverse();
 }
 
+/**
+ * รายการค้างคืน แบบไม่ต้องอ่านชีททั้งใบ — ใช้ในแอพหน้างานตอนล็อกอิน/รีเฟรช
+ *
+ * ของเดิมเรียก allRecords_() ซึ่งอ่านครบ 19 คอลัมน์แล้วแปลงเป็นออบเจ็กต์ทุกแถว
+ * รวมถึงจัดรูปแบบวันที่ทีละแถว ยิ่งข้อมูลสะสมยิ่งช้าขึ้นเรื่อย ๆ ทั้งที่
+ * รายการค้างคืนจริง ๆ มีแค่ไม่กี่รายการ
+ *
+ * ตัวนี้อ่านเฉพาะคอลัมน์ที่ใช้ กรองจากตัวเลขดิบก่อน แล้วค่อยแปลงเป็นออบเจ็กต์
+ * เฉพาะแถวที่รอดจริง — ผลลัพธ์เหมือนเดิมทุกประการ
+ */
+function openJobsFast_(empId) {
+  var C = CFG.COL.REC;
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+
+  var n = last - 1;
+  var head = sh.getRange(2, 1, n, C.CODES).getValues();   // รหัสรายการ .. รหัสเครื่อง
+  var refs = sh.getRange(2, C.REF, n, 1).getValues();     // อ้างอิงรายการเบิก
+
+  var referenced = {};
+  for (var i = 0; i < n; i++) {
+    var rf = s_(refs[i][0]);
+    if (rf) referenced[rf] = true;
+  }
+
+  var out = [];
+  for (var j = 0; j < n; j++) {
+    var r = head[j];
+    var id = s_(r[C.ID - 1]);
+    if (!id) continue;
+    if (s_(r[C.ACTION - 1]) !== CFG.V.BORROW) continue;
+    if (referenced[id]) continue;
+    if (empId && s_(r[C.EMP_ID - 1]) !== empId) continue;
+
+    var ts = cellDate_(r[C.TS - 1], true);
+    out.push({
+      id: id,
+      codes: s_(r[C.CODES - 1]),
+      qty: Number(r[C.QTY - 1]) || 0,
+      topic: s_(r[C.TOPIC - 1]),
+      empId: s_(r[C.EMP_ID - 1]),
+      empName: s_(r[C.EMP_NAME - 1]),
+      dept: s_(r[C.DEPT - 1]),
+      date: cellDate_(r[C.DATE - 1], false),
+      ts: ts,
+      time: (/(\d{1,2}:\d{2})/.exec(ts) || [, ''])[1]
+    });
+  }
+  return out.reverse();
+}
+
+/** วันที่ของรายการ — อ่านจากรหัสรายการ (หัวข้อ-yyyyMMdd-เลขรัน) ไม่ต้องแปลงข้อความ */
+function recDay_(r) {
+  var m = /-(\d{4})(\d{2})(\d{2})-/.exec(s_(r.id));
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  var d = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s_(r.date));
+  return d ? new Date(Number(d[3]), Number(d[2]) - 1, Number(d[1])) : null;
+}
+
 // ── เขียนบันทึก ───────────────────────────────────────────────────────────
 
 /**
