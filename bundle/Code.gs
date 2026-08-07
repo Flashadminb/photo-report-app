@@ -736,86 +736,17 @@ function sessionPayload_(m, u) {
 function apiSubmit(payload) {
   return wrap_(function () {
     var p = payload || {};
-    var m = getMaster_();
-    var u = requireUser_(m, p.empId);
 
-    var topic = null;
-    m.topics.forEach(function (t) { if (t.id === s_(p.topicId)) topic = t; });
-    if (!topic) throw new Error('ไม่พบหัวข้อ ' + s_(p.topicId) + ' ในชีทหัวข้อสำรวจ');
-    if (!topic.on) throw new Error('หัวข้อ "' + topic.name + '" ถูกปิดใช้งานอยู่');
-
-    var action = s_(p.action) || CFG.V.BORROW;
-    var isReturn = (action === CFG.V.RETURN);
-    var photos = (p.photos || []).filter(function (x) { return x && x.dataUrl; });
-    var recs = allRecords_();
-
-    // ── กันส่งซ้ำ (คิวออฟไลน์อาจยิงซ้ำ) ──────────────────────────────
     if (p.clientId) {
       var dup = alreadySubmitted_(p.clientId);
       if (dup) return ok_({ recordId: dup, duplicate: true });
     }
 
-    // ── ตรวจตามเงื่อนไขในชีท "เงื่อนไข" ─────────────────────────────
-    var R = topic.rules || {};
+    var ctx = prepareSubmit_(p);
+    var photos = (p.photos || []).filter(function (x) { return x && x.dataUrl; });
+    checkPhotoSlots_(ctx, photos.map(function (x) { return s_(x.slot); }));
 
-    if (R.gps && !s_(p.gps)) {
-      throw new Error('หัวข้อนี้บังคับให้เปิดตำแหน่ง (GPS) ก่อนส่ง');
-    }
-
-    var result = s_(p.result);
-    if (result !== CFG.V.OK && result !== CFG.V.ISSUE) {
-      throw new Error('ยังไม่ได้เลือกสถานะเครื่อง (ปกติ / มีปัญหา)');
-    }
-
-    if (result === CFG.V.ISSUE) {
-      if (!s_(p.issue)) throw new Error('เลือก "มีปัญหา" ต้องอธิบายอาการด้วย');
-      if (R.issue) {
-        var hasIssuePhoto = photos.some(function (x) {
-          return s_(x.slot).indexOf('ปัญหา') >= 0;
-        });
-        if (!hasIssuePhoto) throw new Error('เลือก "มีปัญหา" ต้องแนบรูปจุดที่มีปัญหา');
-      }
-    }
-
-    // ช่องถ่ายรูปที่บังคับ
-    var need = topic.slots.filter(function (sl) { return sl.req && !sl.onIssue; });
-    var have = {};
-    photos.forEach(function (x) { have[s_(x.slot)] = true; });
-    var missing = need.filter(function (sl) { return !have[sl.th]; });
-    if (missing.length) {
-      throw new Error('ยังถ่ายไม่ครบ: ' + missing.map(function (x) { return x.th; }).join(', '));
-    }
-
-    // จำนวน / รหัสเครื่อง
-    var codes = (p.codes || []).map(s_).filter(Boolean);
-    var qty = Number(p.qty) || codes.length;
-    if (topic.countMode) {
-      if (!(qty > 0)) throw new Error('ต้องกรอกจำนวนเครื่องที่เบิก');
-    } else {
-      if (!codes.length) throw new Error('ต้องเลือกรหัสเครื่องอย่างน้อย 1 รายการ');
-      qty = codes.length;
-    }
-
-    // ── ตอนคืน: ต้องอ้างอิงรายการเบิกที่ยังค้างอยู่จริง ─────────────
-    var ref = '';
-    if (isReturn) {
-      ref = s_(p.ref);
-      if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
-      var open = openJobs_(recs, null);
-      var found = open.filter(function (j) { return j.id === ref; })[0];
-      if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
-      if (!codes.length) codes = found.codes ? found.codes.split(/\s*,\s*/) : [];
-      if (!topic.countMode) qty = codes.length;
-    }
-
-    // ── เตือนกรณีถ่ายนอกกะ (บันทึกเป็นข้อยกเว้น ไม่บล็อก) ───────────
-    var note = s_(p.note);
-    if (R.shift && !inShift_(s_(p.shift), new Date())) {
-      note = (note ? note + ' · ' : '') + '[นอกกะ] ส่งเมื่อ ' + fmtTime_(new Date());
-    }
-
-    // ── อัปโหลดรูป ───────────────────────────────────────────────────
-    var recordId = makeRecordId_(topic.id, new Date());
+    var recordId = makeRecordId_(ctx.topic.id, new Date());
     var photoRows = [], folderUrl = '';
     if (photos.length) {
       var folder = recordFolder_(recordId);
@@ -830,32 +761,168 @@ function apiSubmit(payload) {
       });
     }
 
-    // ── เขียนชีท ─────────────────────────────────────────────────────
-    writeRecord_({
-      recordId: recordId,
-      shift: s_(p.shift) || u.shift,
-      empId: u.id, empName: u.name, dept: u.dept,
-      topicName: topic.name,
-      action: action,
-      qty: qty,
-      codes: codes.join(', '),
-      result: result,
-      issue: result === CFG.V.ISSUE ? s_(p.issue) : '',
-      note: note,
-      folderUrl: folderUrl,
-      gps: s_(p.gps),
-      ref: ref
-    }, photoRows);
+    return ok_(finishSubmit_(ctx, p, recordId, folderUrl, photoRows));
+  });
+}
 
-    if (p.clientId) rememberSubmitted_(p.clientId, recordId);
+// ══════════════════════════════════════════════════════════════════════════
+//  ส่งแบบ 3 จังหวะ — ให้หน้าบ้านอัปโหลดรูปหลายใบพร้อมกันได้
+//
+//  ส่งรูป 6 ใบในคำขอเดียว เซิร์ฟเวอร์ต้องสร้างไฟล์ใน Drive ทีละใบเรียงกัน
+//  ใบสุดท้ายจึงต้องรอ 5 ใบแรกเสร็จก่อน รวมแล้วเกือบนาที
+//
+//  แยกเป็น เริ่ม → อัปโหลด (ขนาน) → ปิดงาน ทำให้ทั้งการส่งผ่านเน็ต
+//  และการสร้างไฟล์เกิดพร้อมกัน เหลือราว 1 ใน 4 ของเดิม
+//
+//  apiSubmit เดิมยังอยู่ ใช้กับคิวออฟไลน์ที่ต้องส่งซ้ำทั้งก้อนในครั้งเดียว
+// ══════════════════════════════════════════════════════════════════════════
 
+/** จังหวะ 1 — ตรวจข้อมูล จองรหัสรายการ และเตรียมโฟลเดอร์ */
+function apiBeginSubmit(payload) {
+  return wrap_(function () {
+    var p = payload || {};
+    if (p.clientId) {
+      var dup = alreadySubmitted_(p.clientId);
+      if (dup) return ok_({ recordId: dup, duplicate: true });
+    }
+    var ctx = prepareSubmit_(p);
+    var recordId = makeRecordId_(ctx.topic.id, new Date());
+    var folder = recordFolder_(recordId);
+    return ok_({ recordId: recordId, folderId: folder.getId(), folderUrl: folder.getUrl() });
+  });
+}
+
+/** จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้) */
+function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq) {
+  return wrap_(function () {
+    requireUser_(getMaster_(), empId);
+    var folder = DriveApp.getFolderById(s_(folderId));
+    var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1);
     return ok_({
-      recordId: recordId,
-      folderUrl: folderUrl,
-      photoCount: photoRows.length,
-      ts: fmtStamp_(new Date())
+      slot: s_(slot), url: saved.url,
+      time: s_(time) || fmtTime_(new Date()),
+      gps: s_(gps)
     });
   });
+}
+
+/** จังหวะ 3 — ตรวจว่ารูปครบ แล้วเขียนลงชีท */
+function apiCommitSubmit(payload, photoRows, recordId, folderUrl) {
+  return wrap_(function () {
+    var p = payload || {};
+    var rows = (photoRows || []).filter(function (x) { return x && x.url; });
+    var ctx = prepareSubmit_(p);
+    checkPhotoSlots_(ctx, rows.map(function (x) { return s_(x.slot); }));
+    return ok_(finishSubmit_(ctx, p, s_(recordId), s_(folderUrl), rows));
+  });
+}
+
+// ── ส่วนที่ใช้ร่วมกันทั้ง 2 เส้นทาง ───────────────────────────────────────
+
+/** ตรวจทุกอย่างที่ไม่ต้องใช้รูป แล้วคืนค่าที่ผ่านการตรวจแล้ว */
+function prepareSubmit_(p) {
+  var m = getMaster_();
+  var u = requireUser_(m, p.empId);
+
+  var topic = null;
+  m.topics.forEach(function (t) { if (t.id === s_(p.topicId)) topic = t; });
+  if (!topic) throw new Error('ไม่พบหัวข้อ ' + s_(p.topicId) + ' ในชีทหัวข้อสำรวจ');
+  if (!topic.on) throw new Error('หัวข้อ "' + topic.name + '" ถูกปิดใช้งานอยู่');
+
+  var R = topic.rules || {};
+  var action = s_(p.action) || CFG.V.BORROW;
+
+  if (R.gps && !s_(p.gps)) throw new Error('หัวข้อนี้บังคับให้เปิดตำแหน่ง (GPS) ก่อนส่ง');
+
+  var result = s_(p.result);
+  if (result !== CFG.V.OK && result !== CFG.V.ISSUE) {
+    throw new Error('ยังไม่ได้เลือกสถานะเครื่อง (ปกติ / มีปัญหา)');
+  }
+  if (result === CFG.V.ISSUE && !s_(p.issue)) {
+    throw new Error('เลือก "มีปัญหา" ต้องอธิบายอาการด้วย');
+  }
+
+  var codes = (p.codes || []).map(s_).filter(Boolean);
+  var qty = Number(p.qty) || codes.length;
+  if (topic.countMode) {
+    if (!(qty > 0)) throw new Error('ต้องกรอกจำนวนเครื่องที่เบิก');
+  } else {
+    if (!codes.length) throw new Error('ต้องเลือกรหัสเครื่องอย่างน้อย 1 รายการ');
+    qty = codes.length;
+  }
+
+  // ตอนคืน: ต้องอ้างอิงรายการเบิกที่ยังค้างอยู่จริง
+  // (อ่านชีทเฉพาะตอนคืนเท่านั้น ตอนเบิกไม่ต้องอ่าน จะได้เร็วขึ้น)
+  var ref = '';
+  if (action === CFG.V.RETURN) {
+    ref = s_(p.ref);
+    if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
+    var found = openJobs_(allRecords_(), null).filter(function (j) { return j.id === ref; })[0];
+    if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
+    if (!codes.length) codes = found.codes ? found.codes.split(/\s*,\s*/) : [];
+    if (!topic.countMode) qty = codes.length;
+  }
+
+  // ถ่ายนอกกะยังส่งได้ แต่ต่อท้ายหมายเหตุไว้เป็นข้อยกเว้น
+  var note = s_(p.note);
+  if (R.shift && !inShift_(s_(p.shift), new Date())) {
+    note = (note ? note + ' · ' : '') + '[นอกกะ] ส่งเมื่อ ' + fmtTime_(new Date());
+  }
+
+  return { u: u, topic: topic, action: action, result: result, codes: codes, qty: qty, ref: ref, note: note };
+}
+
+/** ตรวจว่าถ่ายครบตามช่องบังคับในชีท "ช่องถ่ายรูป" หรือยัง */
+function checkPhotoSlots_(ctx, slotNames) {
+  var have = {};
+  (slotNames || []).forEach(function (n) { have[s_(n)] = true; });
+
+  var need = ctx.topic.slots.filter(function (sl) { return sl.req && !sl.onIssue; });
+
+  if (ctx.topic.countMode) {
+    // หัวข้อแบบนับจำนวน (เช่น IDATA) ไม่ล็อกว่าต้องมีช่องไหนบ้าง
+    // เพราะเบิกไปหลายเครื่องแล้วกระจายกันไป ขอแค่มีรูปอุปกรณ์อย่างน้อย 1 ใบ
+    var nonIssue = Object.keys(have).filter(function (n) { return n.indexOf('ปัญหา') < 0; });
+    if (need.length && !nonIssue.length) throw new Error('ต้องแนบรูปอุปกรณ์อย่างน้อย 1 รูป');
+  } else {
+    var missing = need.filter(function (sl) { return !have[sl.th]; });
+    if (missing.length) {
+      throw new Error('ยังถ่ายไม่ครบ: ' + missing.map(function (x) { return x.th; }).join(', '));
+    }
+  }
+
+  if (ctx.result === CFG.V.ISSUE && ctx.topic.rules && ctx.topic.rules.issue) {
+    var hasIssuePhoto = Object.keys(have).some(function (n) { return n.indexOf('ปัญหา') >= 0; });
+    if (!hasIssuePhoto) throw new Error('เลือก "มีปัญหา" ต้องแนบรูปจุดที่มีปัญหา');
+  }
+}
+
+/** เขียนแถวลงชีทแล้วคืนผลให้หน้าบ้าน */
+function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
+  writeRecord_({
+    recordId: recordId,
+    shift: s_(p.shift) || ctx.u.shift,
+    empId: ctx.u.id, empName: ctx.u.name, dept: ctx.u.dept,
+    topicName: ctx.topic.name,
+    action: ctx.action,
+    qty: ctx.qty,
+    codes: ctx.codes.join(', '),
+    result: ctx.result,
+    issue: ctx.result === CFG.V.ISSUE ? s_(p.issue) : '',
+    note: ctx.note,
+    folderUrl: folderUrl,
+    gps: s_(p.gps),
+    ref: ctx.ref
+  }, photoRows);
+
+  if (p.clientId) rememberSubmitted_(p.clientId, recordId);
+
+  return {
+    recordId: recordId,
+    folderUrl: folderUrl,
+    photoCount: photoRows.length,
+    ts: fmtStamp_(new Date())
+  };
 }
 
 /** true ถ้าเวลาปัจจุบันอยู่ในกะที่ระบุ (รองรับกะข้ามเที่ยงคืน) */

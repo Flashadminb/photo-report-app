@@ -432,6 +432,9 @@ textarea.input{min-height:90px;resize:vertical}
 
   </div>
 
+  <div id="progress-bar" class="hide" style="height:4px;background:var(--color-surface)">
+    <div id="progress-fill" style="height:100%;width:0;background:var(--color-accent);transition:width .2s"></div>
+  </div>
   <div id="foot" class="hide">
     <div class="hint" id="foot-hint"></div>
     <button class="btn btn-primary btn-lg" id="btn-primary">ถัดไป</button>
@@ -713,12 +716,27 @@ function issueSlotName() { var s = issueSlot(); return s ? s.th : 'จุดท�
 function rule(id)    { return !!(S.topic && S.topic.rules && S.topic.rules[id]); }
 function galleryMode() { return !!S.topic && (reqSlots().length === 0 || S.topic.countMode); }
 
+/**
+ * หัวข้อแบบนับจำนวน (เปิดเงื่อนไข count เช่น IDATA) ใช้หน้าแนบรูปอิสระเป็นขั้นแรก
+ * แทนการบังคับถ่ายทีละจุด เพราะเบิกไปหลายเครื่องแล้วกระจายกันไปคนละที่
+ * จะแนบกี่รูปก็ได้ ถ่ายสดหรืออัปโหลดก็ได้ ขอแค่ให้เห็นอุปกรณ์ครบ
+ */
 function steps() {
-  var out = reqSlots().map(function (sl) { return { type: 'cam', slot: sl }; });
+  var out = [];
   if (galleryMode()) out.push({ type: 'gallery' });
+  else reqSlots().forEach(function (sl) { out.push({ type: 'cam', slot: sl }); });
   out.push({ type: 'status' });
   out.push({ type: 'note' });
   return out;
+}
+
+/** ต้องมีรูปอย่างน้อย 1 ใบไหม — ดูจากว่าชีทตั้งช่องถ่ายเป็น "บังคับ" ไว้หรือเปล่า */
+function needsGalleryPhoto() { return reqSlots().length > 0; }
+
+/** ชื่อช่องที่จะใช้บันทึกรูปจากหน้าแนบรูป (ลงชีท "รูปภาพ" ในชื่อนี้) */
+function gallerySlotName() {
+  var r = reqSlots();
+  return r.length ? r[0].th : 'รูปอุปกรณ์';
 }
 function curStep() { var a = steps(); return a[Math.min(S.step, a.length - 1)] || null; }
 
@@ -739,7 +757,8 @@ function issueOk() {
   return true;
 }
 function readyToSend() {
-  if (shotCount() !== reqSlots().length) return false;
+  if (galleryMode()) { if (needsGalleryPhoto() && !S.extra.length) return false; }
+  else if (shotCount() !== reqSlots().length) return false;
   if (!S.result) return false;
   if (!issueOk()) return false;
   if (rule('gps') && !geo.text()) return false;
@@ -820,7 +839,7 @@ function shootTitle() {
   var st = curStep();
   if (!st) return 'ถ่ายรูป';
   if (st.type === 'cam')     return 'ถ่าย: ' + st.slot.th;
-  if (st.type === 'gallery') return 'แนบรูปเพิ่มเติม';
+  if (st.type === 'gallery') return needsGalleryPhoto() ? 'ถ่าย/แนบรูปอุปกรณ์' : 'แนบรูปเพิ่มเติม';
   if (st.type === 'status')  return 'สถานะการใช้งาน';
   return 'ข้อมูลเพิ่มเติม';
 }
@@ -1044,9 +1063,23 @@ function renderCamStep(slot) {
 
 function renderGalleryStep() {
   var n = nowParts();
-  $('#gal-hint').textContent = rule('live')
+  var req = reqSlots();
+  var head = rule('live')
     ? 'หัวข้อนี้บังคับถ่ายสดจากกล้อง — เลือกจากคลังภาพไม่ได้'
-    : 'แนบได้หลายรูป จะถ่ายสดหรือเลือกจากคลังภาพก็ได้ ผสมกันได้ — ไม่บังคับ';
+    : 'ถ่ายสดหรืออัปโหลดจากคลังภาพก็ได้ ผสมกันได้ จะกี่รูปก็ได้'
+      + (needsGalleryPhoto() ? ' (อย่างน้อย 1 รูป)' : ' — ไม่บังคับ');
+
+  // รายการที่ต้องถ่ายให้เห็น มาจากชีท "ช่องถ่ายรูป" ของหัวข้อนี้
+  var list = req.map(function (sl) {
+    return '<div style="display:flex;gap:6px;margin-top:4px">'
+      + '<span style="color:var(--color-accent)">•</span><span><strong>' + esc(sl.th) + '</strong>'
+      + (sl.hint ? ' — ' + esc(sl.hint) : '') + '</span></div>';
+  }).join('');
+
+  $('#gal-hint').innerHTML = esc(head)
+    + (list ? '<div style="margin-top:8px;border-top:1px solid var(--color-divider);padding-top:6px">'
+              + '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.6">ต้องเห็นให้ครบ</div>'
+              + list + '</div>' : '');
   $('#gal-stamp').textContent = (geo.text() ? 'GPS ' + geo.text() + ' · ' : '') + n.date + ' ' + n.time;
   $('#btn-gal-up').classList.toggle('hide', rule('live'));
   $('#gal-count').textContent = 'แนบแล้ว ' + S.extra.length + ' รูป';
@@ -1103,7 +1136,10 @@ function renderNoteStep() {
   if ($('#note-text').value !== S.note) $('#note-text').value = S.note;
   $('#note-summary').innerHTML =
     '<div style="font-family:var(--font-heading);font-weight:800;margin-bottom:6px">สรุปก่อนส่ง</div>' +
-    row2('รูปครบ', shotCount() + '/' + reqSlots().length + (S.extra.length ? ' (+' + S.extra.length + ')' : '')) +
+    row2('รูปอุปกรณ์', galleryMode()
+      ? S.extra.length + ' รูป'
+      : shotCount() + '/' + reqSlots().length + (S.extra.length ? ' (+' + S.extra.length + ')' : '')) +
+    row2('รูปจุดที่มีปัญหา', S.issueShots.length ? S.issueShots.length + ' รูป' : '—') +
     row2('สถานะ', S.result || 'ยังไม่เลือก') +
     row2('เครื่อง', (S.topic.countMode ? S.qty : S.picked.length) + ' เครื่อง') +
     row2('พิกัด', geo.text() || 'ยังไม่มี');
@@ -1155,15 +1191,18 @@ function renderReview() {
 /** รูปทั้งหมดที่จะส่ง เรียงตามลำดับช่องในชีท แล้วต่อด้วยรูปปัญหาและรูปแนบ */
 function allPhotoList() {
   var out = [];
-  reqSlots().forEach(function (sl) {
-    var s = S.shots[sl.th];
-    if (s) out.push({ slot: sl.th, dataUrl: s.dataUrl, time: s.time, gps: s.gps });
-  });
+  if (!galleryMode()) {
+    reqSlots().forEach(function (sl) {
+      var s = S.shots[sl.th];
+      if (s) out.push({ slot: sl.th, dataUrl: s.dataUrl, time: s.time, gps: s.gps });
+    });
+  }
   S.issueShots.forEach(function (p) {
     out.push({ slot: issueSlotName(), dataUrl: p.dataUrl, time: p.time, gps: p.gps });
   });
+  var extraSlot = galleryMode() ? gallerySlotName() : 'เพิ่มเติม';
   S.extra.forEach(function (p) {
-    out.push({ slot: 'เพิ่มเติม', dataUrl: p.dataUrl, time: p.time, gps: p.gps });
+    out.push({ slot: extraSlot, dataUrl: p.dataUrl, time: p.time, gps: p.gps });
   });
   return out;
 }
@@ -1213,7 +1252,11 @@ function renderFooter() {
     var st = curStep(), last = S.step >= steps().length - 1;
     label = last ? 'ตรวจทาน' : 'ถัดไป';
     if (st.type === 'cam')          { okState = !!S.shots[st.slot.th]; hintText = 'ต้องถ่ายครบ ' + reqSlots().length + ' จุด'; }
-    else if (st.type === 'gallery') { okState = true; hintText = 'แนบรูปเพิ่มได้ ไม่บังคับ'; }
+    else if (st.type === 'gallery') {
+      okState = !needsGalleryPhoto() || S.extra.length > 0;
+      hintText = !needsGalleryPhoto() ? 'แนบรูปเพิ่มได้ ไม่บังคับ'
+        : (S.extra.length ? 'แนบแล้ว ' + S.extra.length + ' รูป' : 'ต้องแนบรูปอุปกรณ์อย่างน้อย 1 รูป');
+    }
     else if (st.type === 'status')  { okState = !!S.result && issueOk(); hintText = okState ? 'เลือกแล้ว' : 'เลือกสถานะเครื่องก่อน'; }
     else                            { okState = readyToSend(); hintText = readyToSend() ? 'ครบแล้ว ไปตรวจทานได้' : missingText(); }
   } else if (S.screen === 'review') {
@@ -1228,11 +1271,15 @@ function renderFooter() {
   if (!show) return;
   btn.textContent = label;
   btn.disabled = !okState || S.busy;
-  hint.textContent = S.busy ? 'กำลังส่ง…' : hintText;
+  hint.textContent = S.busy ? (S.sendMsg || 'กำลังส่ง…') : hintText;
 }
 
 function missingText() {
-  if (shotCount() !== reqSlots().length) return 'ยังถ่ายไม่ครบ ' + shotCount() + '/' + reqSlots().length;
+  if (galleryMode()) {
+    if (needsGalleryPhoto() && !S.extra.length) return 'ต้องแนบรูปอุปกรณ์อย่างน้อย 1 รูป';
+  } else if (shotCount() !== reqSlots().length) {
+    return 'ยังถ่ายไม่ครบ ' + shotCount() + '/' + reqSlots().length;
+  }
   if (!S.result) return 'ยังไม่เลือกสถานะเครื่อง';
   if (!issueOk()) return 'แจ้งปัญหาต้องมีอาการ + รูปจุดที่มีปัญหา';
   if (rule('gps') && !geo.text()) return 'หัวข้อนี้บังคับเปิดตำแหน่ง (GPS)';
@@ -1315,6 +1362,61 @@ function buildPayload() {
   };
 }
 
+/** แถบความคืบหน้าตอนส่ง — ให้พนักงานเห็นว่าระบบทำงานอยู่ จะได้ไม่กดส่งซ้ำ */
+function setProgress(done, total) {
+  var bar = $('#progress-bar'), fill = $('#progress-fill');
+  if (total <= 0) { bar.classList.add('hide'); return; }
+  bar.classList.remove('hide');
+  fill.style.width = Math.round(done / total * 100) + '%';
+  S.sendMsg = done < total ? ('กำลังส่งรูป ' + done + '/' + total) : 'กำลังบันทึกลงชีท…';
+  renderFooter();
+}
+function clearProgress() {
+  $('#progress-bar').classList.add('hide');
+  $('#progress-fill').style.width = '0';
+  S.sendMsg = '';
+}
+
+/** อัปโหลดรูปพร้อมกันทีละหลายใบ — เร็วกว่าส่งเรียงกันทีละใบมาก */
+var UPLOAD_PARALLEL = 4;   // มากกว่านี้เสี่ยงชนโควตา "รันพร้อมกัน" ของ Apps Script
+
+function uploadPhotos(empId, begin, photos) {
+  var next = 0, done = 0, rows = [];
+  function worker() {
+    if (next >= photos.length) return Promise.resolve();
+    var i = next++, ph = photos[i];
+    return rpc('apiUploadPhoto', empId, begin.recordId, begin.folderId,
+               ph.slot, ph.dataUrl, ph.time, ph.gps, i + 1)
+      .then(function (r) { rows[i] = r; setProgress(++done, photos.length); return worker(); });
+  }
+  var lanes = [];
+  for (var k = 0; k < Math.min(UPLOAD_PARALLEL, photos.length); k++) lanes.push(worker());
+  return Promise.all(lanes).then(function () {
+    return rows.filter(Boolean);
+  });
+}
+
+/** ส่งแบบ 3 จังหวะ: จองรหัส → อัปโหลดรูปขนาน → เขียนชีท */
+function sendNow(payload) {
+  var photos = payload.photos || [];
+  var lite = Object.assign({}, payload);
+  delete lite.photos;   // begin/commit ไม่ต้องใช้รูป ไม่ต้องส่งซ้ำให้เปลืองเน็ต
+
+  return rpc('apiBeginSubmit', lite).catch(function (e) {
+    // หลังบ้านยังเป็นเวอร์ชันเก่าที่ยังไม่มีการส่งแบบ 3 จังหวะ — ถอยไปส่งครั้งเดียวแบบเดิม
+    // (กันกรณีหน้าเว็บอัปเดตแล้วแต่ Apps Script ยังไม่ได้ deploy เวอร์ชันใหม่)
+    if (/ไม่รู้จักคำสั่ง/.test(e.message)) return null;
+    throw e;
+  }).then(function (b) {
+    if (!b) return rpc('apiSubmit', payload);
+    if (b.duplicate) return b;
+    setProgress(0, photos.length);
+    return uploadPhotos(payload.empId, b, photos).then(function (rows) {
+      return rpc('apiCommitSubmit', lite, rows, b.recordId, b.folderUrl);
+    });
+  });
+}
+
 function submit() {
   if (!readyToSend()) { toast(missingText(), true); return; }
   var payload = buildPayload();
@@ -1325,34 +1427,28 @@ function submit() {
     meta: n.date + ' ' + n.hhmm + ' · ' + payload.photos.length + ' รูป',
     payload: payload
   };
-
-  if (!navigator.onLine) {
+  var queueIt = function () {
+    clearProgress();
     Q.put(meta).then(function () {
       refreshQueueCount();
       showDone({ queued: true, photoCount: payload.photos.length });
     });
-    return;
-  }
+  };
+
+  if (!navigator.onLine) { queueIt(); return; }
 
   S.busy = true; renderFooter();
-  rpc('apiSubmit', payload).then(function (res) {
-    S.busy = false;
+  sendNow(payload).then(function (res) {
+    S.busy = false; clearProgress();
     // ลบรายการค้างคืนที่เพิ่งปิดออกจากหน้าจอทันที ไม่ต้องรอโหลดใหม่
     if (S.action === 'คืน') S.openJobs = S.openJobs.filter(function (j) { return j.id !== S.ref; });
     showDone(res);
     refresh();
   }).catch(function (e) {
     S.busy = false;
-    // ส่งไม่ผ่านเพราะเน็ต → เก็บเข้าคิว; ผิดกติกา → บอกให้แก้
-    if (/เซิร์ฟเวอร์|network|timeout/i.test(e.message)) {
-      Q.put(meta).then(function () {
-        refreshQueueCount();
-        showDone({ queued: true, photoCount: payload.photos.length });
-      });
-    } else {
-      renderFooter();
-      toast(e.message, true);
-    }
+    // ส่งไม่ผ่านเพราะเน็ต → เก็บเข้าคิวส่งใหม่ทีหลัง; ผิดกติกา → บอกให้แก้
+    if (/เซิร์ฟเวอร์|network|timeout|failed to fetch/i.test(e.message)) queueIt();
+    else { clearProgress(); renderFooter(); toast(e.message, true); }
   });
 }
 
@@ -1485,6 +1581,7 @@ function bind() {
 function nextStep() {
   var all = steps(), st = curStep();
   if (st.type === 'cam' && !S.shots[st.slot.th]) return;
+  if (st.type === 'gallery' && needsGalleryPhoto() && !S.extra.length) return;
   if (st.type === 'status' && (!S.result || !issueOk())) return;
   if (S.step >= all.length - 1) {
     if (!readyToSend()) { toast(missingText(), true); return; }
