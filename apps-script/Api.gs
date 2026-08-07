@@ -512,8 +512,8 @@ function apiAdminDeletePhotos(empId, recordId) {
 /**
  * ลบรูปหลายรายการในครั้งเดียว (ติ๊กเลือกจากหน้าคลังรูป)
  *
- * จำกัดครั้งละ 25 รายการ เพราะการลบไฟล์ใน Drive ช้า
- * มากกว่านี้เสี่ยงชนเพดานเวลาทำงาน 6 นาทีของ Apps Script
+ * จำกัดครั้งละ 150 รายการ กันชนเพดานเวลาทำงาน 6 นาทีของ Apps Script
+ * (เดิมจำกัด 25 เพราะลบไฟล์ทีละใบ ตอนนี้ทิ้งทั้งโฟลเดอร์ทีเดียวเลยไปได้ไกลกว่า)
  */
 function apiAdminDeletePhotosBulk(empId, recordIds) {
   return wrap_(function () {
@@ -523,14 +523,10 @@ function apiAdminDeletePhotosBulk(empId, recordIds) {
 
     var ids = (recordIds || []).map(s_).filter(Boolean);
     if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
-    if (ids.length > 25) throw new Error('ลบได้ครั้งละไม่เกิน 25 รายการ (เลือกมา ' + ids.length + ')');
+    if (ids.length > 150) throw new Error('ลบได้ครั้งละไม่เกิน 150 รายการ (เลือกมา ' + ids.length + ')');
 
-    var files = 0, ok = 0, failed = [];
-    ids.forEach(function (id) {
-      try { files += deleteRecordPhotos_(id); ok++; }
-      catch (e) { failed.push(id); }
-    });
-    return ok_({ deleted: files, records: ok, failed: failed });
+    var r = deleteRecordPhotosBulk_(ids);
+    return ok_({ deleted: r.deleted, records: r.records, failed: r.failed });
   });
 }
 

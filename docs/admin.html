@@ -647,7 +647,7 @@ function viewVault(v) {
 
 function sidePhotos(side) { return (side && !side.deleted && side.photos) ? side.photos : []; }
 
-/** ลบรูปหลายชุดพร้อมกัน — ทีละ 25 รายการเพราะการลบไฟล์ใน Drive ช้า */
+/** ลบรูปหลายชุดพร้อมกัน — ทีละ 100 รายการ ฝั่งชีททิ้งทั้งโฟลเดอร์ทีเดียวเลยเร็ว */
 function bulkDeletePhotos(ids) {
   if (!guardEdit()) return;
   if (!confirm('ลบรูปทั้งหมดของ ' + ids.length + ' ชุดที่เลือกไว้?\n\n' +
@@ -656,7 +656,7 @@ function bulkDeletePhotos(ids) {
     'ใช้เวลาสักครู่ อย่าปิดหน้านี้')) return;
 
   var batches = [];
-  for (var i = 0; i < ids.length; i += 25) batches.push(ids.slice(i, i + 25));
+  for (var i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100));
 
   toast('กำลังลบ ' + ids.length + ' ชุด…', false, 60000);
   var files = 0, done = 0;
@@ -664,15 +664,31 @@ function bulkDeletePhotos(ids) {
     return chain.then(function () {
       return rpc('apiAdminDeletePhotosBulk', A.empId, b).then(function (r) {
         files += r.deleted || 0; done += r.records || 0;
+        // อัปเดตหน้าจอทันทีทีละชุดที่ลบเสร็จ ไม่ต้องรอโหลดข้อมูลใหม่ทั้งก้อน
+        markDeletedLocally(b);
+        A.sel = {}; renderAll();
         toast('ลบแล้ว ' + done + '/' + ids.length + ' ชุด…', false, 60000);
       });
     });
   }, Promise.resolve()).then(function () {
-    A.sel = {};
-    return reload();
-  }).then(function () {
     toast('ลบรูปแล้ว ' + done + ' ชุด (' + files + ' ไฟล์)');
   }).catch(function (e) { toast(e.message, true); });
+}
+
+/**
+ * ทำเครื่องหมายในข้อมูลที่ถืออยู่ว่าชุดนี้ลบรูปแล้ว
+ *
+ * ให้ผลเหมือนโหลดใหม่ทั้งก้อนแต่ไม่ต้องรอ เพราะฝั่งชีทเปลี่ยนแค่ช่องโฟลเดอร์
+ * ส่วนแถวลิงก์ในชีท "รูปภาพ" ไม่ได้ถูกลบอยู่แล้ว
+ */
+function markDeletedLocally(ids) {
+  var hit = {};
+  ids.forEach(function (id) { hit[id] = true; });
+  A.pairs.forEach(function (p) {
+    [p.out, p.back].forEach(function (sd) {
+      if (sd && hit[sd.recordId]) { sd.deleted = true; sd.photos = []; }
+    });
+  });
 }
 
 function pairCard(p) {
@@ -730,12 +746,8 @@ function pairCard(p) {
       title.appendChild(tick);
 
       var del = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['ลบชุดนี้']);
-      del.addEventListener('click', function () {
-        if (!confirm('ลบรูปทั้งหมดของ ' + id + ' ?\n\n' +
-          'ไฟล์จะถูกย้ายไปถังขยะ Drive (ล้างเองใน 30 วัน จึงจะคืนพื้นที่จริง)\n' +
-          'แถวและลิงก์ในชีท "รูปภาพ" ยังอยู่ครบ ใช้อ้างอิงย้อนหลังได้')) return;
-        saveThen(rpc('apiAdminDeletePhotos', A.empId, id));
-      });
+      // ลบชุดเดียวก็ใช้ทางเดียวกับลบหลายชุด จะได้เห็นผลทันทีเหมือนกัน (ถามยืนยันในนั้นแล้ว)
+      del.addEventListener('click', function () { bulkDeletePhotos([id]); });
       title.appendChild(del);
     }
     box.appendChild(title);

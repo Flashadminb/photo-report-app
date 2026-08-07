@@ -539,29 +539,67 @@ function safeName_(s) {
  * แค่กดลิงก์แล้วจะไม่เห็นภาพหลังไฟล์ถูกลบถาวรจากถังขยะ (Drive ล้างเองใน 30 วัน)
  */
 function deleteRecordPhotos_(recordId) {
-  var recs = allRecords_();
-  var rec = null;
-  for (var i = 0; i < recs.length; i++) if (recs[i].id === recordId) rec = recs[i];
-  if (!rec) throw new Error('ไม่พบรายการ ' + recordId);
+  var r = deleteRecordPhotosBulk_([s_(recordId)]);
+  if (r.failed.length) throw new Error('ไม่พบรายการ ' + recordId);
+  return r.deleted;
+}
 
-  var n = 0;
-  if (rec.folder) {
-    var fid = (/[-\w]{25,}/.exec(rec.folder) || [])[0];
+/**
+ * ลบรูปหลายรายการในทีเดียว — ตัวที่ทำให้หน้าแอดมินลบได้ไว
+ *
+ * ของเดิมช้าเพราะทำงานซ้ำทุกรายการ:
+ *   อ่านชีทบันทึกทั้งใบใหม่ 1 รอบ + ไล่หาแถวอีก 1 รอบ + สั่งทิ้งไฟล์ทีละใบ
+ *   25 รายการ รายการละ 6 รูป = อ่านชีท 50 รอบ + เรียก Drive ราว 175 ครั้ง
+ *
+ * ของใหม่ทำทีเดียวจบ:
+ *   อ่านชีทรอบเดียว · ทิ้งทั้งโฟลเดอร์ (ไฟล์ข้างในติดไปเอง) · เขียนชีทกลับรอบเดียว
+ *   เหลือเรียก Drive 2 ครั้งต่อรายการ ไม่ว่าจะมีรูปกี่ใบ
+ *
+ * เก็บร่องรอยไว้ครบเหมือนเดิม: แถวในชีท "รูปภาพ" ไม่ถูกแตะ ลิงก์รูปเดิมยังอยู่
+ * พร้อมช่องถ่าย เวลา และพิกัด — ใช้เป็นหลักฐานย้อนหลังได้ว่าเคยถ่ายอะไรไว้
+ */
+function deleteRecordPhotosBulk_(recordIds) {
+  var C = CFG.COL.REC;
+  var ids = (recordIds || []).map(s_).filter(Boolean);
+  if (!ids.length) return { deleted: 0, records: 0, failed: [] };
+
+  var shR = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var last = shR.getLastRow();
+  if (last < 2) return { deleted: 0, records: 0, failed: ids };
+
+  // อ่านเฉพาะคอลัมน์ที่ใช้จริง แล้วเขียนกลับเฉพาะคอลัมน์โฟลเดอร์
+  // ไม่แตะคอลัมน์อื่นเลย ข้อมูลที่หน้างานกรอกมาจึงไม่มีทางเพี้ยน
+  var idCol  = shR.getRange(2, C.ID, last - 1, 1).getValues();
+  var folRng = shR.getRange(2, C.FOLDER, last - 1, 1);
+  var folCol = folRng.getValues();
+  var nCol   = shR.getRange(2, C.PHOTO_N, last - 1, 1).getValues();
+
+  var rowOf = {};
+  for (var i = 0; i < idCol.length; i++) rowOf[s_(idCol[i][0])] = i;
+
+  var deleted = 0, records = 0, failed = [], touched = false;
+
+  ids.forEach(function (id) {
+    var i = rowOf[id];
+    if (i === undefined) { failed.push(id); return; }
+
+    var fid = (/[-\w]{25,}/.exec(s_(folCol[i][0])) || [])[0];
     if (fid) {
       try {
-        var folder = DriveApp.getFolderById(fid);
-        var files = folder.getFiles();
-        while (files.hasNext()) { files.next().setTrashed(true); n++; }
-      } catch (e) { /* โฟลเดอร์ถูกลบไปแล้ว */ }
+        // ทิ้งทั้งโฟลเดอร์ทีเดียว ไฟล์ข้างในลงถังขยะตามไปเอง
+        DriveApp.getFolderById(fid).setTrashed(true);
+      } catch (e) { /* โฟลเดอร์ถูกลบไปแล้ว ถือว่าลบสำเร็จ */ }
+      // จำนวนรูปเอาจากที่ชีทจดไว้ตอนส่ง ไม่ต้องไล่นับไฟล์ใน Drive ให้เสียเวลา
+      deleted += Number(nCol[i][0]) || 0;
     }
-  }
 
-  // ทำเครื่องหมายในชีทบันทึกว่ารูปถูกลบแล้ว — คงจำนวนรูปเดิมไว้ให้รู้ว่าเคยมีกี่ใบ
-  var shR = dataSS_().getSheetByName(CFG.D.RECORDS);
-  var row = findRow_(shR, CFG.COL.REC.ID, recordId);
-  if (row) shR.getRange(row, CFG.COL.REC.FOLDER).setValue('ลบรูปแล้ว');
+    folCol[i][0] = 'ลบรูปแล้ว';
+    touched = true;
+    records++;
+  });
 
-  return n;
+  if (touched) folRng.setValues(folCol);
+  return { deleted: deleted, records: records, failed: failed };
 }
 
 
@@ -1083,8 +1121,8 @@ function apiAdminDeletePhotos(empId, recordId) {
 /**
  * ลบรูปหลายรายการในครั้งเดียว (ติ๊กเลือกจากหน้าคลังรูป)
  *
- * จำกัดครั้งละ 25 รายการ เพราะการลบไฟล์ใน Drive ช้า
- * มากกว่านี้เสี่ยงชนเพดานเวลาทำงาน 6 นาทีของ Apps Script
+ * จำกัดครั้งละ 150 รายการ กันชนเพดานเวลาทำงาน 6 นาทีของ Apps Script
+ * (เดิมจำกัด 25 เพราะลบไฟล์ทีละใบ ตอนนี้ทิ้งทั้งโฟลเดอร์ทีเดียวเลยไปได้ไกลกว่า)
  */
 function apiAdminDeletePhotosBulk(empId, recordIds) {
   return wrap_(function () {
@@ -1094,14 +1132,10 @@ function apiAdminDeletePhotosBulk(empId, recordIds) {
 
     var ids = (recordIds || []).map(s_).filter(Boolean);
     if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
-    if (ids.length > 25) throw new Error('ลบได้ครั้งละไม่เกิน 25 รายการ (เลือกมา ' + ids.length + ')');
+    if (ids.length > 150) throw new Error('ลบได้ครั้งละไม่เกิน 150 รายการ (เลือกมา ' + ids.length + ')');
 
-    var files = 0, ok = 0, failed = [];
-    ids.forEach(function (id) {
-      try { files += deleteRecordPhotos_(id); ok++; }
-      catch (e) { failed.push(id); }
-    });
-    return ok_({ deleted: files, records: ok, failed: failed });
+    var r = deleteRecordPhotosBulk_(ids);
+    return ok_({ deleted: r.deleted, records: r.records, failed: r.failed });
   });
 }
 
