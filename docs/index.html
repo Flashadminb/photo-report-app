@@ -310,7 +310,7 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;
              border-top:2px solid var(--color-text);padding-top:8px">
           <span style="font-size:12px">จำนวนเครื่อง</span>
-          <strong id="codes-count" style="font-family:var(--font-heading);font-weight:800;font-size:22px">0 เครื่อง</strong>
+          <strong id="codes-count">0 เครื่อง</strong>
         </div>
       </div>
 
@@ -319,8 +319,16 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="extra-chips"></div>
         <div style="margin-top:8px;font-size:12px;display:flex;justify-content:space-between;
              border-top:2px solid var(--color-divider);padding-top:8px">
-          <span id="extra-note">ไม่บังคับ — เบิกหรือไม่เบิกก็ได้</span><strong id="extra-count">0 ชิ้น</strong>
+          <span id="extra-note">ไม่บังคับ — เบิกหรือไม่เบิกก็ได้</span><strong id="extra-count">0 เครื่อง</strong>
         </div>
+      </div>
+
+      <!-- ยอดรวมตัวใหญ่ — ขึ้นเฉพาะหัวข้อที่มีอุปกรณ์เสริม เพราะต้องบวกสองกล่องเข้าด้วยกัน -->
+      <div id="total-wrap" class="hide" style="display:flex;align-items:center;justify-content:space-between;
+           border:2px solid var(--color-text);padding:10px 12px">
+        <span id="total-label" style="font-size:12px">จำนวนเครื่องที่เบิก</span>
+        <strong id="total-count"
+                style="font-family:var(--font-heading);font-weight:800;font-size:26px">0 เครื่อง</strong>
       </div>
     </section>
 
@@ -745,7 +753,7 @@ var S = {
   ref: '',                // รหัสรายการเบิก ตอนกดคืน
   shift: '',
   picked: [],             // รหัสเครื่องที่เลือก
-  pickedExtra: [],        // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — ไม่นับรวมจำนวนเครื่อง
+  pickedExtra: [],        // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — เป็นเครื่อง นับรวมในจำนวน
   qty: 1,
   step: 0,
   shots: {},              // { ชื่อช่อง: {dataUrl, time, gps} } — ช่องบังคับ ช่องละ 1 รูป
@@ -799,8 +807,17 @@ function gallerySlotName() {
 }
 function curStep() { var a = steps(); return a[Math.min(S.step, a.length - 1)] || null; }
 
+/**
+ * รหัสที่เบิกทั้งหมด = เครื่องหลัก + อุปกรณ์เสริม
+ * เลเซอร์ลบก็คือเครื่องไอดาต้าเหมือนกัน แค่แยกรายการไว้เพราะทุกแผนกเบิกเสริมได้
+ * เพราะฉะนั้นหน่วยเป็น "เครื่อง" และต้องนับรวมเป็นจำนวนเดียวกัน
+ */
+function pickedAll() { return S.picked.concat(S.pickedExtra); }
+function totalQty()  { return S.picked.length + S.pickedExtra.length; }
+
 function codesText() {
-  if (S.picked.length) return S.picked.join(', ');
+  var all = pickedAll();
+  if (all.length) return all.join(', ');
   if (S.topic && S.topic.countMode) return S.topic.name + ' ' + S.qty + ' เครื่อง';
   return '—';
 }
@@ -853,9 +870,17 @@ function startReturn(job) {
   S.topic = t;
   S.action = 'คืน';
   S.ref = job.id;
-  S.picked = job.codes ? job.codes.split(/\s*,\s*/).filter(Boolean) : [];
-  S.qty = job.qty || S.picked.length || 1;
-  S.borrowedQty = job.qty || S.picked.length || 0;   // ไว้เทียบว่าคืนครบไหม
+  // รหัสที่เบิกไปเก็บรวมกันในชีทช่องเดียว ตอนคืนต้องแยกกลับมาว่าตัวไหนเป็นอุปกรณ์เสริม
+  // จะได้ติ๊กค้างไว้ถูกกล่อง
+  var all = job.codes ? job.codes.split(/\s*,\s*/).filter(Boolean) : [];
+  var isExtra = {};
+  if (t.extraType) {
+    S.assets.forEach(function (a) { if (a.type === t.extraType) isExtra[a.code] = true; });
+  }
+  S.picked      = all.filter(function (c) { return !isExtra[c]; });
+  S.pickedExtra = all.filter(function (c) { return  isExtra[c]; });
+  S.qty = job.qty || all.length || 1;
+  S.borrowedQty = job.qty || all.length || 0;   // ไว้เทียบว่าคืนครบไหม
   S.shift = S.user.shift;
   // แวะหน้าข้อมูลงานก่อน เพื่อให้แก้จำนวนที่คืนจริงได้ (เบิก 10 คืน 8 ก็มี)
   go('form');
@@ -1047,8 +1072,8 @@ function renderForm() {
     });
   }
 
-  // จำนวนเครื่องมีที่เดียว คือนับจากรหัสที่ติ๊ก (ทุกหัวข้อเหมือนกันหมด)
-  S.qty = S.picked.length;
+  // จำนวนเครื่องมีที่เดียว คือนับจากรหัสที่ติ๊ก รวมอุปกรณ์เสริมด้วย
+  S.qty = totalQty();
 
   // รหัสเครื่องจากทะเบียน กรองตามประเภทของหัวข้อ + แผนกของผู้ใช้
   var pool = S.assets.filter(function (a) {
@@ -1084,7 +1109,7 @@ function renderForm() {
     var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code]);
     b.addEventListener('click', function () {
       S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
-      S.qty = S.picked.length;
+      S.qty = totalQty();
       render();
     });
     cw.appendChild(b);
@@ -1097,9 +1122,14 @@ function renderForm() {
 
   // ── อุปกรณ์เสริม (เช่น เลเซอร์ลบ) — ขึ้นให้ทุกแผนก ไม่บังคับเบิก ──
   var xt = extraType();
+  // หัวข้อไหนไม่มีอุปกรณ์เสริม ตัวเลขในกล่องนี้คือยอดรวมอยู่แล้ว เลยโชว์ตัวใหญ่เลย
+  // ถ้ามีอุปกรณ์เสริม ตัวนี้เป็นแค่ยอดย่อย ตัวใหญ่ไปอยู่ที่ยอดรวมด้านล่าง
+  $('#codes-count').style.cssText = xt
+    ? 'font-size:12px'
+    : 'font-family:var(--font-heading);font-weight:800;font-size:22px';
   $('#extra-wrap').classList.toggle('hide', !xt);
   if (xt) {
-    $('#extra-label').textContent = xt + ' (ไม่บังคับ — เบิกกี่ชิ้นก็ได้)';
+    $('#extra-label').textContent = xt + ' (ไม่บังคับ — เบิกกี่เครื่องก็ได้)';
     var pool = S.assets.filter(function (a) { return a.type === xt && a.status === 'พร้อมใช้'; });
     var xw = $('#extra-chips'); xw.innerHTML = '';
     pool.forEach(function (a) {
@@ -1116,8 +1146,14 @@ function renderForm() {
       xw.appendChild(el('div', { style: 'font-size:12px;opacity:.7' },
         ['ไม่มี' + xt + 'สถานะ "พร้อมใช้" ในทะเบียน']));
     }
-    $('#extra-count').textContent = S.pickedExtra.length + ' ชิ้น';
+    $('#extra-count').textContent = S.pickedExtra.length + ' เครื่อง';
   }
+
+  // ยอดรวมตัวใหญ่ — เครื่องหลัก + อุปกรณ์เสริม เป็นจำนวนเดียวที่ส่งเข้าชีท
+  // มีอุปกรณ์เสริมค่อยขึ้น ไม่งั้นจะซ้ำกับตัวเลขของกล่องรหัสเครื่องเปล่า ๆ
+  $('#total-wrap').classList.toggle('hide', !xt);
+  $('#total-label').textContent = S.action === 'คืน' ? 'จำนวนเครื่องที่คืน' : 'จำนวนเครื่องที่เบิก';
+  $('#total-count').textContent = totalQty() + ' เครื่อง';
 }
 
 // ── หน้าถ่ายรูป ───────────────────────────────────────────────────────
@@ -1275,7 +1311,7 @@ function renderNoteStep() {
       return row2('อัปโหลดแล้ว', n + '/' + all.length + (n === all.length ? ' · กดส่งได้เลย ไม่ต้องรอ' : ''));
     })() +
     row2('สถานะ', S.result || 'ยังไม่เลือก') +
-    row2('เครื่อง', S.picked.length + ' เครื่อง') +
+    row2('เครื่อง', totalQty() + ' เครื่อง') +
     row2('พิกัด', geo.text() || 'ยังไม่มี');
 }
 function row2(k, v) {
@@ -1304,7 +1340,7 @@ function renderReview() {
     ['แผนก', S.user.dept],
     ['หัวข้อ', S.topic.name],
     ['สถานะใช้งาน', S.action],
-    ['จำนวนเครื่อง', String(S.picked.length)],
+    ['จำนวนเครื่อง', String(totalQty())],
     ['รหัสเครื่อง', codesText()],
     (extraType() ? [extraType(), S.pickedExtra.length ? S.pickedExtra.join(', ') : 'ไม่ได้เบิก'] : null),
     ['ผลตรวจ', S.result === 'มีปัญหา' ? 'มีปัญหา: ' + (S.issueText || '—') : 'ปกติ'],
@@ -1382,9 +1418,10 @@ function renderFooter() {
       : 'กดเข้าใช้งานได้เลย');
   } else if (S.screen === 'form') {
     label = 'ไปถ่ายรูป';
-    okState = S.picked.length > 0;
-    hintText = S.picked.length
-      ? (S.action === 'คืน' ? 'คืน ' + S.picked.length + ' เครื่อง' : 'เบิก ' + S.picked.length + ' เครื่อง')
+    var n = totalQty();
+    okState = n > 0;
+    hintText = n
+      ? (S.action === 'คืน' ? 'คืน ' + n + ' เครื่อง' : 'เบิก ' + n + ' เครื่อง')
       : 'ติ๊กรหัสเครื่องอย่างน้อย 1 ตัว';
   } else if (S.screen === 'shoot') {
     var st = curStep(), last = S.step >= steps().length - 1;
@@ -1626,7 +1663,7 @@ function buildPayload() {
     action: S.action,
     ref: S.ref,
     shift: S.shift,
-    qty: S.picked.length,
+    qty: totalQty(),
     codes: S.picked,
     extraCodes: S.pickedExtra,
     result: S.result,

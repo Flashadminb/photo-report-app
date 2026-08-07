@@ -25,7 +25,9 @@ var TOPIC_ID = {
     { topic: 'IDATA', order: 2, th: 'หน้าจอเปิดติด', en: 'Screen on', req: true, onIssue: false, hint: 'ให้เห็นหน้าจอสว่าง' },
     { topic: 'IDATA', order: 3, th: 'จุดที่มีปัญหา', en: 'Issue', req: true, onIssue: true, hint: 'ถ่ายใกล้เครื่องที่เสีย' }
   ],
-  rules: { live: true, gps: false, stamp: true, count: true, issue: true, draft: true }, countMode: true
+  rules: { live: true, gps: false, stamp: true, count: true, issue: true, draft: true }, countMode: true,
+  extraType: 'เลเซอร์ลบ', allDepts: ['IN LH', 'IN LH+BG'],
+  issueTags: ['หน้าจอแตก', 'แบตบวม', 'ฝาหาย', 'ความจำเต็ม']
 };
 
 var STAFF = [
@@ -35,7 +37,11 @@ var STAFF = [
 var ASSETS = [
   { code: 'PP-INLHBG-01', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
   { code: 'PP-INLHBG-02', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
-  { code: 'REPACK 01', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' }
+  { code: 'REPACK 01', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' },
+  { code: 'REPACK 02', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' },
+  { code: 'BPL 01', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' },
+  { code: 'BPL 02', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' },
+  { code: 'BPL 03', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' }
 ];
 var OPEN = [{ id: 'PP-20260806-1250', codes: 'PP-INLHBG-02', qty: 1, topic: 'Power Pallet',
   empId: '730075', empName: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', date: '6/8/2026', ts: '6/8/2026, 09:12:31', time: '09:12' }];

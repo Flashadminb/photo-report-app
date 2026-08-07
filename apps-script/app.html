@@ -155,7 +155,7 @@
         <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;
              border-top:2px solid var(--color-text);padding-top:8px">
           <span style="font-size:12px">จำนวนเครื่อง</span>
-          <strong id="codes-count" style="font-family:var(--font-heading);font-weight:800;font-size:22px">0 เครื่อง</strong>
+          <strong id="codes-count">0 เครื่อง</strong>
         </div>
       </div>
 
@@ -164,8 +164,16 @@
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="extra-chips"></div>
         <div style="margin-top:8px;font-size:12px;display:flex;justify-content:space-between;
              border-top:2px solid var(--color-divider);padding-top:8px">
-          <span id="extra-note">ไม่บังคับ — เบิกหรือไม่เบิกก็ได้</span><strong id="extra-count">0 ชิ้น</strong>
+          <span id="extra-note">ไม่บังคับ — เบิกหรือไม่เบิกก็ได้</span><strong id="extra-count">0 เครื่อง</strong>
         </div>
+      </div>
+
+      <!-- ยอดรวมตัวใหญ่ — ขึ้นเฉพาะหัวข้อที่มีอุปกรณ์เสริม เพราะต้องบวกสองกล่องเข้าด้วยกัน -->
+      <div id="total-wrap" class="hide" style="display:flex;align-items:center;justify-content:space-between;
+           border:2px solid var(--color-text);padding:10px 12px">
+        <span id="total-label" style="font-size:12px">จำนวนเครื่องที่เบิก</span>
+        <strong id="total-count"
+                style="font-family:var(--font-heading);font-weight:800;font-size:26px">0 เครื่อง</strong>
       </div>
     </section>
 

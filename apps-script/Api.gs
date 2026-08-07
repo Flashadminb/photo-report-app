@@ -329,12 +329,14 @@ function prepareSubmit_(p) {
   // จำนวนเครื่องนับจากรหัสที่ติ๊ก ไม่ให้กรอกเองแล้ว (ตัวเลขจะได้ตรงกับรหัสเสมอ)
   // ยังรับ p.qty ไว้เผื่อรายการเก่าที่ค้างในคิวออฟไลน์ตั้งแต่ก่อนเปลี่ยน
   var codes = (p.codes || []).map(s_).filter(Boolean);
-  var qty = codes.length || Number(p.qty) || 0;
-  if (!qty) throw new Error('ต้องติ๊กรหัสเครื่องอย่างน้อย 1 ตัว');
 
-  // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — ไม่นับรวมในจำนวนเครื่อง
-  // ต่อท้ายรหัสเครื่องไว้เฉย ๆ เพราะไม่ใช่ตัวหลักที่เบิก
+  // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) เป็นเครื่องเหมือนกัน แค่แยกรายการไว้
+  // เพราะทุกแผนกเบิกเสริมได้ — จึงนับรวมเป็นจำนวนเดียวกันกับเครื่องหลัก
   var extra = (p.extraCodes || []).map(s_).filter(Boolean);
+  var all = codes.concat(extra);
+
+  var qty = all.length || Number(p.qty) || 0;
+  if (!qty) throw new Error('ต้องติ๊กรหัสเครื่องอย่างน้อย 1 ตัว');
 
   // ตอนคืน: ต้องอ้างอิงรายการเบิกที่ยังค้างอยู่จริง
   // (อ่านชีทเฉพาะตอนคืนเท่านั้น ตอนเบิกไม่ต้องอ่าน จะได้เร็วขึ้น)
@@ -344,8 +346,8 @@ function prepareSubmit_(p) {
     if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
     var found = openJobs_(allRecords_(), null).filter(function (j) { return j.id === ref; })[0];
     if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
-    if (!codes.length) codes = found.codes ? found.codes.split(/\s*,\s*/) : [];
-    qty = codes.length || qty;
+    if (!all.length) all = found.codes ? found.codes.split(/\s*,\s*/).filter(Boolean) : [];
+    qty = all.length || qty;
   }
 
   // ถ่ายนอกกะยังส่งได้ แต่ต่อท้ายหมายเหตุไว้เป็นข้อยกเว้น
@@ -356,7 +358,7 @@ function prepareSubmit_(p) {
 
   return {
     u: u, topic: topic, action: action, result: result,
-    codes: codes.concat(extra), qty: qty, ref: ref, note: note
+    codes: all, qty: qty, ref: ref, note: note
   };
 }
 
