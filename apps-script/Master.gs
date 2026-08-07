@@ -123,6 +123,13 @@ function buildMaster_() {
         var v = tRuleText.extra || '';
         return (v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') ? '' : v;
       })(),
+      // เงื่อนไข tags เก็บ "อาการที่พบบ่อย" ของหัวข้อนั้น คั่นด้วยจุลภาค
+      // ว่าง = ใช้ชุดกลางใน Config.gs
+      issueTags: (function () {
+        var v = tRuleText.tags || '';
+        if (!v || v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') return [];
+        return v.split(/\s*,\s*/).map(s_).filter(Boolean);
+      })(),
       // หัวข้อที่นับจำนวนเครื่องเอง (ไม่ได้เลือกทีละรหัส) เช่น IDATA
       countMode: !!tRules.count
     };

@@ -1234,8 +1234,11 @@ function renderStatusStep() {
   $('#st-issue').classList.toggle('on', S.result === 'มีปัญหา');
   $('#issue-wrap').classList.toggle('hide', S.result !== 'มีปัญหา');
 
+  // อาการที่พบบ่อย — ใช้ของหัวข้อนั้นก่อน (ชีท "เงื่อนไข" แถว tags) ไม่มีค่อยใช้ชุดกลาง
+  var tagList = (S.topic && S.topic.issueTags && S.topic.issueTags.length)
+    ? S.topic.issueTags : S.issueTags;
   var tags = $('#issue-tags'); tags.innerHTML = '';
-  S.issueTags.forEach(function (x) {
+  tagList.forEach(function (x) {
     var b = el('button', { class: 'chip' + (S.issueText === x ? ' on' : '') }, [x]);
     b.addEventListener('click', function () { S.issueText = x; $('#issue-text').value = x; render(); });
     tags.appendChild(b);
