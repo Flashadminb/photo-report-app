@@ -167,9 +167,20 @@ function apiRefresh(empId) {
 function sessionPayload_(m, u) {
   var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
 
-  // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
+  // อ่านรายการค้างคืนของทุกคนรอบเดียว แล้วค่อยแยกใช้ 2 ทาง
   // ใช้ตัวที่อ่านเฉพาะคอลัมน์ที่ใช้ ไม่งั้นล็อกอินจะช้าลงเรื่อย ๆ ตามข้อมูลที่สะสม
-  var mine = openJobsFast_(isAdmin || u.role === CFG.V.ROLE_LEAD ? null : u.id);
+  var open = openJobsFast_(null);
+
+  // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
+  var seeAll = isAdmin || u.role === CFG.V.ROLE_LEAD;
+  var mine = seeAll ? open : open.filter(function (j) { return j.empId === u.id; });
+
+  // เครื่องที่คนอื่นเบิกไปแล้วยังไม่คืน — ส่งไปให้หน้าจอปิดปุ่มไว้
+  // จะได้ไม่ติ๊กไปจนถ่ายรูปเสร็จแล้วค่อยมาโดนปฏิเสธตอนกดส่ง
+  var busy = {}, b = busyCodes_(open);
+  Object.keys(b).forEach(function (c) {
+    busy[c] = { by: b[c].empName, id: b[c].empId, date: b[c].date, time: b[c].time };
+  });
 
   return {
     user: u,
@@ -180,6 +191,7 @@ function sessionPayload_(m, u) {
     shifts: m.shifts,
     issueTags: m.issueTags,
     openJobs: mine,
+    busyCodes: busy,
     today: fmtDate_(new Date()),
     serverTime: fmtStamp_(new Date())
   };
@@ -344,7 +356,7 @@ function prepareSubmit_(p) {
   if (action === CFG.V.RETURN) {
     ref = s_(p.ref);
     if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
-    var found = openJobs_(allRecords_(), null).filter(function (j) { return j.id === ref; })[0];
+    var found = openJobsFast_(null).filter(function (j) { return j.id === ref; })[0];
     if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
     if (!all.length) all = found.codes ? found.codes.split(/\s*,\s*/).filter(Boolean) : [];
     qty = all.length || qty;
@@ -387,6 +399,24 @@ function checkPhotoSlots_(ctx, slotNames) {
   }
 }
 
+/**
+ * กันเบิกเครื่องเดียวกันซ้ำซ้อน
+ *
+ * ต้องเรียก "ตอนกำลังจะเขียนจริง และอยู่ในล็อก" เท่านั้น
+ * ถ้าไปตรวจตั้งแต่ตอนเปิดหน้าจอ สองคนที่กดส่งพร้อมกันจะผ่านทั้งคู่
+ * เพราะต่างคนต่างเห็นว่าเครื่องยังว่างอยู่
+ */
+function assertCodesFree_(codes) {
+  if (!codes || !codes.length) return;
+  var busy = busyCodes_(openJobsFast_(null));
+  var clash = codes.filter(function (c) { return busy[c]; });
+  if (!clash.length) return;
+
+  var j = busy[clash[0]];
+  throw new Error('เครื่อง ' + clash.join(', ') + ' ถูกเบิกไปแล้วโดย ' + j.empName +
+    ' (' + j.date + ' ' + j.time + ' น.) ยังไม่คืน\n\nติ๊กเครื่องนั้นออกแล้วกดส่งใหม่ รูปที่ถ่ายไว้ไม่หาย');
+}
+
 /** เขียนแถวลงชีทแล้วคืนผลให้หน้าบ้าน */
 function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
   writeRecord_({
@@ -403,7 +433,9 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
     folderUrl: folderUrl,
     gps: s_(p.gps),
     ref: ctx.ref
-  }, photoRows);
+  }, photoRows, function () {
+    if (ctx.action === CFG.V.BORROW) assertCodesFree_(ctx.codes);
+  });
 
   if (p.clientId) rememberSubmitted_(p.clientId, recordId);
 

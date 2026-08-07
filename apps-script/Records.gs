@@ -167,6 +167,17 @@ function openJobsFast_(empId) {
   return out.reverse();
 }
 
+/** รหัสเครื่องที่ยังไม่ได้คืน -> รายการที่เบิกไป { รหัสเครื่อง: งาน } */
+function busyCodes_(openList) {
+  var busy = {};
+  (openList || []).forEach(function (j) {
+    s_(j.codes).split(/\s*,\s*/).forEach(function (c) {
+      if (c && !busy[c]) busy[c] = j;
+    });
+  });
+  return busy;
+}
+
 /** วันที่ของรายการ — อ่านจากรหัสรายการ (หัวข้อ-yyyyMMdd-เลขรัน) ไม่ต้องแปลงข้อความ */
 function recDay_(r) {
   var m = /-(\d{4})(\d{2})(\d{2})-/.exec(s_(r.id));
@@ -181,7 +192,11 @@ function recDay_(r) {
  * @param {Object} p  ข้อมูลรายการ (ผ่านการตรวจสอบมาแล้วจาก Api.gs)
  * @param {Array}  photoRows  [{slot,url,time,gps}, ...]
  */
-function writeRecord_(p, photoRows) {
+/**
+ * @param {Function} [guard]  ตรวจซ้ำ "ในล็อก" ก่อนเขียนจริง โยน Error เพื่อยกเลิกได้
+ *   จำเป็นตอนคนกดพร้อมกัน เพราะที่ตรวจไว้ก่อนหน้านั้นอาจล้าสมัยไปแล้ว
+ */
+function writeRecord_(p, photoRows, guard) {
   var ss = dataSS_();
   var shR = ss.getSheetByName(CFG.D.RECORDS);
   var C = CFG.COL.REC;
@@ -211,8 +226,9 @@ function writeRecord_(p, photoRows) {
   for (var i = 0; i < C.SENT; i++) if (row[i] === undefined) row[i] = '';
 
   var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  lock.waitLock(60000);   // กะเปลี่ยนคนส่งพร้อมกันเยอะ ให้รอคิวได้นานหน่อย
   try {
+    if (guard) guard();
     shR.appendRow(row);
     // บังคับให้รหัสพนักงานเป็นข้อความ กันชีทตัดเลข 0 นำหน้า
     shR.getRange(shR.getLastRow(), C.EMP_ID).setNumberFormat('@').setValue(p.empId);
