@@ -235,6 +235,13 @@ function buildMaster_() {
         if (!v || v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') return [];
         return v.split(/\s*,\s*/).map(s_).filter(Boolean);
       })(),
+      // เงื่อนไข alldept เก็บรายชื่อแผนกที่ให้เห็นเครื่องของทุกแผนก คั่นด้วยจุลภาค
+      // ปกติพนักงานจะเห็นเฉพาะเครื่องของแผนกตัวเอง
+      allDepts: (function () {
+        var v = tRuleText.alldept || '';
+        if (!v || v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') return [];
+        return v.split(/\s*,\s*/).map(s_).filter(Boolean);
+      })(),
       // หัวข้อที่นับจำนวนเครื่องเอง (ไม่ได้เลือกทีละรหัส) เช่น IDATA
       countMode: !!tRules.count
     };

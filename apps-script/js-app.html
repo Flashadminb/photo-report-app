@@ -324,8 +324,15 @@ function renderForm() {
   var pool = S.assets.filter(function (a) {
     return a.status === 'พร้อมใช้' && (a.type === t.assetType || a.type === t.name);
   });
+  // ปกติเห็นเฉพาะเครื่องของแผนกตัวเอง ยกเว้น 3 กรณีนี้ให้เห็นทุกแผนก:
+  //   แอดมิน/หัวหน้างาน · คนที่แผนกเป็น "ทุกแผนก" · แผนกที่ระบุไว้ในชีท (เงื่อนไข alldept)
+  var seeAll = S.isAdmin
+    || S.user.role === 'หัวหน้างาน'
+    || S.user.dept === 'ทุกแผนก'
+    || (t.allDepts || []).indexOf(S.user.dept) >= 0;
+
   var mine = pool.filter(function (a) { return a.dept === S.user.dept; });
-  var list = mine.length ? mine : pool;
+  var list = seeAll ? pool : (mine.length ? mine : pool);
 
   if (S.action === 'คืน') {
     // ตอนคืน ต้องเห็นเครื่องที่เบิกไปครบทุกตัวและติ๊กไว้ให้แล้ว
