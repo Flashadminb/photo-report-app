@@ -225,11 +225,22 @@
             <textarea class="input" rows="3" id="issue-text" placeholder="อธิบายอาการ เช่น แบตไม่เก็บไฟ ใช้ได้ 2 ชม."></textarea>
           </div>
           <div id="issue-photo-wrap">
-            <span class="label">รูปจุดที่มีปัญหา (บังคับ)</span>
-            <button id="btn-issue-photo" style="display:flex;align-items:center;justify-content:flex-start;width:100%;
-                    padding:12px;font-size:13px;cursor:pointer;font-family:var(--font-heading);font-weight:800;
-                    color:var(--color-text);background:transparent;border:2px dashed var(--color-divider)">＋ ถ่ายรูปจุดที่มีปัญหา</button>
-            <img id="issue-photo-img" class="hide" style="margin-top:8px;width:100%;max-height:220px;object-fit:cover">
+            <span class="label" id="issue-photo-label">รูปจุดที่มีปัญหา (บังคับ)</span>
+            <div style="font-size:12px;line-height:1.5;padding:8px 10px;margin-bottom:8px" class="surface">
+              เสียหลายเครื่องก็ถ่ายได้หลายรูป — ถ่ายสดหรือเลือกจากคลังภาพก็ได้ ผสมกันได้
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary btn-lg" id="btn-issue-cam" style="flex:1">ถ่ายรูป</button>
+              <button class="btn btn-secondary btn-lg" id="btn-issue-up"
+                      style="flex:1;border-width:2px;border-color:var(--color-text)">อัปโหลด</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;border-top:2px solid var(--color-divider);
+                        padding-top:8px;margin-top:10px">
+              <div style="font-size:12px;font-weight:600" id="issue-count">แนบแล้ว 0 รูป</div>
+              <button class="btn btn-secondary hide" id="btn-issue-clear"
+                      style="margin-left:auto;font-size:11px;padding:4px 9px">ล้างทั้งหมด</button>
+            </div>
+            <div class="gal" id="issue-grid" style="margin-top:8px"></div>
           </div>
         </div>
       </div>

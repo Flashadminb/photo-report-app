@@ -380,11 +380,22 @@ textarea.input{min-height:90px;resize:vertical}
             <textarea class="input" rows="3" id="issue-text" placeholder="อธิบายอาการ เช่น แบตไม่เก็บไฟ ใช้ได้ 2 ชม."></textarea>
           </div>
           <div id="issue-photo-wrap">
-            <span class="label">รูปจุดที่มีปัญหา (บังคับ)</span>
-            <button id="btn-issue-photo" style="display:flex;align-items:center;justify-content:flex-start;width:100%;
-                    padding:12px;font-size:13px;cursor:pointer;font-family:var(--font-heading);font-weight:800;
-                    color:var(--color-text);background:transparent;border:2px dashed var(--color-divider)">＋ ถ่ายรูปจุดที่มีปัญหา</button>
-            <img id="issue-photo-img" class="hide" style="margin-top:8px;width:100%;max-height:220px;object-fit:cover">
+            <span class="label" id="issue-photo-label">รูปจุดที่มีปัญหา (บังคับ)</span>
+            <div style="font-size:12px;line-height:1.5;padding:8px 10px;margin-bottom:8px" class="surface">
+              เสียหลายเครื่องก็ถ่ายได้หลายรูป — ถ่ายสดหรือเลือกจากคลังภาพก็ได้ ผสมกันได้
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary btn-lg" id="btn-issue-cam" style="flex:1">ถ่ายรูป</button>
+              <button class="btn btn-secondary btn-lg" id="btn-issue-up"
+                      style="flex:1;border-width:2px;border-color:var(--color-text)">อัปโหลด</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;border-top:2px solid var(--color-divider);
+                        padding-top:8px;margin-top:10px">
+              <div style="font-size:12px;font-weight:600" id="issue-count">แนบแล้ว 0 รูป</div>
+              <button class="btn btn-secondary hide" id="btn-issue-clear"
+                      style="margin-left:auto;font-size:11px;padding:4px 9px">ล้างทั้งหมด</button>
+            </div>
+            <div class="gal" id="issue-grid" style="margin-top:8px"></div>
           </div>
         </div>
       </div>
@@ -696,8 +707,9 @@ var S = {
   picked: [],             // รหัสเครื่องที่เลือก
   qty: 1,
   step: 0,
-  shots: {},              // { ชื่อช่อง: {dataUrl, time, gps} }
+  shots: {},              // { ชื่อช่อง: {dataUrl, time, gps} } — ช่องบังคับ ช่องละ 1 รูป
   extra: [],              // รูปแนบเพิ่ม [{id, dataUrl, time, gps, src}]
+  issueShots: [],         // รูปจุดที่มีปัญหา — หลายรูปได้ เสียหลายเครื่องก็ถ่ายครบทุกเครื่อง
   result: '', issueText: '', note: '',
   busy: false, queueCount: 0
 };
@@ -734,7 +746,7 @@ function shotCount() {
 function issueOk() {
   if (S.result !== 'มีปัญหา') return true;
   if (!S.issueText.trim()) return false;
-  if (rule('issue') && !S.shots[issueSlotName()]) return false;
+  if (rule('issue') && !S.issueShots.length) return false;
   return true;
 }
 function readyToSend() {
@@ -751,7 +763,8 @@ function go(screen) { S.screen = screen; render(); window.scrollTo(0, 0); $('#bo
 
 function resetJob() {
   S.topic = null; S.action = 'เบิก'; S.ref = ''; S.picked = []; S.qty = 1;
-  S.step = 0; S.shots = {}; S.extra = []; S.result = ''; S.issueText = ''; S.note = '';
+  S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
+  S.result = ''; S.issueText = ''; S.note = '';
 }
 
 function openTopic(t) {
@@ -1077,17 +1090,24 @@ function renderStatusStep() {
   });
   if ($('#issue-text').value !== S.issueText) $('#issue-text').value = S.issueText;
 
-  var need = rule('issue');
-  $('#issue-photo-wrap').classList.toggle('hide', !need);
-  var shot = S.shots[issueSlotName()];
-  var btn = $('#btn-issue-photo');
-  btn.textContent = shot ? 'ถ่ายรูปปัญหาแล้ว ✓ (แตะเพื่อถ่ายใหม่)' : '＋ ถ่ายรูป' + issueSlotName();
-  btn.style.background = shot ? 'var(--color-accent)' : 'transparent';
-  btn.style.color = shot ? 'var(--color-bg)' : 'var(--color-text)';
-  btn.style.borderColor = shot ? 'var(--color-accent)' : 'var(--color-divider)';
-  var img = $('#issue-photo-img');
-  img.classList.toggle('hide', !shot);
-  if (shot) img.src = shot.dataUrl;
+  $('#issue-photo-wrap').classList.toggle('hide', !rule('issue'));
+  $('#issue-photo-label').textContent = 'รูป' + issueSlotName() + ' (บังคับอย่างน้อย 1 รูป)';
+  $('#issue-count').textContent = 'แนบแล้ว ' + S.issueShots.length + ' รูป';
+  $('#btn-issue-clear').classList.toggle('hide', !S.issueShots.length);
+
+  var g = $('#issue-grid'); g.innerHTML = '';
+  S.issueShots.forEach(function (p) {
+    var x = el('button', { class: 'x' }, ['✕']);
+    x.addEventListener('click', function () {
+      S.issueShots = S.issueShots.filter(function (y) { return y.id !== p.id; });
+      render();
+    });
+    g.appendChild(el('div', { class: 'cell' }, [
+      el('img', { src: p.dataUrl, class: 'grayscale' }),
+      el('div', { class: 'bd' }, [(p.src === 'cam' ? 'ถ่าย' : 'อัปโหลด') + ' ' + p.time]),
+      x
+    ]));
+  });
 }
 
 function renderNoteStep() {
@@ -1150,8 +1170,9 @@ function allPhotoList() {
     var s = S.shots[sl.th];
     if (s) out.push({ slot: sl.th, dataUrl: s.dataUrl, time: s.time, gps: s.gps });
   });
-  var isu = S.shots[issueSlotName()];
-  if (isu) out.push({ slot: issueSlotName(), dataUrl: isu.dataUrl, time: isu.time, gps: isu.gps });
+  S.issueShots.forEach(function (p) {
+    out.push({ slot: issueSlotName(), dataUrl: p.dataUrl, time: p.time, gps: p.gps });
+  });
   S.extra.forEach(function (p) {
     out.push({ slot: 'เพิ่มเติม', dataUrl: p.dataUrl, time: p.time, gps: p.gps });
   });
@@ -1272,7 +1293,7 @@ function handleFiles(files, fromCamera) {
         if (!S.shots[req[i].th]) { S.step = i; break; }
       }
     } else if (cap.target === 'issue') {
-      S.shots[cap.slot] = list[0];
+      list.forEach(function (p) { S.issueShots.push(Object.assign({ id: uid('i') }, p)); });
     } else {
       list.forEach(function (p) { S.extra.push(Object.assign({ id: uid('p') }, p)); });
     }
@@ -1372,6 +1393,7 @@ function showDone(res) {
 function dropPhotos() {
   Object.keys(S.shots).forEach(function (k) { delete S.shots[k]; });
   S.extra.length = 0;
+  S.issueShots.length = 0;
 }
 
 function refreshQueueCount() {
@@ -1438,7 +1460,9 @@ function bind() {
   $('#st-ok').addEventListener('click', function () { S.result = 'ปกติ'; render(); });
   $('#st-issue').addEventListener('click', function () { S.result = 'มีปัญหา'; render(); });
   $('#issue-text').addEventListener('input', function (e) { S.issueText = e.target.value; renderFooter(); });
-  $('#btn-issue-photo').addEventListener('click', function () { capture('issue', issueSlotName(), true); });
+  $('#btn-issue-cam').addEventListener('click', function () { capture('issue', issueSlotName(), true); });
+  $('#btn-issue-up').addEventListener('click', function () { capture('issue', issueSlotName(), false); });
+  $('#btn-issue-clear').addEventListener('click', function () { S.issueShots = []; render(); });
   $('#note-text').addEventListener('input', function (e) { S.note = e.target.value; });
 
   $('#file-cam').addEventListener('change', function (e) { handleFiles(e.target.files, true); });
