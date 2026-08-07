@@ -43,10 +43,41 @@ function gateGo() {
 }
 
 function enterApp() {
+  $('#boot').classList.add('hide');
   $('#gate').classList.add('hide');
   $('#app').classList.remove('hide');
   renderAll();
   stampFresh();
+}
+
+/** ยอมแพ้แล้ว ให้ใส่รหัสเอง */
+function showGate(msg) {
+  $('#boot').classList.add('hide');
+  $('#gate').classList.remove('hide');
+  $('#gate-err').textContent = msg || '';
+  $('#gate-go').disabled = false;
+}
+
+/**
+ * โหลดข้อมูลใหม่แบบอยู่ที่เดิม — แท็บเดิม ตัวกรองเดิม เลื่อนค้างตรงไหนก็อยู่ตรงนั้น
+ * เปลี่ยนแค่ข้อมูล ไม่ใช่การรีเฟรชทั้งหน้าเว็บ
+ */
+function reloadHere() {
+  if (A.reloading) return;
+  A.reloading = true;
+
+  var icon = $('#btn-reload-icon');
+  if (icon) icon.classList.add('spin');
+  var y = window.scrollY;
+
+  reload().then(function () {
+    window.scrollTo(0, y);
+    stampFresh();
+    toast('ข้อมูลใหม่แล้ว');
+  }).then(function () {
+    A.reloading = false;
+    if (icon) icon.classList.remove('spin');
+  });
 }
 
 /**
@@ -58,10 +89,9 @@ function enterApp() {
  */
 function bootAuto(tries) {
   tries = tries || 0;
-  $('#gate-go').disabled = true;
-  $('#gate-err').textContent = tries
+  $('#boot-msg').textContent = tries
     ? 'เชื่อมต่อไม่ได้ กำลังลองใหม่ ' + tries + '/3…'
-    : 'กำลังเข้าระบบด้วยรหัสที่จำไว้…';
+    : 'กำลังเข้าระบบ…';
 
   load(A.empId).then(enterApp).catch(function (e) {
     var temporary = /เซิร์ฟเวอร์|ติดต่อ|timeout|network|failed to fetch/i.test(e.message);
@@ -69,8 +99,8 @@ function bootAuto(tries) {
       setTimeout(function () { bootAuto(tries + 1); }, 1500 * (tries + 1));
       return;
     }
-    $('#gate-err').textContent = e.message;
-    $('#gate-go').disabled = false;
+    $('#gate-pin').value = A.empId;
+    showGate(e.message);
   });
 }
 
@@ -953,16 +983,16 @@ function viewAssets(v) {
 
 $('#gate-go').addEventListener('click', gateGo);
 $('#gate-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') gateGo(); });
-$('#btn-reload').addEventListener('click', function () {
-  toast('กำลังโหลด…');
-  reload().then(function () { stampFresh(); toast('อัปเดตแล้ว'); });
-});
+$('#btn-reload').addEventListener('click', reloadHere);
 $('#btn-out').addEventListener('click', function () {
   store.del('adminId'); location.reload();
 });
 
+// จำรหัสไว้แล้วก็ข้ามหน้าใส่รหัสไปเลย ไม่ต้องให้เห็นวูบหนึ่งทุกครั้งที่รีเฟรช
 if (A.empId) {
-  $('#gate-pin').value = A.empId;
+  $('#boot').classList.remove('hide');
   bootAuto();
+} else {
+  showGate();
 }
 </script>
