@@ -242,11 +242,15 @@ function rpcFetch(name, args) {
   if (!API_URL) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า API_URL'));
   // ส่งเป็น text/plain เพื่อให้เป็น "simple request" เบราว์เซอร์จะได้ไม่ยิง preflight
   // (Apps Script ตอบ OPTIONS ไม่ได้)
+  var body = JSON.stringify({ fn: name, args: args });
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ fn: name, args: args }),
-    redirect: 'follow'
+    body: body,
+    redirect: 'follow',
+    // ให้คำขอวิ่งต่อแม้ผู้ใช้ปิดแท็บไปแล้ว (เบราว์เซอร์จำกัดขนาดไว้ที่ 64KB)
+    // ใช้กับงานที่กดแล้วไม่ต้องรอ เช่น ลบรูป — ปิดหน้าเว็บทันทีของก็ยังถูกลบ
+    keepalive: body.length < 60000
   }).catch(function () {
     throw new Error('ติดต่อเซิร์ฟเวอร์ไม่ได้');
   }).then(function (r) {
@@ -700,32 +704,46 @@ function viewVault(v) {
 
 function sidePhotos(side) { return (side && !side.deleted && side.photos) ? side.photos : []; }
 
-/** ลบรูปหลายชุดพร้อมกัน — ทีละ 100 รายการ ฝั่งชีททิ้งทั้งโฟลเดอร์ทีเดียวเลยเร็ว */
+/**
+ * ลบรูป — กดแล้วหายทันที ไม่ถาม ไม่ต้องรอ
+ *
+ * หน้าจอตัดออกก่อนเลย แล้วค่อยส่งคำสั่งไปลบเบื้องหลัง
+ * คำขอตั้ง keepalive ไว้ ปิดแท็บทันทีของก็ยังถูกลบต่อจนจบ
+ * ถ้าลบไม่สำเร็จจริง ๆ ค่อยเอากลับขึ้นจอแล้วบอกเหตุผล
+ */
 function bulkDeletePhotos(ids) {
   if (!guardEdit()) return;
-  if (!confirm('ลบรูปทั้งหมดของ ' + ids.length + ' ชุดที่เลือกไว้?\n\n' +
-    'ไฟล์จะถูกย้ายไปถังขยะ Drive (ล้างเองใน 30 วัน จึงจะคืนพื้นที่จริง)\n' +
-    'แถวและลิงก์ในชีท "รูปภาพ" ยังอยู่ครบ ใช้อ้างอิงย้อนหลังได้\n\n' +
-    'ใช้เวลาสักครู่ อย่าปิดหน้านี้')) return;
+  if (!ids || !ids.length) return;
 
+  // 1) ตัดออกจากจอทันที
+  markDeletedLocally(ids);
+  A.sel = {};
+  renderAll();
+  toast('ลบแล้ว ' + ids.length + ' ชุด · กำลังเก็บกวาดไฟล์ในไดรฟ์เบื้องหลัง');
+
+  // 2) ค่อยส่งไปลบจริงเบื้องหลัง แบ่งเป็นก้อนละ 100 ยิงพร้อมกันได้เลย
   var batches = [];
   for (var i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100));
 
-  toast('กำลังลบ ' + ids.length + ' ชุด…', false, 60000);
-  var files = 0, done = 0;
-  batches.reduce(function (chain, b) {
-    return chain.then(function () {
-      return rpc('apiAdminDeletePhotosBulk', A.empId, b).then(function (r) {
-        files += r.deleted || 0; done += r.records || 0;
-        // อัปเดตหน้าจอทันทีทีละชุดที่ลบเสร็จ ไม่ต้องรอโหลดข้อมูลใหม่ทั้งก้อน
-        markDeletedLocally(b);
-        A.sel = {}; renderAll();
-        toast('ลบแล้ว ' + done + '/' + ids.length + ' ชุด…', false, 60000);
-      });
+  batches.forEach(function (b) {
+    rpc('apiAdminDeletePhotosBulk', A.empId, b).catch(function (e) {
+      // ลบไม่สำเร็จ เอากลับขึ้นจอตามความจริง อย่าปล่อยให้เข้าใจผิดว่าลบไปแล้ว
+      unmarkDeletedLocally(b);
+      renderAll();
+      toast('ลบไม่สำเร็จ ' + b.length + ' ชุด: ' + e.message, true, 8000);
     });
-  }, Promise.resolve()).then(function () {
-    toast('ลบรูปแล้ว ' + done + ' ชุด (' + files + ' ไฟล์)');
-  }).catch(function (e) { toast(e.message, true); });
+  });
+}
+
+/** วนทุกฝั่ง (เบิก/คืน) ของรายการที่รหัสตรงกับที่ส่งมา */
+function eachSide(ids, fn) {
+  var hit = {};
+  ids.forEach(function (id) { hit[id] = true; });
+  A.pairs.forEach(function (p) {
+    [p.out, p.back].forEach(function (sd) {
+      if (sd && hit[sd.recordId]) fn(sd);
+    });
+  });
 }
 
 /**
@@ -733,14 +751,24 @@ function bulkDeletePhotos(ids) {
  *
  * ให้ผลเหมือนโหลดใหม่ทั้งก้อนแต่ไม่ต้องรอ เพราะฝั่งชีทเปลี่ยนแค่ช่องโฟลเดอร์
  * ส่วนแถวลิงก์ในชีท "รูปภาพ" ไม่ได้ถูกลบอยู่แล้ว
+ *
+ * เก็บของเดิมไว้ด้วย เผื่อลบไม่สำเร็จจะได้เอากลับขึ้นจอได้
  */
 function markDeletedLocally(ids) {
-  var hit = {};
-  ids.forEach(function (id) { hit[id] = true; });
-  A.pairs.forEach(function (p) {
-    [p.out, p.back].forEach(function (sd) {
-      if (sd && hit[sd.recordId]) { sd.deleted = true; sd.photos = []; }
-    });
+  eachSide(ids, function (sd) {
+    if (sd.deleted) return;
+    sd._undo = { deleted: sd.deleted, photos: sd.photos };
+    sd.deleted = true;
+    sd.photos = [];
+  });
+}
+
+function unmarkDeletedLocally(ids) {
+  eachSide(ids, function (sd) {
+    if (!sd._undo) return;
+    sd.deleted = sd._undo.deleted;
+    sd.photos = sd._undo.photos;
+    delete sd._undo;
   });
 }
 

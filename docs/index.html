@@ -531,11 +531,15 @@ function rpcFetch(name, args) {
   if (!API_URL) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า API_URL'));
   // ส่งเป็น text/plain เพื่อให้เป็น "simple request" เบราว์เซอร์จะได้ไม่ยิง preflight
   // (Apps Script ตอบ OPTIONS ไม่ได้)
+  var body = JSON.stringify({ fn: name, args: args });
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ fn: name, args: args }),
-    redirect: 'follow'
+    body: body,
+    redirect: 'follow',
+    // ให้คำขอวิ่งต่อแม้ผู้ใช้ปิดแท็บไปแล้ว (เบราว์เซอร์จำกัดขนาดไว้ที่ 64KB)
+    // ใช้กับงานที่กดแล้วไม่ต้องรอ เช่น ลบรูป — ปิดหน้าเว็บทันทีของก็ยังถูกลบ
+    keepalive: body.length < 60000
   }).catch(function () {
     throw new Error('ติดต่อเซิร์ฟเวอร์ไม่ได้');
   }).then(function (r) {
