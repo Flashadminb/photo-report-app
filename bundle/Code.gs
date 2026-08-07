@@ -611,6 +611,7 @@ function apiDispatch_(name) {
     apiRefresh: apiRefresh,
     apiSubmit: apiSubmit,
     apiBeginSubmit: apiBeginSubmit,
+    apiReserve: apiReserve,
     apiUploadPhoto: apiUploadPhoto,
     apiCommitSubmit: apiCommitSubmit,
     apiAdminLoad: apiAdminLoad,
@@ -802,6 +803,30 @@ function apiBeginSubmit(payload) {
     }
     var ctx = prepareSubmit_(p);
     var recordId = makeRecordId_(ctx.topic.id, new Date());
+    var folder = recordFolder_(recordId);
+    return ok_({ recordId: recordId, folderId: folder.getId(), folderUrl: folder.getUrl() });
+  });
+}
+
+/**
+ * จองรหัสรายการ + โฟลเดอร์ ตั้งแต่ถ่ายรูปใบแรก
+ *
+ * ตรวจแค่ผู้ใช้กับหัวข้อเท่านั้น เพราะตอนถ่ายรูปใบแรกยังกรอกข้อมูลไม่ครบ
+ * (ยังไม่เลือกสถานะเครื่อง ยังไม่มีอาการ ฯลฯ) — การตรวจเต็มไปเกิดตอน apiCommitSubmit
+ *
+ * มีไว้ให้หน้าบ้านทยอยอัปโหลดรูประหว่างที่พนักงานยังถ่ายจุดอื่นอยู่
+ * พอกดส่งจริงรูปขึ้นไปหมดแล้ว เหลือแค่เขียนแถวลงชีท
+ */
+function apiReserve(empId, topicId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    requireUser_(m, empId);
+    var topic = null;
+    m.topics.forEach(function (t) { if (t.id === s_(topicId)) topic = t; });
+    if (!topic) throw new Error('ไม่พบหัวข้อ ' + s_(topicId) + ' ในชีทหัวข้อสำรวจ');
+    if (!topic.on) throw new Error('หัวข้อ "' + topic.name + '" ถูกปิดใช้งานอยู่');
+
+    var recordId = makeRecordId_(topic.id, new Date());
     var folder = recordFolder_(recordId);
     return ok_({ recordId: recordId, folderId: folder.getId(), folderUrl: folder.getUrl() });
   });

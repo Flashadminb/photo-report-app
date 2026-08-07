@@ -304,6 +304,32 @@
   </div>
 </div>
 
+<!-- หน้ากล้องในตัว — ใช้กับหน้าแนบรูป (IDATA) และรูปจุดที่มีปัญหา
+     ถ่ายติดกันหลายใบได้โดยไม่ออกจากแอพ ระบบจึงไม่ฆ่าหน้าเว็บทิ้ง -->
+<div id="camov" class="hide" style="position:fixed;inset:0;z-index:400;background:#000;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;color:#fff">
+    <button id="camov-close" style="border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;
+            width:32px;height:32px;cursor:pointer;font-size:16px">✕</button>
+    <span id="camov-title" style="flex:1;font-family:var(--font-heading);font-weight:800;font-size:15px"></span>
+    <span id="camov-count" style="font-size:12px;opacity:.8"></span>
+  </div>
+  <div style="flex:1;position:relative;overflow:hidden;background:#111">
+    <video id="camov-video" playsinline autoplay muted
+           style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+    <div id="camov-stamp" style="position:absolute;left:0;right:0;top:0;padding:7px 10px;
+         background:rgba(0,0,0,.6);color:#fff;font-size:10px;letter-spacing:.04em;display:flex;gap:6px;align-items:center">
+      <span style="background:var(--color-accent);padding:1px 5px;font-size:9px">ล็อก</span><span id="camov-stamp-txt"></span>
+    </div>
+    <div id="camov-msg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+         color:#fff;font-size:13px;text-align:center;padding:0 24px;line-height:1.6"></div>
+  </div>
+  <div style="padding:12px 14px;display:flex;gap:10px;align-items:center;background:#000">
+    <div id="camov-thumbs" style="display:flex;gap:4px;flex:1;overflow-x:auto"></div>
+    <button id="camov-shoot" class="btn btn-primary btn-lg" style="justify-content:center;min-width:110px">ถ่าย</button>
+    <button id="camov-done" class="btn btn-lg" style="justify-content:center;background:#fff;color:#000">เสร็จ</button>
+  </div>
+</div>
+
 <input type="file" accept="image/*" capture="environment" id="file-cam" style="display:none">
 <input type="file" accept="image/*" multiple id="file-up" style="display:none">
 

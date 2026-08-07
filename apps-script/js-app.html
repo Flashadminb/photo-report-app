@@ -95,7 +95,8 @@ function go(screen) {
 }
 
 function resetJob() {
-  S.topic = null; S.action = 'เบิก'; S.ref = ''; S.picked = []; S.pickedExtra = []; S.qty = 1;
+  S.topic = null; S.action = 'เบิก'; S.ref = ''; S.borrowedQty = 0;
+  S.picked = []; S.pickedExtra = []; S.qty = 1;
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
 }
@@ -115,13 +116,15 @@ function startReturn(job) {
   S.ref = job.id;
   S.picked = job.codes ? job.codes.split(/\s*,\s*/).filter(Boolean) : [];
   S.qty = job.qty || S.picked.length || 1;
+  S.borrowedQty = job.qty || S.picked.length || 0;   // ไว้เทียบว่าคืนครบไหม
   S.shift = S.user.shift;
-  go('shoot');
+  // แวะหน้าข้อมูลงานก่อน เพื่อให้แก้จำนวนที่คืนจริงได้ (เบิก 10 คืน 8 ก็มี)
+  go('form');
 }
 
 function back() {
   if (S.screen === 'shoot' && S.step > 0) { S.step--; render(); return; }
-  if (S.screen === 'shoot') { go(S.action === 'คืน' ? 'home' : 'form'); return; }
+  if (S.screen === 'shoot') { go('form'); return; }
   if (S.screen === 'review') { S.step = steps().length - 1; go('shoot'); return; }
   if (S.screen === 'form') { go('home'); return; }
   go('home');
@@ -268,7 +271,10 @@ function renderHome() {
 
 function renderForm() {
   var t = S.topic, u = S.user;
-  $('#form-top').innerHTML = '<strong>' + esc(t.name) + '</strong> — ข้อมูลจะถูกส่งเข้าชีทอัตโนมัติ';
+  $('#form-top').innerHTML = S.action === 'คืน'
+    ? '<strong>คืน ' + esc(t.name) + '</strong> — เบิกไป ' + (S.borrowedQty || '?') +
+      ' เครื่อง (' + esc(S.ref) + ')<br>ถ้าคืนไม่ครบ แก้จำนวนด้านล่างให้ตรงกับที่คืนจริง'
+    : '<strong>' + esc(t.name) + '</strong> — ข้อมูลจะถูกส่งเข้าชีทอัตโนมัติ';
 
   var info = [
     ['วันที่', S.today], ['กะการทำงาน', S.shift], ['ผู้เบิก', u.name],
@@ -308,8 +314,20 @@ function renderForm() {
   var mine = pool.filter(function (a) { return a.dept === S.user.dept; });
   var list = mine.length ? mine : pool;
 
-  $('#codes-label').textContent = t.countMode
-    ? 'รหัสเครื่อง (ถ้ามีในทะเบียน — ไม่บังคับ)' : 'รหัสเครื่อง (เลือกได้หลายคัน)';
+  if (S.action === 'คืน') {
+    // ตอนคืน ต้องเห็นเครื่องที่เบิกไปครบทุกตัวและติ๊กไว้ให้แล้ว
+    // แม้ทะเบียนจะเปลี่ยนสถานะหรือย้ายแผนกไปแล้วก็ตาม จะได้แค่ติ๊กออกถ้าคืนไม่ครบ
+    var have = {};
+    list.forEach(function (a) { have[a.code] = true; });
+    var missing = S.picked.filter(function (c) { return !have[c]; })
+      .map(function (c) { return { code: c, type: t.assetType, dept: S.user.dept, status: 'พร้อมใช้' }; });
+    var isPicked = function (a) { return S.picked.indexOf(a.code) >= 0; };
+    list = missing.concat(list.filter(isPicked)).concat(list.filter(function (a) { return !isPicked(a); }));
+  }
+
+  $('#codes-label').textContent = S.action === 'คืน'
+    ? 'รหัสเครื่องที่คืน (ติ๊กออกถ้าคืนไม่ครบ)'
+    : (t.countMode ? 'รหัสเครื่อง (ถ้ามีในทะเบียน — ไม่บังคับ)' : 'รหัสเครื่อง (เลือกได้หลายคัน)');
   var cw = $('#code-chips'); cw.innerHTML = '';
   list.forEach(function (a) {
     var on = S.picked.indexOf(a.code) >= 0;
@@ -670,44 +688,48 @@ function stampLines(slotName) {
 //  เครื่องที่เปิดกล้องแบบนี้ไม่ได้ จะถอยไปใช้แอพกล้องเหมือนเดิมอัตโนมัติ
 // ══════════════════════════════════════════════════════════════════════
 
-var camStream = null, camBusy = false;
+var camStream = null, camBusy = false, camFailed = false, camEl = '#cam-video';
 
 function camSupported() {
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
 
-function startCam() {
-  if (camStream || camBusy || !camSupported()) return Promise.resolve(!!camStream);
-  camBusy = true;
+function startCam(sel) {
+  var target = sel || '#cam-video';
+  if (camStream && camEl === target) return Promise.resolve(true);
+  if (camStream) stopCam();
+  if (camBusy || !camSupported()) return Promise.resolve(false);
+  camBusy = true; camEl = target;
   return navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
     audio: false
   }).then(function (s) {
     camStream = s;
-    var v = $('#cam-video');
+    var v = $(camEl);
     v.srcObject = s;
     v.play().catch(function () {});
     camBusy = false;
-    render();
+    render(); renderCamOverlay();
     return true;
   }).catch(function () {
     camBusy = false;
     camFailed = true;  // ไม่ให้สิทธิ์กล้อง หรือเครื่องไม่รองรับ — ถอยไปใช้แอพกล้องของเครื่อง
-    render();
+    render(); renderCamOverlay();
     return false;
   });
 }
-var camFailed = false;
 
 function stopCam() {
   if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; }
-  var v = $('#cam-video');
-  if (v) { v.srcObject = null; v.classList.add('hide'); }
+  ['#cam-video', '#camov-video'].forEach(function (id) {
+    var v = $(id);
+    if (v) { v.srcObject = null; if (id === '#cam-video') v.classList.add('hide'); }
+  });
 }
 
 /** ดึงภาพนิ่งจากกล้องที่กำลังแสดงอยู่ */
 function grabFrame() {
-  var v = $('#cam-video');
+  var v = $(camEl);
   var w = v.videoWidth, h = v.videoHeight;
   if (!w || !h) return Promise.reject(new Error('กล้องยังไม่พร้อม'));
   var c = document.createElement('canvas');
@@ -730,6 +752,48 @@ function shootSlot(slotName) {
     return;
   }
   capture('slot', slotName, true);
+}
+
+// ── หน้ากล้องในตัว (ใช้กับหน้าแนบรูป และรูปจุดที่มีปัญหา) ────────────────
+
+var camOv = null;   // { target, slot, title } หรือ null เมื่อปิดอยู่
+
+function openCam(target, slotName, title) {
+  if (!camSupported()) { capture(target, slotName, true); return; }   // เครื่องเก่า — ใช้แอพกล้อง
+  camOv = { target: target, slot: slotName, title: title };
+  CAP = { target: target, slot: slotName };
+  $('#camov').classList.remove('hide');
+  renderCamOverlay();
+  startCam('#camov-video').then(function (ok) {
+    if (!ok) { closeCam(); capture(target, slotName, true); }   // เปิดไม่ได้ ถอยไปใช้แอพกล้อง
+  });
+}
+
+function closeCam() {
+  camOv = null; CAP = null;
+  stopCam();
+  $('#camov').classList.add('hide');
+  render();
+}
+
+function camOvList() {
+  if (!camOv) return [];
+  return camOv.target === 'issue' ? S.issueShots : S.extra;
+}
+
+function renderCamOverlay() {
+  if (!camOv) return;
+  var list = camOvList(), n = nowParts();
+  $('#camov-title').textContent = camOv.title || 'ถ่ายรูป';
+  $('#camov-count').textContent = 'ถ่ายแล้ว ' + list.length + ' รูป';
+  $('#camov-stamp-txt').textContent = (geo.text() ? 'GPS ' + geo.text() + ' · ' : '') + n.date + ' ' + n.time;
+  $('#camov-msg').textContent = camBusy ? 'กำลังเปิดกล้อง… กด "อนุญาต" เมื่อระบบถาม' : '';
+  $('#camov-shoot').disabled = !camStream || S.busy;
+
+  var t = $('#camov-thumbs'); t.innerHTML = '';
+  list.slice(-6).forEach(function (p) {
+    t.appendChild(el('img', { src: p.dataUrl, style: 'width:44px;height:44px;object-fit:cover;flex:none' }));
+  });
 }
 
 function capture(target, slotName, useCamera) {
@@ -768,9 +832,13 @@ function handleFiles(files, fromCamera) {
     } else {
       list.forEach(function (p) { S.extra.push(Object.assign({ id: uid('p') }, p)); });
     }
-    S.busy = false; CAP = null; render(); saveDraft();
+    S.busy = false;
+    if (!camOv) CAP = null;          // หน้ากล้องเปิดอยู่ ให้ถ่ายใบถัดไปต่อได้เลย
+    render(); renderCamOverlay(); saveDraft();
   }).catch(function (e) {
-    S.busy = false; CAP = null; render();
+    S.busy = false;
+    if (!camOv) CAP = null;
+    render(); renderCamOverlay();
     toast(e.message || 'ประมวลผลรูปไม่สำเร็จ', true);
   });
 }
@@ -1023,14 +1091,27 @@ function bind() {
     render();
     shootSlot(st.slot.th);
   });
-  $('#btn-gal-cam').addEventListener('click', function () { capture('extra', 'เพิ่มเติม', true); });
+  $('#btn-gal-cam').addEventListener('click', function () {
+    openCam('extra', 'เพิ่มเติม', 'ถ่ายรูปอุปกรณ์');
+  });
+
+  $('#camov-shoot').addEventListener('click', function () {
+    if (!camStream || S.busy) return;
+    S.busy = true; renderCamOverlay();
+    grabFrame().then(function (f) { handleFiles([f], true); })
+      .catch(function (e) { S.busy = false; renderCamOverlay(); toast(e.message, true); });
+  });
+  $('#camov-close').addEventListener('click', closeCam);
+  $('#camov-done').addEventListener('click', closeCam);
   $('#btn-gal-up').addEventListener('click', function () { capture('extra', 'เพิ่มเติม', false); });
   $('#btn-gal-clear').addEventListener('click', function () { S.extra = []; render(); });
 
   $('#st-ok').addEventListener('click', function () { S.result = 'ปกติ'; render(); });
   $('#st-issue').addEventListener('click', function () { S.result = 'มีปัญหา'; render(); });
   $('#issue-text').addEventListener('input', function (e) { S.issueText = e.target.value; renderFooter(); });
-  $('#btn-issue-cam').addEventListener('click', function () { capture('issue', issueSlotName(), true); });
+  $('#btn-issue-cam').addEventListener('click', function () {
+    openCam('issue', issueSlotName(), 'ถ่ายรูป' + issueSlotName());
+  });
   $('#btn-issue-up').addEventListener('click', function () { capture('issue', issueSlotName(), false); });
   $('#btn-issue-clear').addEventListener('click', function () { S.issueShots = []; render(); });
   $('#note-text').addEventListener('input', function (e) { S.note = e.target.value; });
