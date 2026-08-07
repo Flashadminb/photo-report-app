@@ -202,11 +202,13 @@ function viewVault(v) {
     h('div', { style: 'margin-left:auto;font-size:13px' }, [list.length + ' รายการ'])
   ]));
 
-  // แถบลบหลายรายการ — โผล่เมื่อติ๊กเลือกไว้
+  // แถบลบหลายรายการ — โผล่เมื่อติ๊กเลือกไว้ (ติ๊กเป็น "ชุด" เบิกกับคืนไปด้วยกัน)
   var ids = Object.keys(A.sel).filter(function (k) { return A.sel[k]; });
   if (ids.length) {
-    var del = h('button', { class: 'btn btn-primary' }, ['ลบรูปที่เลือก ' + ids.length + ' ชุด']);
-    del.addEventListener('click', function () { bulkDeletePhotos(ids); });
+    var recIds = selectedRecordIds();
+    var del = h('button', { class: 'btn btn-primary' },
+      ['ลบรูปที่เลือก ' + ids.length + ' ชุด (' + recIds.length + ' รายการ)']);
+    del.addEventListener('click', function () { bulkDeletePhotos(recIds); });
     var cancel = h('button', { class: 'btn btn-secondary' }, ['ยกเลิกที่เลือก']);
     cancel.addEventListener('click', function () { A.sel = {}; renderAll(); });
     v.appendChild(h('div', {
@@ -223,11 +225,7 @@ function viewVault(v) {
   if (A.canEdit && list.length) {
     var selAll = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['เลือกทั้งหมดที่เห็น']);
     selAll.addEventListener('click', function () {
-      list.forEach(function (p) {
-        [p.out, p.back].forEach(function (sd) {
-          if (sd && !sd.deleted && sidePhotos(sd).length) A.sel[sd.recordId] = true;
-        });
-      });
+      list.forEach(function (p) { if (pairHasPhotos(p)) A.sel[p.id] = true; });
       renderAll();
     });
     v.appendChild(h('div', { style: 'margin-bottom:14px' }, [selAll]));
@@ -250,6 +248,20 @@ function viewVault(v) {
 
 function sidePhotos(side) { return (side && !side.deleted && side.photos) ? side.photos : []; }
 
+/** ที่ติ๊กไว้เป็น "ชุด" — แปลงกลับเป็นรหัสรายการจริง ทั้งฝั่งเบิกและฝั่งคืน */
+function selectedRecordIds() {
+  var seen = {}, out = [];
+  A.pairs.forEach(function (p) {
+    if (!A.sel[p.id]) return;
+    pairIds(p).forEach(function (id) {
+      if (seen[id]) return;
+      seen[id] = true;
+      out.push(id);
+    });
+  });
+  return out;
+}
+
 /**
  * ลบรูป — กดแล้วหายทันที ไม่ถาม ไม่ต้องรอ
  *
@@ -262,10 +274,10 @@ function bulkDeletePhotos(ids) {
   if (!ids || !ids.length) return;
 
   // 1) ตัดออกจากจอทันที
-  markDeletedLocally(ids);
+  var nPhoto = markDeletedLocally(ids);
   A.sel = {};
   renderAll();
-  toast('ลบแล้ว ' + ids.length + ' ชุด · กำลังเก็บกวาดไฟล์ในไดรฟ์เบื้องหลัง');
+  toast('ลบแล้ว ' + nPhoto + ' รูป · กำลังเก็บกวาดไฟล์ในไดรฟ์เบื้องหลัง');
 
   // 2) ค่อยส่งไปลบจริงเบื้องหลัง แบ่งเป็นก้อนละ 100 ยิงพร้อมกันได้เลย
   var batches = [];
@@ -301,12 +313,15 @@ function eachSide(ids, fn) {
  * เก็บของเดิมไว้ด้วย เผื่อลบไม่สำเร็จจะได้เอากลับขึ้นจอได้
  */
 function markDeletedLocally(ids) {
+  var n = 0;
   eachSide(ids, function (sd) {
     if (sd.deleted) return;
+    n += (sd.photos || []).length;
     sd._undo = { deleted: sd.deleted, photos: sd.photos };
     sd.deleted = true;
     sd.photos = [];
   });
+  return n;
 }
 
 function unmarkDeletedLocally(ids) {
@@ -316,6 +331,22 @@ function unmarkDeletedLocally(ids) {
     sd.photos = sd._undo.photos;
     delete sd._undo;
   });
+}
+
+/** รหัสรายการทั้งชุด — เบิกกับคืนถือเป็นชุดเดียวกัน ลบทีเดียวไปพร้อมกัน */
+function pairIds(p) {
+  var seen = {}, out = [];
+  [p.out, p.back].forEach(function (sd) {
+    if (!sd || !sd.recordId || seen[sd.recordId]) return;
+    seen[sd.recordId] = true;
+    out.push(sd.recordId);
+  });
+  return out;
+}
+
+/** ชุดนี้ยังมีรูปเหลือให้ลบไหม (ลบไปแล้วทั้งสองฝั่งก็ไม่ต้องโชว์ปุ่ม) */
+function pairHasPhotos(p) {
+  return sidePhotos(p.out).length > 0 || sidePhotos(p.back).length > 0;
 }
 
 function pairCard(p) {
@@ -333,6 +364,27 @@ function pairCard(p) {
         (mismatch ? 'background:var(--color-accent);color:var(--color-bg)' : 'background:var(--color-surface)')
     }, ['เบิก ' + p.qty + ' เครื่อง → คืน ' + (p.back ? (p.qtyBack !== null ? p.qtyBack : p.qty) + ' เครื่อง' : 'ยังไม่คืน')])
   ]);
+
+  // ── ติ๊ก/ลบ อยู่ที่หัวการ์ด ทำทีเดียวได้ทั้งเบิกและคืน ──
+  if (A.canEdit && pairHasPhotos(p)) {
+    var ids = pairIds(p);
+    var nPhoto = sidePhotos(p.out).length + sidePhotos(p.back).length;
+    var both = ids.length > 1 ? ' (เบิก+คืน)' : '';
+
+    // ใช้ปุ่มแทน checkbox ใน <label> เพราะคลิกทีเดียวมันสลับสองรอบ กลายเป็นไม่ติ๊ก
+    var on = !!A.sel[p.id];
+    var tick = h('button', { class: 'chip' + (on ? ' on' : '') }, [(on ? '☑ ' : '☐ ') + 'เลือกลบ']);
+    tick.addEventListener('click', function () {
+      if (A.sel[p.id]) delete A.sel[p.id]; else A.sel[p.id] = true;
+      renderAll();
+    });
+    head.appendChild(tick);
+
+    var del = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' },
+      ['ลบรูปทั้งชุด' + both + ' · ' + nPhoto + ' รูป']);
+    del.addEventListener('click', function () { bulkDeletePhotos(ids); });
+    head.appendChild(del);
+  }
 
   var inner = h('div', { class: 'in' }, []);
 
@@ -359,23 +411,6 @@ function pairCard(p) {
     if (side && side.folder && !side.deleted) {
       title.appendChild(h('a', { href: side.folder, target: '_blank', rel: 'noopener',
         class: 'btn btn-ghost', style: 'margin-left:auto;font-size:12px' }, ['เปิดโฟลเดอร์ Drive']));
-    }
-    if (side && A.canEdit && !side.deleted && sidePhotos(side).length) {
-      var id = side.recordId;
-      // ใช้ปุ่มแทน checkbox ใน <label> เพราะคลิกทีเดียวมันสลับสองรอบ กลายเป็นไม่ติ๊ก
-      var on = !!A.sel[id];
-      var tick = h('button', { class: 'chip' + (on ? ' on' : '') },
-        [(on ? '☑ ' : '☐ ') + 'เลือกลบ']);
-      tick.addEventListener('click', function () {
-        if (A.sel[id]) delete A.sel[id]; else A.sel[id] = true;
-        renderAll();
-      });
-      title.appendChild(tick);
-
-      var del = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['ลบชุดนี้']);
-      // ลบชุดเดียวก็ใช้ทางเดียวกับลบหลายชุด จะได้เห็นผลทันทีเหมือนกัน (ถามยืนยันในนั้นแล้ว)
-      del.addEventListener('click', function () { bulkDeletePhotos([id]); });
-      title.appendChild(del);
     }
     box.appendChild(title);
 
