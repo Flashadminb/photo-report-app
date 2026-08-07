@@ -458,6 +458,7 @@ var A = {
   user: null, canEdit: false,
   master: null, pairs: [], records: [], openJobs: [], today: '',
   tab: 'vault',
+  sel: {},          // ชุดรูปที่ติ๊กไว้เพื่อลบพร้อมกัน { รหัสรายการ: true }
   fTopic: 'ทั้งหมด', fDate: 'ทั้งหมด', fSearch: ''
 };
 
@@ -557,19 +558,66 @@ function statCard(k, v, accent) {
 
 function viewVault(v) {
   var topics = A.master.topics;
-  var pick = A.fTopic === 'ทั้งหมด' ? null : A.fTopic;
-  var list = A.pairs.filter(function (p) { return !pick || p.topic === pick; });
+  var dates = ['ทั้งหมด'].concat(A.pairs.map(function (p) { return p.date; })
+    .filter(function (x, i, a) { return x && a.indexOf(x) === i; }));
 
-  var sel = h('select', { class: 'input', style: 'width:auto' },
+  var list = A.pairs.filter(function (p) {
+    if (A.fTopic !== 'ทั้งหมด' && p.topic !== A.fTopic) return false;
+    if (A.fDate !== 'ทั้งหมด' && p.date !== A.fDate) return false;
+    return true;
+  });
+
+  var selTopic = h('select', { class: 'input', style: 'width:auto' },
     ['ทั้งหมด'].concat(topics.map(function (t) { return t.name; })).map(function (n) {
       return h('option', { value: n, selected: n === A.fTopic ? 'selected' : null }, [n]);
     }));
-  sel.addEventListener('change', function (e) { A.fTopic = e.target.value; renderAll(); });
+  selTopic.addEventListener('change', function (e) { A.fTopic = e.target.value; A.sel = {}; renderAll(); });
+
+  var selDate = h('select', { class: 'input', style: 'width:auto' }, dates.map(function (n) {
+    return h('option', { value: n, selected: n === A.fDate ? 'selected' : null }, [n]);
+  }));
+  selDate.addEventListener('change', function (e) { A.fDate = e.target.value; A.sel = {}; renderAll(); });
+
+  var clear = h('button', { class: 'btn btn-secondary' }, ['ล้างตัวกรอง']);
+  clear.addEventListener('click', function () { A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.sel = {}; renderAll(); });
 
   v.appendChild(h('div', { class: 'bar' }, [
-    h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), sel]),
+    h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), selTopic]),
+    h('div', {}, [h('span', { class: 'label' }, ['วันที่']), selDate]),
+    clear,
     h('div', { style: 'margin-left:auto;font-size:13px' }, [list.length + ' รายการ'])
   ]));
+
+  // แถบลบหลายรายการ — โผล่เมื่อติ๊กเลือกไว้
+  var ids = Object.keys(A.sel).filter(function (k) { return A.sel[k]; });
+  if (ids.length) {
+    var del = h('button', { class: 'btn btn-primary' }, ['ลบรูปที่เลือก ' + ids.length + ' ชุด']);
+    del.addEventListener('click', function () { bulkDeletePhotos(ids); });
+    var cancel = h('button', { class: 'btn btn-secondary' }, ['ยกเลิกที่เลือก']);
+    cancel.addEventListener('click', function () { A.sel = {}; renderAll(); });
+    v.appendChild(h('div', {
+      style: 'position:sticky;top:110px;z-index:18;display:flex;gap:10px;align-items:center;' +
+             'padding:10px 14px;margin-bottom:14px;background:var(--color-accent-100);' +
+             'border-top:2px solid var(--color-accent)'
+    }, [
+      h('strong', { style: 'flex:1;font-size:13px' }, ['เลือกไว้ ' + ids.length + ' ชุด']),
+      cancel, del
+    ]));
+  }
+
+  // ติ๊กทั้งหมดที่เห็นอยู่
+  if (A.canEdit && list.length) {
+    var selAll = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['เลือกทั้งหมดที่เห็น']);
+    selAll.addEventListener('click', function () {
+      list.forEach(function (p) {
+        [p.out, p.back].forEach(function (sd) {
+          if (sd && !sd.deleted && sidePhotos(sd).length) A.sel[sd.recordId] = true;
+        });
+      });
+      renderAll();
+    });
+    v.appendChild(h('div', { style: 'margin-bottom:14px' }, [selAll]));
+  }
 
   v.appendChild(h('div', { class: 'grid4', style: 'margin-bottom:22px' }, [
     statCard('เบิก', list.length),
@@ -587,6 +635,34 @@ function viewVault(v) {
 }
 
 function sidePhotos(side) { return (side && !side.deleted && side.photos) ? side.photos : []; }
+
+/** ลบรูปหลายชุดพร้อมกัน — ทีละ 25 รายการเพราะการลบไฟล์ใน Drive ช้า */
+function bulkDeletePhotos(ids) {
+  if (!guardEdit()) return;
+  if (!confirm('ลบรูปทั้งหมดของ ' + ids.length + ' ชุดที่เลือกไว้?\n\n' +
+    'ไฟล์จะถูกย้ายไปถังขยะ Drive (ล้างเองใน 30 วัน จึงจะคืนพื้นที่จริง)\n' +
+    'แถวและลิงก์ในชีท "รูปภาพ" ยังอยู่ครบ ใช้อ้างอิงย้อนหลังได้\n\n' +
+    'ใช้เวลาสักครู่ อย่าปิดหน้านี้')) return;
+
+  var batches = [];
+  for (var i = 0; i < ids.length; i += 25) batches.push(ids.slice(i, i + 25));
+
+  toast('กำลังลบ ' + ids.length + ' ชุด…', false, 60000);
+  var files = 0, done = 0;
+  batches.reduce(function (chain, b) {
+    return chain.then(function () {
+      return rpc('apiAdminDeletePhotosBulk', A.empId, b).then(function (r) {
+        files += r.deleted || 0; done += r.records || 0;
+        toast('ลบแล้ว ' + done + '/' + ids.length + ' ชุด…', false, 60000);
+      });
+    });
+  }, Promise.resolve()).then(function () {
+    A.sel = {};
+    return reload();
+  }).then(function () {
+    toast('ลบรูปแล้ว ' + done + ' ชุด (' + files + ' ไฟล์)');
+  }).catch(function (e) { toast(e.message, true); });
+}
 
 function pairCard(p) {
   var mismatch = !p.back || (p.qtyBack !== null && p.qtyBack !== p.qty);
@@ -631,12 +707,23 @@ function pairCard(p) {
         class: 'btn btn-ghost', style: 'margin-left:auto;font-size:12px' }, ['เปิดโฟลเดอร์ Drive']));
     }
     if (side && A.canEdit && !side.deleted && sidePhotos(side).length) {
-      var del = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['ลบรูปชุดนี้']);
+      var id = side.recordId;
+      // ใช้ปุ่มแทน checkbox ใน <label> เพราะคลิกทีเดียวมันสลับสองรอบ กลายเป็นไม่ติ๊ก
+      var on = !!A.sel[id];
+      var tick = h('button', { class: 'chip' + (on ? ' on' : '') },
+        [(on ? '☑ ' : '☐ ') + 'เลือกลบ']);
+      tick.addEventListener('click', function () {
+        if (A.sel[id]) delete A.sel[id]; else A.sel[id] = true;
+        renderAll();
+      });
+      title.appendChild(tick);
+
+      var del = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['ลบชุดนี้']);
       del.addEventListener('click', function () {
-        if (!confirm('ลบรูปทั้งหมดของ ' + side.recordId + ' ?\n\n' +
+        if (!confirm('ลบรูปทั้งหมดของ ' + id + ' ?\n\n' +
           'ไฟล์จะถูกย้ายไปถังขยะ Drive (ล้างเองใน 30 วัน จึงจะคืนพื้นที่จริง)\n' +
           'แถวและลิงก์ในชีท "รูปภาพ" ยังอยู่ครบ ใช้อ้างอิงย้อนหลังได้')) return;
-        saveThen(rpc('apiAdminDeletePhotos', A.empId, side.recordId));
+        saveThen(rpc('apiAdminDeletePhotos', A.empId, id));
       });
       title.appendChild(del);
     }

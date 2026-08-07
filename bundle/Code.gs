@@ -616,6 +616,7 @@ function apiDispatch_(name) {
     apiCommitSubmit: apiCommitSubmit,
     apiAdminLoad: apiAdminLoad,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
+    apiAdminDeletePhotosBulk: apiAdminDeletePhotosBulk,
     apiSaveStaff: apiSaveStaff,
     apiDeleteStaff: apiDeleteStaff,
     apiSaveAsset: apiSaveAsset,
@@ -1060,6 +1061,31 @@ function apiAdminDeletePhotos(empId, recordId) {
     if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ลบรูปไม่ได้');
     var n = deleteRecordPhotos_(s_(recordId));
     return ok_({ deleted: n });
+  });
+}
+
+/**
+ * ลบรูปหลายรายการในครั้งเดียว (ติ๊กเลือกจากหน้าคลังรูป)
+ *
+ * จำกัดครั้งละ 25 รายการ เพราะการลบไฟล์ใน Drive ช้า
+ * มากกว่านี้เสี่ยงชนเพดานเวลาทำงาน 6 นาทีของ Apps Script
+ */
+function apiAdminDeletePhotosBulk(empId, recordIds) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ลบรูปไม่ได้');
+
+    var ids = (recordIds || []).map(s_).filter(Boolean);
+    if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
+    if (ids.length > 25) throw new Error('ลบได้ครั้งละไม่เกิน 25 รายการ (เลือกมา ' + ids.length + ')');
+
+    var files = 0, ok = 0, failed = [];
+    ids.forEach(function (id) {
+      try { files += deleteRecordPhotos_(id); ok++; }
+      catch (e) { failed.push(id); }
+    });
+    return ok_({ deleted: files, records: ok, failed: failed });
   });
 }
 

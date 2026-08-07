@@ -912,11 +912,16 @@ function shootTitle() {
 
 // ── หน้าล็อกอิน ───────────────────────────────────────────────────────
 
+// รหัสพนักงานในชีทมีทั้ง 5 และ 6 หลัก
+var PIN_MIN = 5, PIN_MAX = 6;
+
 function renderLogin() {
   var wrap = $('#pin-boxes'); wrap.innerHTML = '';
-  for (var i = 0; i < 6; i++) {
+  for (var i = 0; i < PIN_MAX; i++) {
     wrap.appendChild(el('div', {
-      class: 'pinbox' + (S.pin[i] ? ' f' : '') + (S.pin.length === i ? ' c' : '')
+      class: 'pinbox' + (S.pin[i] ? ' f' : '') + (S.pin.length === i ? ' c' : ''),
+      // ช่องที่ 6 จางไว้ เพราะบางคนมีแค่ 5 หลัก
+      style: i >= PIN_MIN && !S.pin[i] ? 'opacity:.45' : ''
     }, [S.pin[i] || '']));
   }
   $('#pin-err').textContent = S.pinErr;
@@ -927,7 +932,7 @@ function renderLogin() {
       var b = el('button', { class: 'key', style: k ? '' : 'visibility:hidden' }, [k]);
       b.addEventListener('click', function () {
         if (!k) return;
-        if (k === '⌫') S.pin = S.pin.slice(0, -1); else S.pin = (S.pin + k).slice(0, 6);
+        if (k === '⌫') S.pin = S.pin.slice(0, -1); else S.pin = (S.pin + k).slice(0, PIN_MAX);
         S.pinErr = ''; render();
       });
       kp.appendChild(b);
@@ -1360,8 +1365,11 @@ function renderFooter() {
   var show = true, label = 'ถัดไป', okState = true, hintText = '';
 
   if (S.screen === 'login') {
-    label = 'เข้าใช้งาน'; okState = S.pin.length === 6;
-    hintText = S.pinErr || 'ทะเบียนพนักงานดึงจากชีท "พนักงาน"';
+    // รหัสพนักงานมีทั้ง 5 และ 6 หลัก ใส่ครบแล้วกดเข้าใช้งานได้เลย
+    label = 'เข้าใช้งาน'; okState = S.pin.length >= PIN_MIN;
+    hintText = S.pinErr || (S.pin.length < PIN_MIN
+      ? 'ใส่รหัสพนักงาน ' + PIN_MIN + '–' + PIN_MAX + ' หลัก'
+      : 'กดเข้าใช้งานได้เลย');
   } else if (S.screen === 'form') {
     label = 'ไปถ่ายรูป';
     okState = S.picked.length > 0;

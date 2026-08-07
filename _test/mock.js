@@ -97,7 +97,8 @@ var API = {
   apiDeleteStaff: function () { return { ok: true }; },
   apiDeleteAsset: function () { return { ok: true }; },
   apiDeleteTopic: function () { return { ok: true }; },
-  apiAdminDeletePhotos: function () { return { ok: true, deleted: 5 }; }
+  apiAdminDeletePhotos: function () { return { ok: true, deleted: 5 }; },
+  apiAdminDeletePhotosBulk: function (e, ids) { return { ok: true, deleted: (ids||[]).length*5, records: (ids||[]).length, failed: [] }; },
 };
 
 window.google = { script: { run: (function () {
