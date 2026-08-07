@@ -29,8 +29,9 @@
 
 | ส่วน | ใครใช้ | ลิงก์ |
 | --- | --- | --- |
-| แอพมือถือ (ตัวหลัก) | พนักงานหน้างาน | *ใส่ URL ของ GitHub Pages ตรงนี้หลัง push* |
-| เว็บแอดมิน | แอดมิน / หัวหน้างาน | ลิงก์เดิม + `admin.html` |
+| แอพมือถือ (ตัวหลัก) | พนักงานหน้างาน | https://flashadminb.github.io/photo-report-app/ |
+| เว็บแอดมิน | แอดมิน / หัวหน้างาน | https://flashadminb.github.io/photo-report-app/admin.html |
+| โค้ด | — | https://github.com/Flashadminb/photo-report-app |
 | API / ทางสำรอง | — | https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec |
 | โปรเจกต์ Apps Script | — | https://script.google.com/home/projects/1Q0AmHpMVbJrOMLYyEq9SIWsK3MnMBQwGceGFZPtltS4SooJL4H6OZBqm/edit |
 
