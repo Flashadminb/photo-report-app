@@ -36,12 +36,43 @@ function gateGo() {
   $('#gate-go').disabled = true;
   load(pin).then(function () {
     store.set('adminId', pin);
-    $('#gate').classList.add('hide');
-    $('#app').classList.remove('hide');
-    renderAll();
+    enterApp();
   }).catch(function (e) {
     $('#gate-err').textContent = e.message;
   }).then(function () { $('#gate-go').disabled = false; });
+}
+
+function enterApp() {
+  $('#gate').classList.add('hide');
+  $('#app').classList.remove('hide');
+  renderAll();
+  stampFresh();
+  startAuto();
+}
+
+/**
+ * เข้าระบบอัตโนมัติด้วยรหัสที่จำไว้
+ *
+ * ที่ผ่านมาถ้าเรียกเซิร์ฟเวอร์ไม่ผ่านแม้แต่ครั้งเดียว (Apps Script ตื่นช้า/เน็ตสะดุด)
+ * จะเด้งไปหน้าล็อกอินทันที ทั้งที่รหัสยังถูกอยู่ — คราวนี้ลองใหม่ให้เองก่อน 3 ครั้ง
+ * แล้วค่อยยอมแพ้ ถ้าเป็นเรื่องสิทธิ์จริง ๆ ค่อยเด้งไปหน้าล็อกอินตั้งแต่ครั้งแรก
+ */
+function bootAuto(tries) {
+  tries = tries || 0;
+  $('#gate-go').disabled = true;
+  $('#gate-err').textContent = tries
+    ? 'เชื่อมต่อไม่ได้ กำลังลองใหม่ ' + tries + '/3…'
+    : 'กำลังเข้าระบบด้วยรหัสที่จำไว้…';
+
+  load(A.empId).then(enterApp).catch(function (e) {
+    var temporary = /เซิร์ฟเวอร์|ติดต่อ|timeout|network|failed to fetch/i.test(e.message);
+    if (temporary && tries < 3) {
+      setTimeout(function () { bootAuto(tries + 1); }, 1500 * (tries + 1));
+      return;
+    }
+    $('#gate-err').textContent = e.message;
+    $('#gate-go').disabled = false;
+  });
 }
 
 function load(empId) {
@@ -52,6 +83,56 @@ function load(empId) {
     A.range = r.range; A.periods = r.periods; A.totalRecords = r.totalRecords;
   });
 }
+
+// ══ อัปเดตข้อมูลเองอัตโนมัติ ═════════════════════════════════════════
+//
+// เดิมต้องกด "โหลดใหม่" เองตลอด ไม่งั้นข้อมูลที่หน้างานเพิ่งส่งมาจะไม่ขึ้น
+// ตอนนี้ดึงใหม่ให้เองทุก 1 นาที และดึงทันทีตอนกลับมาที่แท็บนี้
+//
+// ข้ามรอบนั้นไปถ้ากำลังทำอะไรค้างอยู่ (พิมพ์ในช่อง หรือติ๊กเลือกรูปไว้)
+// เพื่อไม่ให้จอเปลี่ยนใต้มือ และคงตำแหน่งเลื่อนหน้าไว้ที่เดิม
+
+var AUTO = { ms: 60000, timer: null, last: 0, busy: false };
+
+function stampFresh() {
+  var n = new Date();
+  var p = function (v) { return (v < 10 ? '0' : '') + v; };
+  var f = $('#fresh');
+  if (f) f.textContent = 'อัปเดตล่าสุด\n' + p(n.getHours()) + ':' + p(n.getMinutes()) + ' น.';
+  AUTO.last = Date.now();
+}
+
+function autoBusyNow() {
+  var t = document.activeElement && document.activeElement.tagName;
+  if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return true;
+  return Object.keys(A.sel).length > 0;
+}
+
+function autoRefresh() {
+  if (AUTO.busy || !A.empId || !A.user) return;
+  if (document.hidden || autoBusyNow()) return;
+  if (Date.now() - AUTO.last < 20000) return;
+
+  AUTO.busy = true;
+  var y = window.scrollY;
+  load(A.empId).then(function () {
+    renderAll();
+    window.scrollTo(0, y);
+    stampFresh();
+  }).catch(function () {
+    /* เน็ตสะดุด ไม่ต้องรบกวน ไว้รอบหน้า */
+  }).then(function () { AUTO.busy = false; });
+}
+
+function startAuto() {
+  clearInterval(AUTO.timer);
+  AUTO.timer = setInterval(autoRefresh, AUTO.ms);
+}
+
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) autoRefresh();
+});
+window.addEventListener('focus', autoRefresh);
 
 /** เปลี่ยนช่วงเวลาแล้วดึงข้อมูลใหม่จากชีท (ไม่ได้กรองในเครื่อง เพราะไม่ได้โหลดมาทั้งหมด) */
 function setRange(r) {
@@ -889,17 +970,16 @@ function viewAssets(v) {
 
 $('#gate-go').addEventListener('click', gateGo);
 $('#gate-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') gateGo(); });
-$('#btn-reload').addEventListener('click', function () { toast('กำลังโหลด…'); reload().then(function () { toast('อัปเดตแล้ว'); }); });
+$('#btn-reload').addEventListener('click', function () {
+  toast('กำลังโหลด…');
+  reload().then(function () { stampFresh(); toast('อัปเดตแล้ว'); });
+});
 $('#btn-out').addEventListener('click', function () {
   store.del('adminId'); location.reload();
 });
 
 if (A.empId) {
   $('#gate-pin').value = A.empId;
-  load(A.empId).then(function () {
-    $('#gate').classList.add('hide');
-    $('#app').classList.remove('hide');
-    renderAll();
-  }).catch(function (e) { $('#gate-err').textContent = e.message; });
+  bootAuto();
 }
 </script>
