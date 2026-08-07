@@ -316,6 +316,15 @@ textarea.input{min-height:90px;resize:vertical}
           <span>จำนวนเครื่อง</span><strong id="codes-count">0 เครื่อง</strong>
         </div>
       </div>
+
+      <div id="extra-wrap" class="hide">
+        <span class="label" id="extra-label">อุปกรณ์เสริม</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="extra-chips"></div>
+        <div style="margin-top:8px;font-size:12px;display:flex;justify-content:space-between;
+             border-top:2px solid var(--color-divider);padding-top:8px">
+          <span id="extra-note">ไม่บังคับ — เบิกหรือไม่เบิกก็ได้</span><strong id="extra-count">0 ชิ้น</strong>
+        </div>
+      </div>
     </section>
 
     <!-- ══ ถ่ายรูป (ทีละสเต็ป) ══ -->
@@ -697,6 +706,7 @@ var S = {
   ref: '',                // รหัสรายการเบิก ตอนกดคืน
   shift: '',
   picked: [],             // รหัสเครื่องที่เลือก
+  pickedExtra: [],        // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — ไม่นับรวมจำนวนเครื่อง
   qty: 1,
   step: 0,
   shots: {},              // { ชื่อช่อง: {dataUrl, time, gps} } — ช่องบังคับ ช่องละ 1 รูป
@@ -714,6 +724,9 @@ function reqSlots()  { return S.topic ? S.topic.slots.filter(function (x) { retu
 function issueSlot() { return S.topic ? S.topic.slots.filter(function (x) { return x.onIssue; })[0] : null; }
 function issueSlotName() { var s = issueSlot(); return s ? s.th : 'จุดที่มีปัญหา'; }
 function rule(id)    { return !!(S.topic && S.topic.rules && S.topic.rules[id]); }
+
+/** ประเภทอุปกรณ์เสริมที่เบิกพ่วงได้ — ตั้งจากชีท "เงื่อนไข" แถว extra (ว่าง = ไม่มี) */
+function extraType() { return (S.topic && S.topic.extraType) || ''; }
 function galleryMode() { return !!S.topic && (reqSlots().length === 0 || S.topic.countMode); }
 
 /**
@@ -770,7 +783,7 @@ function readyToSend() {
 function go(screen) { S.screen = screen; render(); window.scrollTo(0, 0); $('#body').scrollTop = 0; }
 
 function resetJob() {
-  S.topic = null; S.action = 'เบิก'; S.ref = ''; S.picked = []; S.qty = 1;
+  S.topic = null; S.action = 'เบิก'; S.ref = ''; S.picked = []; S.pickedExtra = []; S.qty = 1;
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
 }
@@ -1001,6 +1014,30 @@ function renderForm() {
       ['ไม่มีเครื่องสถานะ "พร้อมใช้" ในทะเบียนสำหรับหัวข้อนี้']));
   }
   $('#codes-count').textContent = (t.countMode ? S.qty : S.picked.length) + ' เครื่อง';
+
+  // ── อุปกรณ์เสริม (เช่น เลเซอร์ลบ) — ขึ้นให้ทุกแผนก ไม่บังคับเบิก ──
+  var xt = extraType();
+  $('#extra-wrap').classList.toggle('hide', !xt);
+  if (xt) {
+    $('#extra-label').textContent = xt + ' (ไม่บังคับ — เบิกกี่ชิ้นก็ได้)';
+    var pool = S.assets.filter(function (a) { return a.type === xt && a.status === 'พร้อมใช้'; });
+    var xw = $('#extra-chips'); xw.innerHTML = '';
+    pool.forEach(function (a) {
+      var on = S.pickedExtra.indexOf(a.code) >= 0;
+      var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code]);
+      b.addEventListener('click', function () {
+        S.pickedExtra = on ? S.pickedExtra.filter(function (c) { return c !== a.code; })
+                           : S.pickedExtra.concat([a.code]);
+        render();
+      });
+      xw.appendChild(b);
+    });
+    if (!pool.length) {
+      xw.appendChild(el('div', { style: 'font-size:12px;opacity:.7' },
+        ['ไม่มี' + xt + 'สถานะ "พร้อมใช้" ในทะเบียน']));
+    }
+    $('#extra-count').textContent = S.pickedExtra.length + ' ชิ้น';
+  }
 }
 
 // ── หน้าถ่ายรูป ───────────────────────────────────────────────────────
@@ -1172,6 +1209,7 @@ function renderReview() {
     ['สถานะใช้งาน', S.action],
     ['จำนวนเครื่อง', String(S.topic.countMode ? S.qty : S.picked.length)],
     ['รหัสเครื่อง', codesText()],
+    (extraType() ? [extraType(), S.pickedExtra.length ? S.pickedExtra.join(', ') : 'ไม่ได้เบิก'] : null),
     ['ผลตรวจ', S.result === 'มีปัญหา' ? 'มีปัญหา: ' + (S.issueText || '—') : 'ปกติ'],
     ['ข้อมูลเพิ่มเติม', S.note || '—'],
     ['จำนวนรูป', allPhotoList().length + ' ไฟล์'],
@@ -1180,7 +1218,7 @@ function renderReview() {
   if (S.action === 'คืน') rows.push(['อ้างอิงรายการเบิก', S.ref]);
 
   var tb = $('#review-rows'); tb.innerHTML = '';
-  rows.forEach(function (r) {
+  rows.filter(Boolean).forEach(function (r) {
     tb.appendChild(el('tr', {}, [
       el('td', { style: 'padding:6px 0;border-bottom:1px solid var(--color-divider);opacity:.65;width:44%' }, [r[0]]),
       el('td', { style: 'padding:6px 0;border-bottom:1px solid var(--color-divider);font-weight:600' }, [r[1]])
@@ -1354,6 +1392,7 @@ function buildPayload() {
     shift: S.shift,
     qty: S.topic.countMode ? S.qty : S.picked.length,
     codes: S.picked,
+    extraCodes: S.pickedExtra,
     result: S.result,
     issue: S.result === 'มีปัญหา' ? S.issueText : '',
     note: S.note,

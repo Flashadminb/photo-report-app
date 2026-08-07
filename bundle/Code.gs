@@ -195,15 +195,20 @@ function buildMaster_() {
       topic: s_(r[C.RULE.TOPIC - 1]),
       id: s_(r[C.RULE.ID - 1]),
       name: s_(r[C.RULE.NAME - 1]),
-      on: truthy_(r[C.RULE.VALUE - 1])
+      on: truthy_(r[C.RULE.VALUE - 1]),
+      value: s_(r[C.RULE.VALUE - 1])   // ค่าดิบ — บางเงื่อนไขเก็บข้อความ ไม่ใช่แค่ TRUE/FALSE
     };
   }).filter(function (x) { return x.topic && x.id; });
 
   var topics = readRows_(ss, CFG.M.TOPICS).map(function (r) {
     var id = s_(r[C.TOPIC.ID - 1]);
     var tSlots = slots.filter(function (x) { return x.topic === id; });
-    var tRules = {};
-    rules.forEach(function (x) { if (x.topic === id) tRules[x.id] = x.on; });
+    var tRules = {}, tRuleText = {};
+    rules.forEach(function (x) {
+      if (x.topic !== id) return;
+      tRules[x.id] = x.on;
+      tRuleText[x.id] = x.value;
+    });
     return {
       id: id,
       name: s_(r[C.TOPIC.NAME - 1]),
@@ -216,6 +221,13 @@ function buildMaster_() {
         ? 'ไอดาต้า' : s_(r[C.TOPIC.NAME - 1]),
       slots: tSlots,
       rules: tRules,
+      ruleText: tRuleText,
+      // เงื่อนไข extra เก็บ "ประเภทอุปกรณ์เสริม" ที่เบิกพ่วงได้ (เช่น เลเซอร์ลบ)
+      // ว่าง = ไม่มีอุปกรณ์เสริม
+      extraType: (function () {
+        var v = tRuleText.extra || '';
+        return (v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') ? '' : v;
+      })(),
       // หัวข้อที่นับจำนวนเครื่องเอง (ไม่ได้เลือกทีละรหัส) เช่น IDATA
       countMode: !!tRules.count
     };
@@ -598,6 +610,9 @@ function apiDispatch_(name) {
     apiLogin: apiLogin,
     apiRefresh: apiRefresh,
     apiSubmit: apiSubmit,
+    apiBeginSubmit: apiBeginSubmit,
+    apiUploadPhoto: apiUploadPhoto,
+    apiCommitSubmit: apiCommitSubmit,
     apiAdminLoad: apiAdminLoad,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
     apiSaveStaff: apiSaveStaff,
@@ -851,6 +866,10 @@ function prepareSubmit_(p) {
     qty = codes.length;
   }
 
+  // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — ไม่นับรวมในจำนวนเครื่อง
+  // ต่อท้ายรหัสเครื่องไว้เฉย ๆ เพราะไม่ใช่ตัวหลักที่เบิก
+  var extra = (p.extraCodes || []).map(s_).filter(Boolean);
+
   // ตอนคืน: ต้องอ้างอิงรายการเบิกที่ยังค้างอยู่จริง
   // (อ่านชีทเฉพาะตอนคืนเท่านั้น ตอนเบิกไม่ต้องอ่าน จะได้เร็วขึ้น)
   var ref = '';
@@ -869,7 +888,10 @@ function prepareSubmit_(p) {
     note = (note ? note + ' · ' : '') + '[นอกกะ] ส่งเมื่อ ' + fmtTime_(new Date());
   }
 
-  return { u: u, topic: topic, action: action, result: result, codes: codes, qty: qty, ref: ref, note: note };
+  return {
+    u: u, topic: topic, action: action, result: result,
+    codes: codes.concat(extra), qty: qty, ref: ref, note: note
+  };
 }
 
 /** ตรวจว่าถ่ายครบตามช่องบังคับในชีท "ช่องถ่ายรูป" หรือยัง */

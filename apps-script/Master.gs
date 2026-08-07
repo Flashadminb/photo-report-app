@@ -90,15 +90,20 @@ function buildMaster_() {
       topic: s_(r[C.RULE.TOPIC - 1]),
       id: s_(r[C.RULE.ID - 1]),
       name: s_(r[C.RULE.NAME - 1]),
-      on: truthy_(r[C.RULE.VALUE - 1])
+      on: truthy_(r[C.RULE.VALUE - 1]),
+      value: s_(r[C.RULE.VALUE - 1])   // ค่าดิบ — บางเงื่อนไขเก็บข้อความ ไม่ใช่แค่ TRUE/FALSE
     };
   }).filter(function (x) { return x.topic && x.id; });
 
   var topics = readRows_(ss, CFG.M.TOPICS).map(function (r) {
     var id = s_(r[C.TOPIC.ID - 1]);
     var tSlots = slots.filter(function (x) { return x.topic === id; });
-    var tRules = {};
-    rules.forEach(function (x) { if (x.topic === id) tRules[x.id] = x.on; });
+    var tRules = {}, tRuleText = {};
+    rules.forEach(function (x) {
+      if (x.topic !== id) return;
+      tRules[x.id] = x.on;
+      tRuleText[x.id] = x.value;
+    });
     return {
       id: id,
       name: s_(r[C.TOPIC.NAME - 1]),
@@ -111,6 +116,13 @@ function buildMaster_() {
         ? 'ไอดาต้า' : s_(r[C.TOPIC.NAME - 1]),
       slots: tSlots,
       rules: tRules,
+      ruleText: tRuleText,
+      // เงื่อนไข extra เก็บ "ประเภทอุปกรณ์เสริม" ที่เบิกพ่วงได้ (เช่น เลเซอร์ลบ)
+      // ว่าง = ไม่มีอุปกรณ์เสริม
+      extraType: (function () {
+        var v = tRuleText.extra || '';
+        return (v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') ? '' : v;
+      })(),
       // หัวข้อที่นับจำนวนเครื่องเอง (ไม่ได้เลือกทีละรหัส) เช่น IDATA
       countMode: !!tRules.count
     };

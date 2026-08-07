@@ -53,6 +53,9 @@ function apiDispatch_(name) {
     apiLogin: apiLogin,
     apiRefresh: apiRefresh,
     apiSubmit: apiSubmit,
+    apiBeginSubmit: apiBeginSubmit,
+    apiUploadPhoto: apiUploadPhoto,
+    apiCommitSubmit: apiCommitSubmit,
     apiAdminLoad: apiAdminLoad,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
     apiSaveStaff: apiSaveStaff,
@@ -306,6 +309,10 @@ function prepareSubmit_(p) {
     qty = codes.length;
   }
 
+  // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — ไม่นับรวมในจำนวนเครื่อง
+  // ต่อท้ายรหัสเครื่องไว้เฉย ๆ เพราะไม่ใช่ตัวหลักที่เบิก
+  var extra = (p.extraCodes || []).map(s_).filter(Boolean);
+
   // ตอนคืน: ต้องอ้างอิงรายการเบิกที่ยังค้างอยู่จริง
   // (อ่านชีทเฉพาะตอนคืนเท่านั้น ตอนเบิกไม่ต้องอ่าน จะได้เร็วขึ้น)
   var ref = '';
@@ -324,7 +331,10 @@ function prepareSubmit_(p) {
     note = (note ? note + ' · ' : '') + '[นอกกะ] ส่งเมื่อ ' + fmtTime_(new Date());
   }
 
-  return { u: u, topic: topic, action: action, result: result, codes: codes, qty: qty, ref: ref, note: note };
+  return {
+    u: u, topic: topic, action: action, result: result,
+    codes: codes.concat(extra), qty: qty, ref: ref, note: note
+  };
 }
 
 /** ตรวจว่าถ่ายครบตามช่องบังคับในชีท "ช่องถ่ายรูป" หรือยัง */
