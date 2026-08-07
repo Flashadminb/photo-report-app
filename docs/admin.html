@@ -1234,6 +1234,17 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('sw.js').catch(function () { /* ไม่รองรับก็ใช้งานได้ปกติ */ });
   });
+  // เวอร์ชันใหม่มาถึงตอนไหนก็รีเฟรชให้เลย ไม่ต้องปิดแอพเปิดใหม่เอง
+  // แต่ห้ามรีตอนกำลังทำงานค้างอยู่ เดี๋ยวรูปที่ถ่ายไว้หาย — รอรอบหน้าแทน
+  var reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (reloading) return;
+    var cur = document.querySelector('[data-screen]:not(.hide)');
+    var at = cur ? cur.getAttribute('data-screen') : '';
+    if (at !== 'login' && at !== 'home' && at !== 'queue') return;
+    reloading = true;
+    location.reload();
+  });
 }
 </script>
 </body>

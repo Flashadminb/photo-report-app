@@ -296,24 +296,14 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="shift-chips"></div>
       </div>
 
-      <div id="qty-wrap" class="hide">
-        <span class="label">จำนวนเครื่องที่เบิก (บังคับ)</span>
-        <div style="display:flex;align-items:stretch;border:2px solid var(--color-text)">
-          <button id="qty-dec" style="width:56px;border:0;border-right:2px solid var(--color-text);background:transparent;
-                  font-family:var(--font-heading);font-weight:800;font-size:22px;cursor:pointer;color:var(--color-text)">−</button>
-          <div id="qty-val" style="flex:1;display:flex;align-items:center;justify-content:center;
-               font-family:var(--font-heading);font-weight:800;font-size:26px;padding:10px 0">1</div>
-          <button id="qty-inc" style="width:56px;border:0;border-left:2px solid var(--color-text);background:transparent;
-                  font-family:var(--font-heading);font-weight:800;font-size:22px;cursor:pointer;color:var(--color-text)">+</button>
-        </div>
-      </div>
-
+      <!-- ไม่มีช่องกดบวกลบแล้ว — จำนวนนับจากรหัสที่ติ๊กอย่างเดียว จะได้ไม่ขัดกันเอง -->
       <div id="codes-wrap">
         <span class="label" id="codes-label">รหัสเครื่อง</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="code-chips"></div>
-        <div style="margin-top:8px;font-size:12px;display:flex;justify-content:space-between;
-             border-top:2px solid var(--color-divider);padding-top:8px">
-          <span>จำนวนเครื่อง</span><strong id="codes-count">0 เครื่อง</strong>
+        <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;
+             border-top:2px solid var(--color-text);padding-top:8px">
+          <span style="font-size:12px">จำนวนเครื่อง</span>
+          <strong id="codes-count" style="font-family:var(--font-heading);font-weight:800;font-size:22px">0 เครื่อง</strong>
         </div>
       </div>
 
@@ -1046,8 +1036,7 @@ function renderForm() {
     });
   }
 
-  // จำนวนเครื่องนับจากรหัสที่ติ๊ก ไม่ต้องกดบวกลบเอง (ทุกหัวข้อเหมือนกันหมด)
-  $('#qty-wrap').classList.add('hide');
+  // จำนวนเครื่องมีที่เดียว คือนับจากรหัสที่ติ๊ก (ทุกหัวข้อเหมือนกันหมด)
   S.qty = S.picked.length;
 
   // รหัสเครื่องจากทะเบียน กรองตามประเภทของหัวข้อ + แผนกของผู้ใช้
@@ -1890,9 +1879,6 @@ function bind() {
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
   $('#btn-home').addEventListener('click', function () { clearDraft(); resetJob(); refresh(); go('home'); });
-
-  $('#qty-inc').addEventListener('click', function () { S.qty = Math.min(S.qty + 1, 99); render(); });
-  $('#qty-dec').addEventListener('click', function () { S.qty = Math.max(S.qty - 1, 1); render(); });
 
   $('#btn-shoot').addEventListener('click', function () {
     var st = curStep();

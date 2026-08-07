@@ -316,8 +316,7 @@ function renderForm() {
     });
   }
 
-  // จำนวนเครื่องนับจากรหัสที่ติ๊ก ไม่ต้องกดบวกลบเอง (ทุกหัวข้อเหมือนกันหมด)
-  $('#qty-wrap').classList.add('hide');
+  // จำนวนเครื่องมีที่เดียว คือนับจากรหัสที่ติ๊ก (ทุกหัวข้อเหมือนกันหมด)
   S.qty = S.picked.length;
 
   // รหัสเครื่องจากทะเบียน กรองตามประเภทของหัวข้อ + แผนกของผู้ใช้
@@ -1160,9 +1159,6 @@ function bind() {
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
   $('#btn-home').addEventListener('click', function () { clearDraft(); resetJob(); refresh(); go('home'); });
-
-  $('#qty-inc').addEventListener('click', function () { S.qty = Math.min(S.qty + 1, 99); render(); });
-  $('#qty-dec').addEventListener('click', function () { S.qty = Math.max(S.qty - 1, 1); render(); });
 
   $('#btn-shoot').addEventListener('click', function () {
     var st = curStep();
