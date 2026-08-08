@@ -1114,8 +1114,32 @@ function showDone(res) {
     : (S.action === 'คืน'
         ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
         : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน');
+  // ── จำนวนตัวใหญ่ ให้เห็นชัดว่าเพิ่งเบิกหรือคืนไปกี่เครื่อง ──
+  var back = S.action === 'คืน';
+  var qty = totalQty(), xt = extraType(), nx = S.pickedExtra.length;
+  $('#done-qty').textContent = (back ? 'คืน ' : 'เบิก ') + qty + ' เครื่อง';
+
+  // ตอนคืน ถ้าคืนไม่ครบตามที่เบิกไป ต้องบอกให้รู้ตัวตรงนี้เลย
+  var left = back && S.borrowedQty ? S.borrowedQty - qty : 0;
+  var sub = $('#done-qty-sub');
+  if (left > 0) {
+    sub.textContent = 'เบิกไป ' + S.borrowedQty + ' เครื่อง · ยังค้างอีก ' + left + ' เครื่อง';
+    sub.style.color = 'var(--color-accent)';
+    sub.style.opacity = '1';
+  } else {
+    var parts = [];
+    if (nx && xt) parts.push((S.topic ? S.topic.name : 'เครื่อง') + ' ' + S.picked.length + ' · ' + xt + ' ' + nx);
+    if (back && S.borrowedQty) parts.push('คืนครบตามที่เบิกไป');
+    sub.textContent = parts.join(' · ');
+    sub.style.color = '';
+    sub.style.opacity = '.7';
+  }
+
   $('#done-info').innerHTML =
     row2('ประทับเวลา', res.ts || (n.date + ', ' + n.time)) +
+    row2('จำนวนเครื่อง', qty + ' เครื่อง') +
+    ((nx && xt) ? row2(xt, nx + ' เครื่อง') : '') +
+    row2('รหัสเครื่อง', codesText()) +
     row2('รูปที่แนบ', (res.photoCount || 0) + ' รูป') +
     row2('สถานะเครื่อง', S.result || '—') +
     (res.recordId ? row2('รหัสรายการ', res.recordId) : '');

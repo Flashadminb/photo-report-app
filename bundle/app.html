@@ -426,6 +426,12 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="font-family:var(--font-heading);font-weight:800;font-size:22px" id="done-title"></div>
         <div style="font-size:13px;opacity:.75;margin-top:4px" id="done-sub"></div>
       </div>
+      <!-- จำนวนตัวใหญ่ ให้เห็นชัด ๆ ว่าเพิ่งเบิกหรือคืนไปกี่เครื่อง -->
+      <div id="done-qty-box" style="width:100%;border:2px solid var(--color-text);padding:14px 16px">
+        <div id="done-qty" style="font-family:var(--font-heading);font-weight:800;font-size:30px;line-height:1.1"></div>
+        <div id="done-qty-sub" style="font-size:12px;opacity:.7;margin-top:6px"></div>
+      </div>
+
       <hr class="hr" style="width:100%;margin:0">
       <div style="font-size:12px;line-height:1.9;width:100%" id="done-info"></div>
       <div style="font-size:11px;opacity:.55;line-height:1.5">รูปถูกส่งขึ้นระบบและลบออกจากเครื่องแล้ว ดูย้อนหลังได้ที่เว็บแอดมิน</div>
@@ -1846,8 +1852,32 @@ function showDone(res) {
     : (S.action === 'คืน'
         ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
         : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน');
+  // ── จำนวนตัวใหญ่ ให้เห็นชัดว่าเพิ่งเบิกหรือคืนไปกี่เครื่อง ──
+  var back = S.action === 'คืน';
+  var qty = totalQty(), xt = extraType(), nx = S.pickedExtra.length;
+  $('#done-qty').textContent = (back ? 'คืน ' : 'เบิก ') + qty + ' เครื่อง';
+
+  // ตอนคืน ถ้าคืนไม่ครบตามที่เบิกไป ต้องบอกให้รู้ตัวตรงนี้เลย
+  var left = back && S.borrowedQty ? S.borrowedQty - qty : 0;
+  var sub = $('#done-qty-sub');
+  if (left > 0) {
+    sub.textContent = 'เบิกไป ' + S.borrowedQty + ' เครื่อง · ยังค้างอีก ' + left + ' เครื่อง';
+    sub.style.color = 'var(--color-accent)';
+    sub.style.opacity = '1';
+  } else {
+    var parts = [];
+    if (nx && xt) parts.push((S.topic ? S.topic.name : 'เครื่อง') + ' ' + S.picked.length + ' · ' + xt + ' ' + nx);
+    if (back && S.borrowedQty) parts.push('คืนครบตามที่เบิกไป');
+    sub.textContent = parts.join(' · ');
+    sub.style.color = '';
+    sub.style.opacity = '.7';
+  }
+
   $('#done-info').innerHTML =
     row2('ประทับเวลา', res.ts || (n.date + ', ' + n.time)) +
+    row2('จำนวนเครื่อง', qty + ' เครื่อง') +
+    ((nx && xt) ? row2(xt, nx + ' เครื่อง') : '') +
+    row2('รหัสเครื่อง', codesText()) +
     row2('รูปที่แนบ', (res.photoCount || 0) + ' รูป') +
     row2('สถานะเครื่อง', S.result || '—') +
     (res.recordId ? row2('รหัสรายการ', res.recordId) : '');
