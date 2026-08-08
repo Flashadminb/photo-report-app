@@ -106,6 +106,10 @@ var API = {
           out: SIDE('09:40', 5, 'PP-20260806-1268'), back: null }],
       records: [], openJobs: OPEN, today: '6/8/2026' };
   },
+  apiAdminHidePhotos: function (empId, ids, show) {
+    MOCK_CALLS.push('hide:' + (show ? 'show' : 'hide') + ':' + (ids || []).join('|'));
+    return { ok: true, n: (ids || []).length, show: !!show };
+  },
   apiSaveStaff: function () { return { ok: true }; },
   apiSaveAsset: function () { return { ok: true }; },
   apiSaveTopic: function () { return { ok: true }; },

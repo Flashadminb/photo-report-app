@@ -58,6 +58,7 @@ function apiDispatch_(name) {
     apiUploadPhoto: apiUploadPhoto,
     apiCommitSubmit: apiCommitSubmit,
     apiAdminLoad: apiAdminLoad,
+    apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
     apiAdminDeletePhotosBulk: apiAdminDeletePhotosBulk,
     apiSaveStaff: apiSaveStaff,
@@ -499,7 +500,7 @@ function apiAdminLoad(empId, range) {
       range: r,
       periods: periods_(recs),
       totalRecords: recs.length,
-      pairs: buildPairs_(picked, photos),
+      pairs: buildPairs_(picked, photos, hiddenIds_()),
       records: picked,
       openJobs: openJobs_(recs, null),
       today: fmtDate_(new Date())
@@ -565,20 +566,24 @@ function periods_(recs) {
  * จับคู่ "เบิก" กับ "คืน" ให้เป็นรายการเดียว เพื่อให้หน้าแอดมินดูรูปสองฝั่งได้
  * แถวคืนจะอ้างอิงรหัสรายการเบิกในคอลัมน์ "อ้างอิงรายการเบิก"
  */
-function buildPairs_(recs, photos) {
+function buildPairs_(recs, photos, hidden) {
   var byRec = {};
   photos.forEach(function (ph) {
     (byRec[ph.rec] = byRec[ph.rec] || []).push(ph);
   });
+  hidden = hidden || {};
 
   var side = function (r) {
     if (!r) return null;
+    // ซ่อนไว้ = ไม่ส่งรูปไปให้หน้าเว็บ แต่ข้อมูลในชีทและไฟล์ในไดรฟ์ยังอยู่ครบ
+    var hide = !!hidden[r.id];
     return {
       recordId: r.id, time: (/(\d{1,2}:\d{2})/.exec(r.ts) || [, r.ts])[1],
       ts: r.ts, qty: r.qty, photoN: r.photoN, folder: r.folder,
       deleted: r.folder === 'ลบรูปแล้ว',
+      hidden: hide,
       gps: r.gps,
-      photos: (byRec[r.id] || []).map(function (ph) {
+      photos: hide ? [] : (byRec[r.id] || []).map(function (ph) {
         return { slot: ph.slot, url: ph.url, time: ph.time, gps: ph.gps };
       })
     };
@@ -610,6 +615,48 @@ function apiAdminDeletePhotos(empId, recordId) {
     if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ลบรูปไม่ได้');
     var n = deleteRecordPhotos_(s_(recordId));
     return ok_({ deleted: n });
+  });
+}
+
+// ── ซ่อนรูปจากหน้าเว็บ (ไม่ลบอะไรทั้งสิ้น) ────────────────────────────
+//
+// เก็บรายชื่อที่ซ่อนไว้ใน Script Properties ของโปรเจกต์
+// จงใจไม่เก็บในชีท เพราะต้องการให้ชีทคงข้อมูลและลิงก์รูปไว้ครบเหมือนเดิมทุกอย่าง
+// และไม่แตะไฟล์ใน Drive เลย — กดผิดก็เอากลับมาแสดงได้ทันที
+
+var HIDE_PREFIX = 'h:';
+
+function hiddenIds_() {
+  var all = PropertiesService.getScriptProperties().getProperties();
+  var out = {};
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf(HIDE_PREFIX) === 0) out[k.slice(HIDE_PREFIX.length)] = true;
+  });
+  return out;
+}
+
+/**
+ * @param {boolean} show  true = เอากลับมาแสดง, false/ไม่ส่ง = ซ่อน
+ */
+function apiAdminHidePhotos(empId, recordIds, show) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ซ่อนรูปไม่ได้');
+
+    var ids = (recordIds || []).map(s_).filter(Boolean);
+    if (!ids.length) throw new Error('ยังไม่ได้เลือกรายการ');
+    if (ids.length > 300) throw new Error('ทำได้ครั้งละไม่เกิน 300 รายการ (เลือกมา ' + ids.length + ')');
+
+    var props = PropertiesService.getScriptProperties();
+    if (show) {
+      ids.forEach(function (id) { props.deleteProperty(HIDE_PREFIX + id); });
+    } else {
+      var add = {};
+      ids.forEach(function (id) { add[HIDE_PREFIX + id] = '1'; });
+      props.setProperties(add, false);
+    }
+    return ok_({ n: ids.length, show: !!show });
   });
 }
 
