@@ -342,6 +342,8 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="font-size:13px;line-height:1.55;padding:10px" class="surface" id="cam-hint"></div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary btn-lg" id="btn-shoot" style="flex:1">ถ่ายรูป</button>
+          <button class="btn btn-secondary btn-lg hide" id="btn-cam-up"
+                  style="border-width:2px;border-color:var(--color-text)">อัปโหลด</button>
           <button class="btn btn-secondary btn-lg hide" id="btn-retake">ถ่ายใหม่</button>
         </div>
         <div style="display:flex;gap:5px" id="pips"></div>
@@ -1243,6 +1245,10 @@ function renderCamStep(slot) {
   $('#btn-shoot').textContent = shot ? 'ถ่ายแล้ว — ไปต่อ' : 'ถ่าย ' + slot.th;
   $('#btn-retake').classList.toggle('hide', !shot);
 
+  // เลือกรูปจากคลังภาพแทนการถ่ายสดก็ได้ ถ้าหัวข้อนั้นไม่ได้บังคับถ่ายสด (เงื่อนไข live)
+  // รูปที่อัปโหลดโดนประทับวันเวลา/พิกัด/รหัสเครื่องเหมือนกันทุกใบ ไม่มีทางเลี่ยง
+  $('#btn-cam-up').classList.toggle('hide', !!shot || rule('live'));
+
   var pips = $('#pips'); pips.innerHTML = '';
   reqSlots().forEach(function (sl, i) {
     var on = !!S.shots[sl.th];
@@ -1874,6 +1880,8 @@ function showDone(res) {
   }
 
   $('#done-info').innerHTML =
+    row2(back ? 'ผู้คืน' : 'ผู้เบิก', S.user ? S.user.name : '—') +
+    row2('รหัสพนักงาน · แผนก', S.user ? (S.user.id + ' · ' + S.user.dept) : '—') +
     row2('ประทับเวลา', res.ts || (n.date + ', ' + n.time)) +
     row2('จำนวนเครื่อง', qty + ' เครื่อง') +
     ((nx && xt) ? row2(xt, nx + ' เครื่อง') : '') +
@@ -1994,6 +2002,11 @@ function bind() {
     if (st.type !== 'cam') return;
     if (S.shots[st.slot.th]) { nextStep(); return; }
     shootSlot(st.slot.th);
+  });
+  $('#btn-cam-up').addEventListener('click', function () {
+    var st = curStep();
+    if (st.type !== 'cam') return;
+    capture('slot', st.slot.th, false);
   });
   $('#btn-retake').addEventListener('click', function () {
     var st = curStep();
