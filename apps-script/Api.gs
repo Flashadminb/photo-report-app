@@ -590,6 +590,10 @@ function buildPairs_(recs, photos, hidden) {
       deleted: r.folder === 'ลบรูปแล้ว',
       hidden: hide,
       gps: r.gps,
+      // ส่งผลตรวจ/อาการ/หมายเหตุ แยกรายฝั่ง เพราะเบิกกับคืนคนละคนคนละเวลา
+      // ของเดิมรวมกันแล้วฝั่งเบิกโดนฝั่งคืนทับจนหายไป
+      empName: r.empName, dept: r.dept,
+      result: r.result, issue: r.issue, note: r.note,
       photos: hide ? [] : (byRec[r.id] || []).map(function (ph) {
         return { slot: ph.slot, url: ph.url, time: ph.time, gps: ph.gps };
       })

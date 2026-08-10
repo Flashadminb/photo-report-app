@@ -62,10 +62,11 @@ function session(u) {
   };
 }
 
-var SIDE = function (t, n, id) {
-  return { recordId: id || 'PP-20260806-1250', time: t, ts: '6/8/2026, ' + t, qty: 1, photoN: n,
+var SIDE = function (t, n, id, extra) {
+  return Object.assign({ recordId: id || 'PP-20260806-1250', time: t, ts: '6/8/2026, ' + t, qty: 1, photoN: n,
     folder: 'https://drive.google.com/drive/folders/xxx', deleted: false, gps: '13.6812, 100.6109',
-    photos: SLOTS_PP.slice(0, n).map(function (s) { return { slot: s.th, url: 'https://drive.google.com/open?id=x', time: t, gps: '' }; }) };
+    photos: SLOTS_PP.slice(0, n).map(function (s) { return { slot: s.th, url: 'https://drive.google.com/open?id=x', time: t, gps: '' }; }) },
+    extra || {});
 };
 
 var API = {
@@ -99,11 +100,15 @@ var API = {
       pairs: [{ id: 'PP-20260806-1250', topic: 'Power Pallet', date: '6/8/2026', shift: 'กะ 03:00 - 12:00 น.',
         empId: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', codes: 'PP-INLHBG-02',
         qty: 1, qtyBack: 1, status: 'มีปัญหา', issue: 'แบตไม่เก็บไฟ', note: 'จอดช่อง B2',
-        out: SIDE('09:12', 5, 'PP-20260806-1250'), back: SIDE('16:12', 6, 'PP-20260806-1291') },
+        out: SIDE('09:12', 5, 'PP-20260806-1250',
+              { empName: 'สุพัตรา แก้วมณี', result: 'มีปัญหา', issue: 'ยกไม่ขึ้น', note: 'จอดช่อง B2' }),
+        back: SIDE('16:12', 6, 'PP-20260806-1291',
+              { empName: 'จิตตรา รัตนวรรณ์', result: 'มีปัญหา', issue: 'แบตไม่เก็บไฟ', note: 'ส่งซ่อมแล้ว' }) },
         { id: 'PP-20260806-1268', topic: 'Power Pallet', date: '6/8/2026', shift: 'กะ 03:00 - 12:00 น.',
           empId: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', codes: 'PP-INLHBG-05',
           qty: 2, qtyBack: null, status: 'ปกติ', issue: '', note: '',
-          out: SIDE('09:40', 5, 'PP-20260806-1268'), back: null }],
+          out: SIDE('09:40', 5, 'PP-20260806-1268',
+                { empName: 'สุพัตรา แก้วมณี', result: 'ปกติ', issue: '', note: 'เติมน้ำมันแล้ว' }), back: null }],
       records: [], openJobs: OPEN, today: '6/8/2026' };
   },
   apiAdminHidePhotos: function (empId, ids, show) {

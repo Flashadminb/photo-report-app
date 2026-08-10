@@ -303,6 +303,26 @@ function statCard(k, v, accent) {
 
 // ══ คลังรูป ═══════════════════════════════════════════════════════════
 
+/**
+ * ค้นหาแบบพิมพ์อะไรก็เจอ — รหัสรายการ (เต็มหรือแค่เลขท้าย) รหัสเครื่อง
+ * ชื่อคน แผนก หัวข้อ อาการ หมายเหตุ
+ *
+ * เทียบทั้งรหัสฝั่งเบิกและฝั่งคืน เพราะคนละรหัสกัน
+ * พิมพ์ 1399 อย่างเดียวก็เจอ IDATA-20260810-1399
+ */
+function pairMatch(p, q) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) return true;
+  var hay = [
+    p.id, p.codes, p.name, p.dept, p.topic, p.date, p.issue, p.note,
+    p.out && p.out.recordId, p.back && p.back.recordId,
+    p.out && p.out.issue, p.back && p.back.issue,
+    p.out && p.out.note, p.back && p.back.note,
+    p.out && p.out.empName, p.back && p.back.empName
+  ].filter(Boolean).join(' ').toLowerCase();
+  return hay.indexOf(q) >= 0;
+}
+
 function viewVault(v) {
   var topics = A.master.topics;
   var dates = ['ทั้งหมด'].concat(A.pairs.map(function (p) { return p.date; })
@@ -311,7 +331,7 @@ function viewVault(v) {
   var list = A.pairs.filter(function (p) {
     if (A.fTopic !== 'ทั้งหมด' && p.topic !== A.fTopic) return false;
     if (A.fDate !== 'ทั้งหมด' && p.date !== A.fDate) return false;
-    return true;
+    return pairMatch(p, A.fSearch);
   });
 
   var selTopic = h('select', { class: 'input', style: 'width:auto' },
@@ -325,18 +345,55 @@ function viewVault(v) {
   }));
   selDate.addEventListener('change', function (e) { A.fDate = e.target.value; A.sel = {}; renderAll(); });
 
+  // ค้นหา — พิมพ์เลขท้ายรหัสรายการ 4 ตัวก็พอ เช่น 1399
+  var find = h('input', {
+    class: 'input', style: 'width:250px', value: A.fSearch,
+    placeholder: 'รหัสรายการ (เช่น 1399) / รหัสเครื่อง / ชื่อ'
+  }, []);
+  // วาดใหม่เฉพาะรายการ ไม่ใช่ทั้งหน้า ไม่งั้นเคอร์เซอร์หลุดออกจากช่องทุกตัวอักษร
+  find.addEventListener('input', function (e) {
+    A.fSearch = e.target.value; A.sel = {};
+    fillVault();
+  });
+
   var clear = h('button', { class: 'btn btn-secondary' }, ['ล้างตัวกรอง']);
-  clear.addEventListener('click', function () { A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.sel = {}; renderAll(); });
+  clear.addEventListener('click', function () {
+    A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.fSearch = ''; A.sel = {}; renderAll();
+  });
 
   v.appendChild(rangeBar());
   v.appendChild(h('div', { class: 'bar' }, [
+    h('div', {}, [h('span', { class: 'label' }, ['ค้นหา']), find]),
     h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), selTopic]),
     h('div', {}, [h('span', { class: 'label' }, ['วันที่']), selDate]),
     clear,
-    h('div', { style: 'margin-left:auto;font-size:13px' }, [list.length + ' รายการ'])
+    h('div', { id: 'vault-count', style: 'margin-left:auto;font-size:13px' }, [list.length + ' รายการ'])
   ]));
 
-  // แถบลบหลายรายการ — โผล่เมื่อติ๊กเลือกไว้ (ติ๊กเป็น "ชุด" เบิกกับคืนไปด้วยกัน)
+  v.appendChild(h('div', { id: 'vault-body' }, []));
+  fillVault();
+}
+
+/** รายการที่ผ่านตัวกรองทั้งหมดของหน้าคลังรูป */
+function vaultList() {
+  return A.pairs.filter(function (p) {
+    if (A.fTopic !== 'ทั้งหมด' && p.topic !== A.fTopic) return false;
+    if (A.fDate !== 'ทั้งหมด' && p.date !== A.fDate) return false;
+    return pairMatch(p, A.fSearch);
+  });
+}
+
+/** วาดเฉพาะส่วนรายการ — เรียกซ้ำได้โดยช่องค้นหาไม่เสียโฟกัส */
+function fillVault() {
+  var box = $('#vault-body');
+  if (!box) return;
+  box.innerHTML = '';
+  var list = vaultList();
+
+  var cnt = $('#vault-count');
+  if (cnt) cnt.textContent = list.length + ' รายการ';
+
+  // แถบซ่อนหลายรายการ — โผล่เมื่อติ๊กเลือกไว้ (ติ๊กเป็น "ชุด" เบิกกับคืนไปด้วยกัน)
   var ids = Object.keys(A.sel).filter(function (k) { return A.sel[k]; });
   if (ids.length) {
     var recIds = selectedRecordIds();
@@ -344,8 +401,8 @@ function viewVault(v) {
       ['ซ่อนรูปที่เลือก ' + ids.length + ' ชุด (' + recIds.length + ' รายการ)']);
     del.addEventListener('click', function () { bulkHidePhotos(recIds, false); });
     var cancel = h('button', { class: 'btn btn-secondary' }, ['ยกเลิกที่เลือก']);
-    cancel.addEventListener('click', function () { A.sel = {}; renderAll(); });
-    v.appendChild(h('div', {
+    cancel.addEventListener('click', function () { A.sel = {}; fillVault(); });
+    box.appendChild(h('div', {
       style: 'position:sticky;top:110px;z-index:18;display:flex;gap:10px;align-items:center;' +
              'padding:10px 14px;margin-bottom:14px;background:var(--color-accent-100);' +
              'border-top:2px solid var(--color-accent)'
@@ -361,12 +418,12 @@ function viewVault(v) {
     var selAll = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['เลือกทั้งหมดที่เห็น']);
     selAll.addEventListener('click', function () {
       list.forEach(function (p) { if (pairHasPhotos(p)) A.sel[p.id] = true; });
-      renderAll();
+      fillVault();
     });
-    v.appendChild(h('div', { style: 'margin-bottom:14px' }, [selAll]));
+    box.appendChild(h('div', { style: 'margin-bottom:14px' }, [selAll]));
   }
 
-  v.appendChild(h('div', { class: 'grid4', style: 'margin-bottom:22px' }, [
+  box.appendChild(h('div', { class: 'grid4', style: 'margin-bottom:22px' }, [
     statCard('เบิก', list.length),
     statCard('คืนแล้ว', list.filter(function (p) { return p.back; }).length),
     statCard('ยังไม่คืน', list.filter(function (p) { return !p.back; }).length, true),
@@ -376,9 +433,12 @@ function viewVault(v) {
     }, 0))
   ]));
 
-  if (!list.length) { v.appendChild(h('p', { class: 'muted' }, ['ยังไม่มีรายการ'])); return; }
-
-  list.forEach(function (p) { v.appendChild(pairCard(p)); });
+  if (!list.length) {
+    box.appendChild(h('p', { class: 'muted' },
+      [A.fSearch ? 'ไม่พบรายการที่ตรงกับ "' + A.fSearch + '"' : 'ยังไม่มีรายการ']));
+    return;
+  }
+  list.forEach(function (p) { box.appendChild(pairCard(p)); });
 }
 
 function sidePhotos(side) {
@@ -492,6 +552,26 @@ function pairHasPhotos(p) {
 }
 
 /**
+ * ป้ายรหัสรายการ — ตัวเดียวกับที่หน้างานเห็นบนมือถือตอนส่งสำเร็จ
+ * กดแล้วเอาไปใส่ช่องค้นหาให้เลย เผื่ออยากดึงคู่เบิก-คืนของชุดนี้มาดู
+ */
+function recChip(id) {
+  if (!id) return null;
+  var b = h('button', {
+    class: 'mono',
+    title: 'กดเพื่อค้นหารหัสนี้',
+    style: 'font-size:11.5px;padding:2px 7px;cursor:pointer;background:var(--color-surface);' +
+           'border:1px solid var(--color-divider);color:var(--color-text);font-weight:600'
+  }, [id]);
+  b.addEventListener('click', function () {
+    A.fSearch = id; A.sel = {};
+    A.tab = 'vault';
+    renderAll();
+  });
+  return b;
+}
+
+/**
  * การ์ดที่ซ่อนรูปแล้ว — ย่อเหลือบรรทัดเดียว ไม่กินที่
  *
  * ยังเห็นข้อมูลสำคัญครบ (รหัสเครื่อง คนเบิก วันที่ จำนวน อาการ)
@@ -506,9 +586,13 @@ function pairCardHidden(p) {
            'padding:7px 12px;margin-bottom:6px;border:1px solid var(--color-divider);opacity:.65'
   }, [
     h('span', { style: 'font-weight:700' }, [p.codes || p.id]),
+    recChip(p.id),
     h('span', { class: 'muted' }, [p.name + ' · ' + p.date]),
     h('span', { class: 'muted' }, [qty]),
-    p.status === 'มีปัญหา' ? h('span', { class: 'tag tag-issue', style: 'font-size:11px' }, ['มีปัญหา']) : null,
+    p.status === 'มีปัญหา'
+      ? h('span', { class: 'tag tag-issue', style: 'font-size:11px' }, ['มีปัญหา' + (p.issue ? ': ' + p.issue : '')])
+      : null,
+    p.note ? h('span', { class: 'muted' }, ['หมายเหตุ: ' + p.note]) : null,
     h('span', { class: 'muted', style: 'margin-left:auto' }, ['ซ่อนไว้ ' + n + ' รูป'])
   ]);
 
@@ -526,6 +610,8 @@ function pairCard(p) {
   var mismatch = !p.back || (p.qtyBack !== null && p.qtyBack !== p.qty);
   var head = h('h4', {}, [
     h('span', { style: 'font-size:16px' }, [p.codes || p.id]),
+    // รหัสรายการ — แอดมินใช้อ้างอิงกับที่หน้างานเห็นบนมือถือ ค้นหาด้วยเลขท้ายได้
+    recChip(p.id),
     h('span', { class: 'muted', style: 'font-size:12px;font-weight:400' },
       [p.name + ' · ' + p.dept + ' · ' + p.date + ' · ' + p.shift]),
     h('span', {
@@ -549,7 +635,7 @@ function pairCard(p) {
     var tick = h('button', { class: 'chip' + (on ? ' on' : '') }, [(on ? '☑ ' : '☐ ') + 'เลือกซ่อน']);
     tick.addEventListener('click', function () {
       if (A.sel[p.id]) delete A.sel[p.id]; else A.sel[p.id] = true;
-      renderAll();
+      fillVault();
     });
     head.appendChild(tick);
 
@@ -561,15 +647,6 @@ function pairCard(p) {
 
   var inner = h('div', { class: 'in' }, []);
 
-  if (p.issue) {
-    inner.appendChild(h('div', {
-      style: 'border-top:2px solid var(--color-accent);padding:8px 0 12px;margin-bottom:12px;font-size:13px'
-    }, [
-      h('strong', {}, ['อาการ: ']), p.issue,
-      p.note ? h('div', { class: 'muted', style: 'font-size:12px' }, ['หมายเหตุ: ' + p.note]) : null
-    ]));
-  }
-
   [['เบิก', p.out], ['คืน', p.back]].forEach(function (pair) {
     var label = pair[0], side = pair[1];
     var box = h('div', { style: 'margin-bottom:14px' }, []);
@@ -577,17 +654,36 @@ function pairCard(p) {
       style: 'display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--color-divider);padding-bottom:6px;margin-bottom:10px'
     }, [
       h('strong', { style: 'font-family:var(--font-heading);font-size:14px' }, [label]),
+      side ? recChip(side.recordId) : null,
+      side && side.result
+        ? h('span', { class: 'tag' + (side.result === 'มีปัญหา' ? ' tag-issue' : ''), style: 'font-size:11px' }, [side.result])
+        : null,
       h('span', { class: 'muted', style: 'font-size:12px' }, [
         side ? (side.time + ' น. · ' + (side.deleted ? 'ลบรูปแล้ว'
                 : side.hidden ? 'ซ่อนไว้ ' + side.photoN + ' รูป'
                 : sidePhotos(side).length + ' รูป')) : 'ยังไม่คืน'
-      ])
+      ]),
+      side && side.empName
+        ? h('span', { class: 'muted', style: 'font-size:12px' }, ['โดย ' + side.empName])
+        : null
     ]);
     if (side && side.folder && !side.deleted) {
       title.appendChild(h('a', { href: side.folder, target: '_blank', rel: 'noopener',
         class: 'btn btn-ghost', style: 'margin-left:auto;font-size:12px' }, ['เปิดโฟลเดอร์ Drive']));
     }
     box.appendChild(title);
+
+    // อาการและหมายเหตุของ "ฝั่งนี้" โดยเฉพาะ — เบิกกับคืนคนละคนคนละเวลา
+    // ต้องแยกให้ชัด ไม่งั้นไม่รู้ว่าเสียตั้งแต่ตอนเบิกหรือมาเสียตอนคืน
+    if (side && (side.issue || side.note)) {
+      box.appendChild(h('div', {
+        style: 'border-left:3px solid ' + (side.issue ? 'var(--color-accent)' : 'var(--color-divider)') +
+               ';padding:6px 0 6px 10px;margin-bottom:10px;font-size:13px;line-height:1.5'
+      }, [
+        side.issue ? h('div', {}, [h('strong', {}, ['อาการ: ']), side.issue]) : null,
+        side.note ? h('div', { class: 'muted', style: 'font-size:12px' }, ['หมายเหตุ: ' + side.note]) : null
+      ]));
+    }
 
     var shots = sidePhotos(side);
     if (!side) box.appendChild(h('p', { class: 'muted', style: 'font-size:13px' }, ['ยังไม่มีการคืน']));
@@ -682,12 +778,11 @@ function viewData(v) {
 }
 
 function filtered() {
-  var q = A.fSearch.trim().toLowerCase();
+  // ใช้ตัวค้นหาเดียวกับหน้าคลังรูป จะได้ค้นด้วยรหัสรายการ (หรือเลขท้าย) ได้เหมือนกัน
   return A.pairs.filter(function (p) {
     if (A.fTopic !== 'ทั้งหมด' && p.topic !== A.fTopic) return false;
     if (A.fDate !== 'ทั้งหมด' && p.date !== A.fDate) return false;
-    if (q && (p.codes + ' ' + p.name + ' ' + p.dept + ' ' + p.id).toLowerCase().indexOf(q) < 0) return false;
-    return true;
+    return pairMatch(p, A.fSearch);
   });
 }
 
