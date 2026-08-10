@@ -963,7 +963,38 @@ function pairHasPhotos(p) {
   return sidePhotos(p.out).length > 0 || sidePhotos(p.back).length > 0;
 }
 
+/**
+ * การ์ดที่ซ่อนรูปแล้ว — ย่อเหลือบรรทัดเดียว ไม่กินที่
+ *
+ * ยังเห็นข้อมูลสำคัญครบ (รหัสเครื่อง คนเบิก วันที่ จำนวน อาการ)
+ * แค่ไม่ต้องเปลืองพื้นที่กับกล่องรูปที่ไม่มีรูปให้ดูแล้ว
+ */
+function pairCardHidden(p) {
+  var n = (p.out ? p.out.photoN || 0 : 0) + (p.back ? p.back.photoN || 0 : 0);
+  var qty = 'เบิก ' + p.qty + ' → คืน ' + (p.back ? (p.qtyBack !== null ? p.qtyBack : p.qty) : '—');
+
+  var row = h('div', {
+    style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;' +
+           'padding:7px 12px;margin-bottom:6px;border:1px solid var(--color-divider);opacity:.65'
+  }, [
+    h('span', { style: 'font-weight:700' }, [p.codes || p.id]),
+    h('span', { class: 'muted' }, [p.name + ' · ' + p.date]),
+    h('span', { class: 'muted' }, [qty]),
+    p.status === 'มีปัญหา' ? h('span', { class: 'tag tag-issue', style: 'font-size:11px' }, ['มีปัญหา']) : null,
+    h('span', { class: 'muted', style: 'margin-left:auto' }, ['ซ่อนไว้ ' + n + ' รูป'])
+  ]);
+
+  if (A.canEdit) {
+    var back = h('button', { class: 'btn btn-secondary', style: 'font-size:11px;padding:3px 9px' }, ['↩ เอากลับมาแสดง']);
+    back.addEventListener('click', function () { bulkHidePhotos(pairIds(p), true); });
+    row.appendChild(back);
+  }
+  return row;
+}
+
 function pairCard(p) {
+  if (pairHidden(p)) return pairCardHidden(p);
+
   var mismatch = !p.back || (p.qtyBack !== null && p.qtyBack !== p.qty);
   var head = h('h4', {}, [
     h('span', { style: 'font-size:16px' }, [p.codes || p.id]),
@@ -981,11 +1012,7 @@ function pairCard(p) {
 
   // ── ติ๊ก/ซ่อน อยู่ที่หัวการ์ด ทำทีเดียวได้ทั้งเบิกและคืน ──
   var ids = pairIds(p);
-  if (A.canEdit && pairHidden(p)) {
-    var back = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['↩ เอากลับมาแสดง']);
-    back.addEventListener('click', function () { bulkHidePhotos(ids, true); });
-    head.appendChild(back);
-  } else if (A.canEdit && pairHasPhotos(p)) {
+  if (A.canEdit && pairHasPhotos(p)) {
     var nPhoto = sidePhotos(p.out).length + sidePhotos(p.back).length;
     var both = ids.length > 1 ? ' (เบิก+คืน)' : '';
 
