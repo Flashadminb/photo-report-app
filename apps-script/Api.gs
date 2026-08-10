@@ -512,6 +512,7 @@ function apiAdminLoad(empId, range) {
 function normRange_(range) {
   var r = range || {};
   var mode = s_(r.mode) || 'days';
+  if (mode === 'day')   return { mode: 'day',   d: s_(r.d) };   // เจาะจงวันเดียว YYYY-MM-DD
   if (mode === 'month') return { mode: 'month', y: Number(r.y), m: Number(r.m) };
   if (mode === 'year')  return { mode: 'year',  y: Number(r.y) };
   if (mode === 'all')   return { mode: 'all' };
@@ -521,15 +522,21 @@ function normRange_(range) {
 function filterRecords_(recs, r) {
   if (r.mode === 'all') return recs;
 
-  var from = null;
+  var from = null, one = null;
   if (r.mode === 'days') {
     from = new Date(); from.setHours(0, 0, 0, 0);
     from.setDate(from.getDate() - (r.n - 1));
+  }
+  if (r.mode === 'day') {
+    var g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.d || '');
+    if (!g) return [];
+    one = new Date(Number(g[1]), Number(g[2]) - 1, Number(g[3])).getTime();
   }
 
   var keep = recs.filter(function (x) {
     var d = recDay_(x);
     if (!d) return false;
+    if (r.mode === 'day')   return d.getTime() === one;
     if (r.mode === 'month') return d.getFullYear() === r.y && (d.getMonth() + 1) === r.m;
     if (r.mode === 'year')  return d.getFullYear() === r.y;
     return d >= from;

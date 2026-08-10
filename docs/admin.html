@@ -642,7 +642,26 @@ function rangeText(r) {
   if (r.mode === 'all')   return 'ทั้งหมดตั้งแต่วันแรก';
   if (r.mode === 'year')  return 'ทั้งปี ' + r.y;
   if (r.mode === 'month') return 'เดือน ' + r.m + '/' + r.y;
+  if (r.mode === 'day')   return 'วันที่ ' + thaiDay(r.d);
   return r.n + ' วันล่าสุด';
+}
+
+/** 'YYYY-MM-DD' -> 'd/M/yyyy' และเติมคำว่าวันนี้/เมื่อวานให้ถ้าตรง */
+function thaiDay(iso) {
+  var g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!g) return iso || '';
+  var txt = Number(g[3]) + '/' + Number(g[2]) + '/' + g[1];
+  if (iso === isoDay(0))  return txt + ' (วันนี้)';
+  if (iso === isoDay(-1)) return txt + ' (เมื่อวาน)';
+  return txt;
+}
+
+/** วันที่แบบ YYYY-MM-DD นับจากวันนี้ (0 = วันนี้, -1 = เมื่อวาน) */
+function isoDay(offset) {
+  var d = new Date();
+  d.setDate(d.getDate() + (offset || 0));
+  var p = function (v) { return (v < 10 ? '0' : '') + v; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
 /** แถบเลือกช่วงเวลา — ใช้ร่วมกันทั้งหน้าคลังรูปและหน้าข้อมูล */
@@ -650,6 +669,25 @@ function rangeBar() {
   var r = A.range || { mode: 'days', n: 7 };
   var p = A.periods || { months: [], years: [] };
   var TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+  // ปุ่มลัดวันเดียว — ปกติทำงานย้อนหลัง 1 วัน เลยให้ "เมื่อวาน" กดถึงในคลิกเดียว
+  var isDay = function (iso) { return r.mode === 'day' && r.d === iso; };
+
+  var bToday = h('button', { class: 'btn ' + (isDay(isoDay(0)) ? 'btn-primary' : 'btn-secondary') }, ['วันนี้']);
+  bToday.addEventListener('click', function () { setRange({ mode: 'day', d: isoDay(0) }); });
+
+  var bYest = h('button', { class: 'btn ' + (isDay(isoDay(-1)) ? 'btn-primary' : 'btn-secondary') }, ['เมื่อวาน']);
+  bYest.addEventListener('click', function () { setRange({ mode: 'day', d: isoDay(-1) }); });
+
+  // จิ้มเลือกวันจากปฏิทินได้ตรง ๆ ไม่ต้องไล่หาจากเดือน/ปี
+  var pick = h('input', {
+    type: 'date', class: 'input', style: 'width:auto',
+    max: isoDay(0),
+    value: r.mode === 'day' ? r.d : ''
+  }, []);
+  pick.addEventListener('change', function (e) {
+    if (e.target.value) setRange({ mode: 'day', d: e.target.value });
+  });
 
   var d7 = h('button', { class: 'btn ' + (r.mode === 'days' ? 'btn-primary' : 'btn-secondary') }, ['7 วันล่าสุด']);
   d7.addEventListener('click', function () { setRange({ mode: 'days', n: 7 }); });
@@ -681,6 +719,8 @@ function rangeBar() {
 
   return h('div', { class: 'bar', style: 'margin-bottom:10px' }, [
     h('span', { class: 'label' }, ['ช่วงเวลา']),
+    bYest, bToday,
+    h('div', {}, [h('span', { class: 'label' }, ['จิ้มเลือกวัน']), pick]),
     d7, selM, selY, all,
     h('div', { style: 'margin-left:auto;font-size:12px;opacity:.7' },
       ['กำลังดู ' + rangeText(r) + ' · ในชีทมีทั้งหมด ' + (A.totalRecords || 0) + ' แถว'])
