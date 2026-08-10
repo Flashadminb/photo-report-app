@@ -769,8 +769,11 @@ function viewData(v) {
   var body = h('tbody', { id: 'data-body' }, []);
   v.appendChild(h('div', { class: 'wrap' }, [
     h('table', { class: 'table' }, [
+      // แยกอาการ/หมายเหตุ ตอนเบิก กับ ตอนคืน คนละคอลัมน์
+      // เพราะเป็นคนละคนคนละเวลา รวมกันแล้วอ่านไม่ออกว่าใครแจ้งอะไร
       h('thead', {}, [h('tr', {}, ['รหัสรายการ', 'วันที่', 'กะ', 'ผู้เบิก', 'แผนก', 'หัวข้อ', 'จำนวน', 'รหัสเครื่อง',
-        'เบิก', 'คืน', 'ผลตรวจ', 'อาการ', 'หมายเหตุ'].map(function (t) { return h('th', {}, [t]); }))]),
+        'เบิก', 'ผลตรวจตอนเบิก', 'อาการตอนเบิก', 'หมายเหตุตอนเบิก',
+        'คืน', 'ผลตรวจตอนคืน', 'อาการตอนคืน', 'หมายเหตุตอนคืน'].map(function (t) { return h('th', {}, [t]); }))]),
       body
     ])
   ]));
@@ -796,25 +799,35 @@ function fillDataRows(tbody) {
       h('td', {}, [String(p.qty) + (p.qtyBack !== null && p.qtyBack !== p.qty ? ' → ' + p.qtyBack : '')]),
       h('td', { style: 'font-size:12px' }, [p.codes]),
       h('td', {}, [p.out ? p.out.time + ' (' + sidePhotos(p.out).length + ')' : '—']),
+      resultCell(p.out), textCell(p.out && p.out.issue), textCell(p.out && p.out.note),
       h('td', { style: p.back ? '' : 'color:var(--color-accent);font-weight:600' },
         [p.back ? p.back.time + ' (' + sidePhotos(p.back).length + ')' : 'ยังไม่คืน']),
-      h('td', {}, [h('span', { class: 'tag' + (p.status === 'มีปัญหา' ? ' tag-issue' : '') }, [p.status || '—'])]),
-      h('td', { style: 'font-size:12px;max-width:220px' }, [p.issue || '—']),
-      h('td', { style: 'font-size:12px;max-width:220px' }, [p.note || '—'])
+      resultCell(p.back), textCell(p.back && p.back.issue), textCell(p.back && p.back.note)
     ]));
   });
 }
 
+function resultCell(side) {
+  if (!side || !side.result) return h('td', { class: 'muted' }, ['—']);
+  return h('td', {}, [h('span', { class: 'tag' + (side.result === 'มีปัญหา' ? ' tag-issue' : '') }, [side.result])]);
+}
+
+function textCell(txt) {
+  return h('td', { style: 'font-size:12px;max-width:200px' }, [txt || '—']);
+}
+
 function exportCsv() {
-  var head = ['รหัสรายการ', 'วันที่', 'กะ', 'รหัสพนักงาน', 'ผู้เบิก', 'แผนก', 'หัวข้อ',
-    'จำนวนเบิก', 'จำนวนคืน', 'รหัสเครื่อง', 'เวลาเบิก', 'รูปเบิก', 'เวลาคืน', 'รูปคืน',
-    'ผลตรวจ', 'อาการ', 'หมายเหตุ'];
+  var head = ['รหัสรายการเบิก', 'รหัสรายการคืน', 'วันที่', 'กะ', 'รหัสพนักงาน', 'ผู้เบิก', 'แผนก', 'หัวข้อ',
+    'จำนวนเบิก', 'จำนวนคืน', 'รหัสเครื่อง',
+    'เวลาเบิก', 'รูปเบิก', 'ผลตรวจตอนเบิก', 'อาการตอนเบิก', 'หมายเหตุตอนเบิก',
+    'เวลาคืน', 'รูปคืน', 'ผู้คืน', 'ผลตรวจตอนคืน', 'อาการตอนคืน', 'หมายเหตุตอนคืน'];
+  var g = function (side, k) { return (side && side[k]) || ''; };
   var rows = filtered().map(function (p) {
-    return [p.id, p.date, p.shift, p.empId, p.name, p.dept, p.topic,
+    return [p.id, g(p.back, 'recordId'), p.date, p.shift, p.empId, p.name, p.dept, p.topic,
       p.qty, p.qtyBack === null ? '' : p.qtyBack, p.codes,
-      p.out ? p.out.time : '', sidePhotos(p.out).length,
-      p.back ? p.back.time : '', sidePhotos(p.back).length,
-      p.status, p.issue, p.note];
+      g(p.out, 'time'), sidePhotos(p.out).length, g(p.out, 'result'), g(p.out, 'issue'), g(p.out, 'note'),
+      g(p.back, 'time'), sidePhotos(p.back).length, g(p.back, 'empName'),
+      g(p.back, 'result'), g(p.back, 'issue'), g(p.back, 'note')];
   });
   var csv = [head].concat(rows).map(function (r) {
     return r.map(function (c) { return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"'; }).join(',');
