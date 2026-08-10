@@ -554,7 +554,7 @@ function renderGalleryStep() {
       S.extra = S.extra.filter(function (y) { return y.id !== p.id; }); render();
     });
     g.appendChild(el('div', { class: 'cell' }, [
-      el('img', { src: p.dataUrl, class: 'grayscale' }),
+      el('img', { src: p.dataUrl }),
       el('div', { class: 'bd' }, [(p.src === 'cam' ? 'ถ่าย' : 'อัปโหลด') + ' ' + p.time]),
       x
     ]));
@@ -590,7 +590,7 @@ function renderStatusStep() {
       render();
     });
     g.appendChild(el('div', { class: 'cell' }, [
-      el('img', { src: p.dataUrl, class: 'grayscale' }),
+      el('img', { src: p.dataUrl }),
       el('div', { class: 'bd' }, [(p.src === 'cam' ? 'ถ่าย' : 'อัปโหลด') + ' ' + p.time]),
       x
     ]));
@@ -625,7 +625,7 @@ function renderReview() {
   var th = $('#review-thumbs'); th.innerHTML = '';
   allPhotoList().forEach(function (p) {
     th.appendChild(el('div', { style: 'width:84px' }, [
-      el('img', { src: p.dataUrl, class: 'grayscale', style: 'width:84px;height:84px;object-fit:cover' }),
+      el('img', { src: p.dataUrl, style: 'width:84px;height:84px;object-fit:cover' }),
       el('div', { style: 'font-size:10px;margin-top:3px;opacity:.7' }, [p.slot])
     ]));
   });

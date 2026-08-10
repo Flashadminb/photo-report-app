@@ -605,7 +605,7 @@ function pairCard(p) {
       box.appendChild(h('div', { class: 'shots' }, shots.map(function (ph) {
         return h('figure', {}, [
           h('a', { href: ph.url, target: '_blank', rel: 'noopener' }, [
-            h('img', { src: driveThumb(ph.url), class: 'grayscale', loading: 'lazy', alt: ph.slot })
+            h('img', { src: driveThumb(ph.url), loading: 'lazy', alt: ph.slot })
           ]),
           h('figcaption', { style: 'font-size:11px;margin-top:4px' }, [ph.slot + ' · ' + ph.time])
         ]);
