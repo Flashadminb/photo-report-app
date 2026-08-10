@@ -1134,18 +1134,44 @@ function viewAssets(v) {
       if (!confirm('ลบ ' + a.code + ' ออกจากชีท?')) return;
       saveThen(rpc('apiDeleteAsset', A.empId, a.code));
     });
+    // อาการค้าง — หน้างานแจ้งมาแล้วค้างไว้จนแอดมินกดเคลียร์ ไม่หายเอง
+    var defCell;
+    if (a.defect) {
+      var clr = h('button', { class: 'btn btn-secondary', style: 'font-size:11px;padding:3px 8px;margin-left:8px' }, ['เคลียร์']);
+      clr.addEventListener('click', function () {
+        if (!guardEdit()) return;
+        if (!confirm('เคลียร์อาการค้างของ ' + a.code + ' ?\n\n' + a.defect +
+          '\n\nใช้เมื่อซ่อมเสร็จแล้วหรือแจ้งมาไม่ตรง')) return;
+        saveThen(rpc('apiSaveAsset', A.empId, Object.assign({}, a, { defect: '' })));
+      });
+      defCell = h('td', { style: 'font-size:12px;max-width:280px;color:var(--color-accent);font-weight:600' },
+        [a.defect, clr]);
+    } else {
+      defCell = h('td', { class: 'muted', style: 'font-size:12px' }, ['—']);
+    }
+
     return h('tr', {}, [
       h('td', { style: 'font-family:var(--font-heading);font-weight:800' }, [a.code]),
       h('td', {}, [a.type]), h('td', {}, [a.dept]),
       h('td', {}, [st]),
+      defCell,
       h('td', { style: 'font-size:12px' }, [a.note || '—']),
       h('td', {}, [rm])
     ]);
   });
 
+  var nDefect = A.master.assets.filter(function (a) { return a.defect; }).length;
+  if (nDefect) {
+    v.appendChild(h('div', {
+      style: 'border:2px solid var(--color-accent);padding:10px 12px;margin-bottom:14px;font-size:13px'
+    }, ['มีเครื่องที่ค้างอาการอยู่ ' + nDefect + ' เครื่อง — ยังเบิกได้ตามปกติ ' +
+        'ถ้าใช้ไม่ได้จริงให้กดสถานะเป็น "ซ่อม" เพื่อปิดไม่ให้เบิก · ซ่อมเสร็จแล้วกด "เคลียร์"']));
+  }
+
   v.appendChild(h('div', { class: 'wrap', style: 'margin-bottom:18px' }, [
     h('table', { class: 'table' }, [
-      h('thead', {}, [h('tr', {}, ['รหัสเครื่อง', 'ประเภท', 'แผนกประจำ', 'สถานะ', 'หมายเหตุ', ''].map(function (t) { return h('th', {}, [t]); }))]),
+      h('thead', {}, [h('tr', {}, ['รหัสเครื่อง', 'ประเภท', 'แผนกประจำ', 'สถานะ', 'อาการค้าง', 'หมายเหตุ', '']
+        .map(function (t) { return h('th', {}, [t]); }))]),
       h('tbody', {}, rows)
     ])
   ]));

@@ -377,6 +377,15 @@ textarea.input{min-height:90px;resize:vertical}
       </div>
 
       <div class="pane hide" style="padding-top:0" id="step-status">
+        <!-- อาการค้างที่เคยแจ้งไว้ก่อนหน้า — บอกเฉย ๆ ไม่ขวางการทำงาน -->
+        <div class="hide" id="known-wrap"
+             style="border:2px solid var(--color-accent);padding:10px 12px;font-size:13px;line-height:1.6">
+          <div style="font-family:var(--font-heading);font-weight:800;margin-bottom:4px" id="known-head"></div>
+          <div id="known-list"></div>
+          <div style="font-size:11.5px;opacity:.7;margin-top:6px">
+            ของเดิมที่เคยแจ้งไว้ ไม่ต้องแจ้งซ้ำ — ถ้าเจอ<strong>เพิ่มจากนี้</strong>ค่อยกด "มีปัญหา"
+          </div>
+        </div>
         <div style="font-size:13px;opacity:.75">เลือกสถานะของเครื่องที่ตรวจ</div>
         <button class="tile" id="st-ok" style="padding:14px"><div>
           <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">ใช้งานปกติ</div>
@@ -387,6 +396,10 @@ textarea.input{min-height:90px;resize:vertical}
 
         <div class="hide" id="issue-wrap" style="border-top:2px solid var(--color-accent);padding-top:12px;
              display:flex;flex-direction:column;gap:10px">
+          <div id="issue-which-wrap">
+            <span class="label" id="issue-which-label">เครื่องไหนที่มีปัญหา (เลือกได้หลายตัว)</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="issue-which"></div>
+          </div>
           <div>
             <span class="label">เป็นอะไร (บังคับกรอก)</span>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px" id="issue-tags"></div>
@@ -768,6 +781,7 @@ var S = {
   ref: '',                // รหัสรายการเบิก ตอนกดคืน
   shift: '',
   picked: [],             // รหัสเครื่องที่เลือก
+  issueCodes: [],         // เครื่องที่แจ้งว่าเสียในรอบนี้ (ตัวไหนบ้างจากที่ติ๊กมา)
   pickedExtra: [],        // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — เป็นเครื่อง นับรวมในจำนวน
   qty: 1,
   step: 0,
@@ -844,6 +858,8 @@ function shotCount() {
 function issueOk() {
   if (S.result !== 'มีปัญหา') return true;
   if (!S.issueText.trim()) return false;
+  // เบิกหลายตัวต้องบอกว่าตัวไหนเสีย ไม่งั้นจดใส่เครื่องไม่ได้ว่าใครพัง
+  if (pickedAll().length > 1 && !S.issueCodes.length) return false;
   if (rule('issue') && !S.issueShots.length) return false;
   return true;
 }
@@ -866,7 +882,7 @@ function go(screen) {
 
 function resetJob() {
   S.topic = null; S.action = 'เบิก'; S.ref = ''; S.borrowedQty = 0;
-  S.picked = []; S.pickedExtra = []; S.qty = 1;
+  S.picked = []; S.pickedExtra = []; S.issueCodes = []; S.qty = 1;
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
   S.job = null; S.jobWait = null; S.up = {}; S.upBusy = {}; S.upSeq = 0;
@@ -897,6 +913,17 @@ function startReturn(job) {
   S.qty = job.qty || all.length || 1;
   S.borrowedQty = job.qty || all.length || 0;   // ไว้เทียบว่าคืนครบไหม
   S.shift = S.user.shift;
+
+  // ตอนเบิกแจ้งปัญหาไว้ ก็ติ๊ก "มีปัญหา" ค้างไว้ให้เลย พร้อมเติมอาการเดิม
+  // เปลี่ยนเป็นปกติได้ตลอดถ้าซ่อมแล้วหรือแจ้งผิด — แค่เลือกไว้ให้ ไม่ได้ล็อก
+  var bad = knownDefects();
+  if (bad.length) {
+    S.result = 'มีปัญหา';
+    S.issueCodes = bad.map(function (k) { return k.code; });
+    // ตัดส่วนที่ระบบต่อท้ายไว้ (วันที่/ผู้แจ้ง) ออก เหลือแต่ตัวอาการ
+    S.issueText = bad.map(function (k) { return k.defect.split(' · แจ้ง ')[0]; })
+      .filter(function (x, i, a) { return a.indexOf(x) === i; }).join(' · ');
+  }
   // แวะหน้าข้อมูลงานก่อน เพื่อให้แก้จำนวนที่คืนจริงได้ (เบิก 10 คืน 8 ก็มี)
   go('form');
 }
@@ -1122,7 +1149,9 @@ function renderForm() {
   var nBusy = 0;
   list.forEach(function (a) {
     var on = S.picked.indexOf(a.code) >= 0;
-    var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code]);
+    // เครื่องที่ค้างอาการอยู่ ติดดาวไว้เฉย ๆ ยังเบิกได้ปกติ รายละเอียดอยู่หน้าเลือกสถานะ
+    var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code + (a.defect ? ' ⚠' : '')]);
+    if (a.defect) b.title = a.defect;
     cw.appendChild(b);
 
     // เครื่องที่คนอื่นเบิกไปแล้วยังไม่คืน กดไม่ได้ จะได้ไม่เสียเวลาถ่ายรูปฟรี
@@ -1314,10 +1343,54 @@ function renderGalleryStep() {
   });
 }
 
+/** อาการค้างของเครื่องที่กำลังเบิก/คืนอยู่ — [{code, defect}] */
+function knownDefects() {
+  var by = {};
+  (S.assets || []).forEach(function (a) { if (a.defect) by[a.code] = a.defect; });
+  return pickedAll().filter(function (c) { return by[c]; })
+    .map(function (c) { return { code: c, defect: by[c] }; });
+}
+
 function renderStatusStep() {
   $('#st-ok').classList.toggle('on', S.result === 'ปกติ');
   $('#st-issue').classList.toggle('on', S.result === 'มีปัญหา');
   $('#issue-wrap').classList.toggle('hide', S.result !== 'มีปัญหา');
+
+  // ── กล่องบอกอาการที่เคยแจ้งไว้ ไม่ขวาง ไม่บังคับอะไร ──
+  var known = knownDefects();
+  $('#known-wrap').classList.toggle('hide', !known.length);
+  if (known.length) {
+    $('#known-head').textContent = 'เครื่องที่เคยแจ้งปัญหาไว้ ' + known.length + ' เครื่อง';
+    var kl = $('#known-list'); kl.innerHTML = '';
+    known.forEach(function (k) {
+      kl.appendChild(el('div', {}, [
+        el('strong', {}, [k.code + ': ']),
+        el('span', { style: 'opacity:.85' }, [k.defect])
+      ]));
+    });
+  }
+
+  // ── เลือกว่าเครื่องไหนเสีย — เบิกตัวเดียวติ๊กให้เลย ไม่ต้องกดเพิ่ม ──
+  var all = pickedAll();
+  S.issueCodes = S.issueCodes.filter(function (c) { return all.indexOf(c) >= 0; });
+  if (all.length === 1 && !S.issueCodes.length) S.issueCodes = all.slice();
+
+  $('#issue-which-wrap').classList.toggle('hide', all.length < 2);
+  if (all.length >= 2) {
+    $('#issue-which-label').textContent =
+      'เครื่องไหนที่มีปัญหา (เลือกได้หลายตัว · เลือกแล้ว ' + S.issueCodes.length + ')';
+    var w = $('#issue-which'); w.innerHTML = '';
+    all.forEach(function (c) {
+      var on = S.issueCodes.indexOf(c) >= 0;
+      var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [c]);
+      b.addEventListener('click', function () {
+        S.issueCodes = on ? S.issueCodes.filter(function (x) { return x !== c; })
+                          : S.issueCodes.concat([c]);
+        render();
+      });
+      w.appendChild(b);
+    });
+  }
 
   // อาการที่พบบ่อย — ใช้ของหัวข้อนั้นก่อน (ชีท "เงื่อนไข" แถว tags) ไม่มีค่อยใช้ชุดกลาง
   var tagList = (S.topic && S.topic.issueTags && S.topic.issueTags.length)
@@ -1512,6 +1585,9 @@ function missingText() {
     return 'ยังถ่ายไม่ครบ ' + shotCount() + '/' + reqSlots().length;
   }
   if (!S.result) return 'ยังไม่เลือกสถานะเครื่อง';
+  if (S.result === 'มีปัญหา' && pickedAll().length > 1 && !S.issueCodes.length) {
+    return 'เลือกก่อนว่าเครื่องไหนมีปัญหา';
+  }
   if (!issueOk()) return 'แจ้งปัญหาต้องมีอาการ + รูปจุดที่มีปัญหา';
   if (rule('gps') && !geo.text()) return 'หัวข้อนี้บังคับเปิดตำแหน่ง (GPS)';
   return '';
@@ -1719,6 +1795,7 @@ function buildPayload() {
     qty: totalQty(),
     codes: S.picked,
     extraCodes: S.pickedExtra,
+    issueCodes: S.result === 'มีปัญหา' ? S.issueCodes : [],
     result: S.result,
     issue: S.result === 'มีปัญหา' ? S.issueText : '',
     note: S.note,
@@ -1933,7 +2010,7 @@ function saveDraft() {
     ts: Date.now(), empId: S.user.id,
     screen: S.screen, step: S.step,
     topicId: S.topic.id, action: S.action, ref: S.ref, shift: S.shift,
-    picked: S.picked, pickedExtra: S.pickedExtra, qty: S.qty,
+    picked: S.picked, pickedExtra: S.pickedExtra, issueCodes: S.issueCodes, qty: S.qty,
     shots: S.shots, extra: S.extra, issueShots: S.issueShots,
     result: S.result, issueText: S.issueText, note: S.note
   }).catch(function () { /* เต็มหรือเขียนไม่ได้ ก็ปล่อยไป ไม่ให้แอพสะดุด */ });
@@ -1950,7 +2027,8 @@ function restoreDraft() {
 
     S.topic = t; S.action = d.action || 'เบิก'; S.ref = d.ref || '';
     S.shift = d.shift || S.user.shift;
-    S.picked = d.picked || []; S.pickedExtra = d.pickedExtra || []; S.qty = d.qty || 1;
+    S.picked = d.picked || []; S.pickedExtra = d.pickedExtra || [];
+    S.issueCodes = d.issueCodes || []; S.qty = d.qty || 1;
     S.shots = d.shots || {}; S.extra = d.extra || []; S.issueShots = d.issueShots || [];
     S.result = d.result || ''; S.issueText = d.issueText || ''; S.note = d.note || '';
     S.step = d.step || 0;

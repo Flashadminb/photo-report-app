@@ -65,7 +65,8 @@ function buildMaster_() {
       type: s_(r[C.ASSET.TYPE - 1]),
       dept: s_(r[C.ASSET.DEPT - 1]),
       status: s_(r[C.ASSET.STATUS - 1]) || CFG.V.ASSET_READY,
-      note: s_(r[C.ASSET.NOTE - 1])
+      note: s_(r[C.ASSET.NOTE - 1]),
+      defect: s_(r[C.ASSET.DEFECT - 1])   // อาการค้าง ค้างไว้จนแอดมินเคลียร์
     };
   }).filter(function (a) { return a.code; });
 
@@ -176,6 +177,37 @@ function masterUpsert_(sheetName, keyCol, keyVal, rowValues) {
   sh.getRange(row, 1, 1, rowValues.length).setValues([rowValues]);
   clearMasterCache_();
   return row;
+}
+
+/**
+ * จดอาการค้างใส่ตัวเครื่อง — เขียนทับของเดิม (อาการล่าสุดคือของจริง)
+ *
+ * เขียนทีเดียวทุกตัวที่ส่งมา อ่านคอลัมน์รหัสรอบเดียวแล้วยิงเฉพาะแถวที่ตรง
+ * ไม่แตะคอลัมน์อื่นเลย ข้อมูลที่แอดมินกรอกไว้จึงไม่หาย
+ */
+function setAssetDefects_(codes, text) {
+  var list = (codes || []).map(s_).filter(Boolean);
+  if (!list.length) return 0;
+
+  var C = CFG.COL.ASSET;
+  var sh = masterSS_().getSheetByName(CFG.M.ASSETS);
+  if (!sh) return 0;
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+
+  var ids = sh.getRange(2, C.CODE, last - 1, 1).getValues();
+  var rowOf = {};
+  for (var i = 0; i < ids.length; i++) rowOf[s_(ids[i][0])] = i + 2;
+
+  var n = 0;
+  list.forEach(function (code) {
+    var row = rowOf[code];
+    if (!row) return;
+    sh.getRange(row, C.DEFECT).setValue(s_(text));
+    n++;
+  });
+  if (n) clearMasterCache_();
+  return n;
 }
 
 function masterDelete_(sheetName, keyCol, keyVal) {

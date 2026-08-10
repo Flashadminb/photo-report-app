@@ -9,7 +9,7 @@
  * (ข้อมูลจากชีทต้องสดเสมอ ห้ามแคช)
  */
 
-const VERSION = 'v30';
+const VERSION = 'v31';
 const SHELL_CACHE = 'ppr-shell-' + VERSION;
 const FONT_CACHE  = 'ppr-font-' + VERSION;
 

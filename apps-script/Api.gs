@@ -339,6 +339,10 @@ function prepareSubmit_(p) {
     throw new Error('เลือก "มีปัญหา" ต้องอธิบายอาการด้วย');
   }
 
+  // เครื่องที่แจ้งว่าเสีย — ต้องรู้ว่าตัวไหน ไม่งั้นเบิกทีละ 5 ตัวแล้วจดไม่ได้ว่าใครพัง
+  // ไม่ระบุมา = ถือว่าเป็นอาการของทั้งชุด (รองรับข้อมูลเก่าและคิวออฟไลน์รุ่นก่อน)
+  var badCodes = (p.issueCodes || []).map(s_).filter(Boolean);
+
   // จำนวนเครื่องนับจากรหัสที่ติ๊ก ไม่ให้กรอกเองแล้ว (ตัวเลขจะได้ตรงกับรหัสเสมอ)
   // ยังรับ p.qty ไว้เผื่อรายการเก่าที่ค้างในคิวออฟไลน์ตั้งแต่ก่อนเปลี่ยน
   var codes = (p.codes || []).map(s_).filter(Boolean);
@@ -371,8 +375,16 @@ function prepareSubmit_(p) {
 
   return {
     u: u, topic: topic, action: action, result: result,
-    codes: all, qty: qty, ref: ref, note: note
+    codes: all, qty: qty, ref: ref, note: note,
+    badCodes: badCodes.filter(function (c) { return all.indexOf(c) >= 0; })
   };
+}
+
+/** ข้อความอาการที่จะลงชีท — ใส่รหัสเครื่องนำหน้าเพื่อให้รู้ว่าตัวไหนเสีย */
+function issueText_(ctx, raw) {
+  var t = s_(raw);
+  if (!t || !ctx.badCodes.length) return t;
+  return ctx.badCodes.map(function (c) { return c + ': ' + t; }).join(' · ');
 }
 
 /** ตรวจว่าถ่ายครบตามช่องบังคับในชีท "ช่องถ่ายรูป" หรือยัง */
@@ -429,7 +441,7 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
     qty: ctx.qty,
     codes: ctx.codes.join(', '),
     result: ctx.result,
-    issue: ctx.result === CFG.V.ISSUE ? s_(p.issue) : '',
+    issue: ctx.result === CFG.V.ISSUE ? issueText_(ctx, p.issue) : '',
     note: ctx.note,
     folderUrl: folderUrl,
     gps: s_(p.gps),
@@ -439,6 +451,16 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
   });
 
   if (p.clientId) rememberSubmitted_(p.clientId, recordId);
+
+  // จดอาการค้างใส่ตัวเครื่อง เพื่อให้คนเบิกคนถัดไปรู้ว่าพังตรงไหนอยู่ก่อนแล้ว
+  // ค้างไว้จนกว่าแอดมินจะเคลียร์ — ไม่หายเองแม้จะคืนมาแล้วแจ้งว่าปกติ
+  // ทำนอกล็อกและกลืน error ไว้ เพราะแถวบันทึกลงไปแล้ว ห้ามให้พังย้อนหลัง
+  if (ctx.result === CFG.V.ISSUE && ctx.badCodes.length) {
+    try {
+      setAssetDefects_(ctx.badCodes,
+        s_(p.issue) + ' · แจ้ง ' + fmtDate_(new Date()) + ' ตอน' + ctx.action + ' โดย ' + ctx.u.name);
+    } catch (e) { /* จดไม่ได้ก็ไม่เป็นไร ข้อมูลหลักลงชีทแล้ว */ }
+  }
 
   return {
     recordId: recordId,
@@ -726,9 +748,10 @@ function apiSaveAsset(empId, p) {
   return wrap_(function () {
     adminGuard_(empId);
     if (!s_(p.code)) throw new Error('ต้องมีรหัสเครื่อง');
+    // ส่ง defect มาเป็นค่าว่างคือสั่งเคลียร์อาการค้าง
     masterUpsert_(CFG.M.ASSETS, CFG.COL.ASSET.CODE, s_(p.code), [
       s_(p.code), s_(p.type), s_(p.dept),
-      s_(p.status) || CFG.V.ASSET_READY, s_(p.note)
+      s_(p.status) || CFG.V.ASSET_READY, s_(p.note), s_(p.defect)
     ]);
     return ok_({ master: getMaster_(true) });
   });

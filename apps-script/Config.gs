@@ -36,7 +36,9 @@ var CFG = {
     // MASTER!พนักงาน
     STAFF: { ID: 1, NAME: 2, DEPT: 3, SHIFT: 4, ROLE: 5, STATUS: 6 },
     // MASTER!เครื่อง
-    ASSET: { CODE: 1, TYPE: 2, DEPT: 3, STATUS: 4, NOTE: 5 },
+    // DEFECT = "อาการค้าง" ติดตัวเครื่องไปจนกว่าแอดมินจะเคลียร์ — คนละเรื่องกับ STATUS
+    // STATUS ซ่อม = เบิกไม่ได้ · DEFECT = เบิกได้ แต่รู้ว่าพังตรงไหนอยู่ก่อนแล้ว
+    ASSET: { CODE: 1, TYPE: 2, DEPT: 3, STATUS: 4, NOTE: 5, DEFECT: 6 },
     // MASTER!หัวข้อสำรวจ
     TOPIC: { ID: 1, NAME: 2, DESC: 3, ON: 4, ORDER: 5 },
     // MASTER!ช่องถ่ายรูป

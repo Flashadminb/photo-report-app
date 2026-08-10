@@ -37,8 +37,10 @@ var STAFF = [
 var ASSETS = [
   { code: 'PP-INLHBG-01', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
   { code: 'PP-INLHBG-02', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
-  { code: 'REPACK 01', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' },
+  { code: 'REPACK 01', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '',
+    defect: 'หน้าจอแตก · แจ้ง 9/8/2026 ตอนคืน โดย สุนิสา ประยงค์กลิ่น' },
   { code: 'REPACK 02', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' },
+  { code: 'REPACK 04', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' },
   { code: 'BPL 01', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' },
   { code: 'BPL 02', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' },
   { code: 'BPL 03', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' }

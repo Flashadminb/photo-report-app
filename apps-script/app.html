@@ -220,6 +220,15 @@
       </div>
 
       <div class="pane hide" style="padding-top:0" id="step-status">
+        <!-- อาการค้างที่เคยแจ้งไว้ก่อนหน้า — บอกเฉย ๆ ไม่ขวางการทำงาน -->
+        <div class="hide" id="known-wrap"
+             style="border:2px solid var(--color-accent);padding:10px 12px;font-size:13px;line-height:1.6">
+          <div style="font-family:var(--font-heading);font-weight:800;margin-bottom:4px" id="known-head"></div>
+          <div id="known-list"></div>
+          <div style="font-size:11.5px;opacity:.7;margin-top:6px">
+            ของเดิมที่เคยแจ้งไว้ ไม่ต้องแจ้งซ้ำ — ถ้าเจอ<strong>เพิ่มจากนี้</strong>ค่อยกด "มีปัญหา"
+          </div>
+        </div>
         <div style="font-size:13px;opacity:.75">เลือกสถานะของเครื่องที่ตรวจ</div>
         <button class="tile" id="st-ok" style="padding:14px"><div>
           <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">ใช้งานปกติ</div>
@@ -230,6 +239,10 @@
 
         <div class="hide" id="issue-wrap" style="border-top:2px solid var(--color-accent);padding-top:12px;
              display:flex;flex-direction:column;gap:10px">
+          <div id="issue-which-wrap">
+            <span class="label" id="issue-which-label">เครื่องไหนที่มีปัญหา (เลือกได้หลายตัว)</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="issue-which"></div>
+          </div>
           <div>
             <span class="label">เป็นอะไร (บังคับกรอก)</span>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px" id="issue-tags"></div>
