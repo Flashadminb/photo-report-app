@@ -210,6 +210,28 @@ function setAssetDefects_(codes, text) {
   return n;
 }
 
+/**
+ * รหัสลับ 3 หลักของคนนี้ (ช่อง PIN2 ในชีทพนักงาน) — ว่าง = ไม่ต้องใส่
+ *
+ * จงใจอ่านตรงจากชีททุกครั้ง ไม่เก็บไว้ในออบเจ็กต์ staff และไม่ผ่านแคช
+ * เพื่อให้แน่ใจว่ารหัสไม่มีทางหลุดไปกับข้อมูลที่ส่งให้หน้าจอ
+ */
+function staffPin2_(empId) {
+  var id = s_(empId);
+  if (!id) return '';
+  var C = CFG.COL.STAFF;
+  var sh = masterSS_().getSheetByName(CFG.M.STAFF);
+  if (!sh) return '';
+  var last = sh.getLastRow();
+  if (last < 2 || sh.getLastColumn() < C.PIN2) return '';
+
+  var vals = sh.getRange(2, 1, last - 1, C.PIN2).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (s_(vals[i][C.ID - 1]) === id) return s_(vals[i][C.PIN2 - 1]);
+  }
+  return '';
+}
+
 function masterDelete_(sheetName, keyCol, keyVal) {
   var sh = masterSS_().getSheetByName(sheetName);
   var row = findRow_(sh, keyCol, keyVal);

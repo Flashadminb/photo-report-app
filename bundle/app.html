@@ -218,8 +218,8 @@ textarea.input{min-height:90px;resize:vertical}
     <!-- ══ เข้าสู่ระบบ ══ -->
     <section class="pane hide" data-screen="login">
       <div>
-        <div style="font-family:var(--font-heading);font-weight:800;font-size:24px;line-height:1.15">ใส่รหัสพนักงาน</div>
-        <div style="font-size:13px;opacity:.7;margin-top:6px">ระบบดึงชื่อ แผนก และกะการทำงานจากชีททะเบียนพนักงานให้อัตโนมัติ</div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:24px;line-height:1.15" id="login-title">ใส่รหัสพนักงาน</div>
+        <div style="font-size:13px;opacity:.7;margin-top:6px" id="login-sub">ระบบดึงชื่อ แผนก และกะการทำงานจากชีททะเบียนพนักงานให้อัตโนมัติ</div>
       </div>
       <div style="display:flex;gap:6px" id="pin-boxes"></div>
       <div style="min-height:18px;font-size:12px;color:var(--color-accent-700)" id="pin-err"></div>
@@ -761,6 +761,8 @@ function flushQueue(onProgress) {
 var S = {
   screen: 'login',
   pin: '', pinErr: '', remember: store.get('remember', true),
+  stage: 'id',            // 'id' = ใส่รหัสพนักงาน · 'pin2' = ใส่รหัสลับ 3 หลัก
+  pin2Id: '', pin2Name: '',
   user: null, isAdmin: false,
   topics: [], assets: [], shifts: [], issueTags: [], openJobs: [], today: '',
   busyCodes: {},          // { รหัสเครื่อง: {by,id,date,time} } เครื่องที่ยังไม่ได้คืน
@@ -918,6 +920,7 @@ function startReturn(job) {
 }
 
 function back() {
+  if (S.screen === 'login' && pin2Stage()) { backToId(); return; }
   if (S.screen === 'shoot' && S.step > 0) { S.step--; render(); return; }
   if (S.screen === 'shoot') { go('form'); return; }
   if (S.screen === 'review') { S.step = steps().length - 1; go('shoot'); return; }
@@ -971,15 +974,27 @@ function shootTitle() {
 
 // รหัสพนักงานในชีทมีทั้ง 5 และ 6 หลัก
 var PIN_MIN = 5, PIN_MAX = 6;
+var PIN2_LEN = 3;              // รหัสลับเพิ่มเติมของบัญชีที่ตั้งไว้ในชีท
+
+/** ขั้นรหัสลับ = บัญชีที่ตั้งรหัส 3 หลักไว้ในชีท ต้องใส่เพิ่มก่อนเข้า */
+function pin2Stage() { return S.stage === 'pin2'; }
+function pinLen() { return pin2Stage() ? PIN2_LEN : PIN_MAX; }
 
 function renderLogin() {
+  var p2 = pin2Stage(), n = pinLen();
+
+  $('#login-title').textContent = p2 ? 'ใส่รหัสลับ 3 หลัก' : 'ใส่รหัสพนักงาน';
+  $('#login-sub').textContent = p2
+    ? (S.pin2Name || 'บัญชีนี้') + ' — บัญชีนี้ตั้งรหัสลับไว้ ต้องใส่ก่อนเข้าใช้งาน'
+    : 'ระบบดึงชื่อ แผนก และกะการทำงานจากชีททะเบียนพนักงานให้อัตโนมัติ';
+
   var wrap = $('#pin-boxes'); wrap.innerHTML = '';
-  for (var i = 0; i < PIN_MAX; i++) {
+  for (var i = 0; i < n; i++) {
     wrap.appendChild(el('div', {
       class: 'pinbox' + (S.pin[i] ? ' f' : '') + (S.pin.length === i ? ' c' : ''),
-      // ช่องที่ 6 จางไว้ เพราะบางคนมีแค่ 5 หลัก
-      style: i >= PIN_MIN && !S.pin[i] ? 'opacity:.45' : ''
-    }, [S.pin[i] || '']));
+      // ช่องที่ 6 จางไว้ เพราะรหัสพนักงานบางคนมีแค่ 5 หลัก
+      style: (!p2 && i >= PIN_MIN && !S.pin[i]) ? 'opacity:.45' : ''
+    }, [p2 && S.pin[i] ? '•' : (S.pin[i] || '')]));
   }
   $('#pin-err').textContent = S.pinErr;
 
@@ -989,12 +1004,16 @@ function renderLogin() {
       var b = el('button', { class: 'key', style: k ? '' : 'visibility:hidden' }, [k]);
       b.addEventListener('click', function () {
         if (!k) return;
-        if (k === '⌫') S.pin = S.pin.slice(0, -1); else S.pin = (S.pin + k).slice(0, PIN_MAX);
+        if (k === '⌫') S.pin = S.pin.slice(0, -1); else S.pin = (S.pin + k).slice(0, pinLen());
         S.pinErr = ''; render();
       });
       kp.appendChild(b);
     });
   }
+
+  // ขั้นรหัสลับไม่ต้องมีปุ่มจำการเข้าสู่ระบบและรหัสทดลอง
+  $('#remember').classList.toggle('hide', p2);
+  var dw = $('#demo-wrap'); if (dw) dw.classList.toggle('hide', p2);
 
   $('#remember').style.borderColor = S.remember ? 'var(--color-accent)' : 'var(--color-divider)';
   var box = $('#remember-box');
@@ -1525,7 +1544,12 @@ function renderFooter() {
   var foot = $('#foot'), btn = $('#btn-primary'), hint = $('#foot-hint');
   var show = true, label = 'ถัดไป', okState = true, hintText = '';
 
-  if (S.screen === 'login') {
+  if (S.screen === 'login' && pin2Stage()) {
+    label = 'ยืนยัน'; okState = S.pin.length === PIN2_LEN;
+    hintText = S.pinErr || (S.pin.length < PIN2_LEN
+      ? 'ใส่รหัสลับ ' + PIN2_LEN + ' หลัก · จำไว้ 8 ชม. ไม่ถามซ้ำ'
+      : 'กดยืนยันได้เลย');
+  } else if (S.screen === 'login') {
     // รหัสพนักงานมีทั้ง 5 และ 6 หลัก ใส่ครบแล้วกดเข้าใช้งานได้เลย
     label = 'เข้าใช้งาน'; okState = S.pin.length >= PIN_MIN;
     hintText = S.pinErr || (S.pin.length < PIN_MIN
@@ -2035,7 +2059,11 @@ function refreshQueueCount() {
 
 function refresh() {
   if (!S.user) return Promise.resolve();
-  return rpc('apiRefresh', S.user.id).then(function (r) {
+  return rpc('apiRefresh', S.user.id, '', store.get('ticket', '')).then(function (r) {
+    // ตั๋วหมดอายุระหว่างใช้งาน — ไม่เด้งออกกลางคัน ปล่อยให้ทำงานที่ค้างอยู่ต่อจนจบ
+    // ต้องใส่รหัสลับใหม่ตอนเปิดแอพครั้งหน้า
+    if (r.needPin) return;
+    if (r.ticket) store.set('ticket', r.ticket);
     applySession(r);
     if (S.screen === 'home') renderHome();
   }).catch(function () { /* ออฟไลน์ — ใช้ข้อมูลเดิมไปก่อน */ });
@@ -2071,8 +2099,10 @@ function bind() {
   });
   $('#btn-logout').addEventListener('click', function () {
     if (!confirm('ออกจากระบบ?\nรายการค้างคืนยังอยู่ในระบบ เข้ามาใหม่ด้วยรหัสเดิมได้ตลอด')) return;
-    store.del('empId'); store.del('session');
-    S.user = null; S.pin = ''; resetJob(); dropPhotos(); go('login');
+    // ทิ้งตั๋วรหัสลับด้วย — เข้าใหม่ต้องใส่รหัส 3 หลักอีกครั้ง
+    store.del('empId'); store.del('session'); store.del('ticket');
+    S.user = null; S.pin = ''; S.stage = 'id'; S.pin2Id = ''; S.pin2Name = '';
+    resetJob(); dropPhotos(); go('login');
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
   $('#btn-home').addEventListener('click', function () { clearDraft(); resetJob(); refresh(); go('home'); });
@@ -2168,16 +2198,37 @@ function nextStep() {
 }
 
 function doLogin() {
+  var p2 = pin2Stage();
+  var id = p2 ? S.pin2Id : S.pin;
+  var pin2 = p2 ? S.pin : '';
+
   S.busy = true; renderFooter();
-  rpc('apiLogin', S.pin).then(function (r) {
+  rpc('apiLogin', id, pin2, store.get('ticket', '')).then(function (r) {
     S.busy = false;
+
+    // บัญชีนี้ตั้งรหัสลับไว้ — ไปขั้นถามรหัส 3 หลักก่อน
+    if (r.needPin) {
+      S.stage = 'pin2'; S.pin2Id = id; S.pin2Name = r.name || '';
+      S.pin = ''; S.pinErr = ''; render();
+      return;
+    }
+
+    // ตั๋วยืนยันรหัสลับ อายุ 8 ชม. นับจากครั้งล่าสุดที่ใช้ (ตัวรหัสไม่ได้เก็บไว้)
+    if (r.ticket) store.set('ticket', r.ticket);
+
     if (S.remember) store.set('empId', r.user.id); else store.del('empId');
     applySession(r);
-    S.pin = ''; S.pinErr = '';
+    S.pin = ''; S.pinErr = ''; S.stage = 'id'; S.pin2Id = ''; S.pin2Name = '';
     go('home');
   }).catch(function (e) {
     S.busy = false; S.pin = ''; S.pinErr = e.message; render();
   });
+}
+
+/** กลับไปขั้นใส่รหัสพนักงาน (กดย้อนจากหน้ารหัสลับ) */
+function backToId() {
+  S.stage = 'id'; S.pin = S.pin2Id; S.pin2Id = ''; S.pin2Name = ''; S.pinErr = '';
+  render();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -2208,7 +2259,17 @@ function doLogin() {
   }
 
   // 2) แล้วค่อยดึงของจริงมาทับเงียบ ๆ (ทะเบียน/หัวข้อ/รายการค้างคืนอาจเปลี่ยน)
-  rpc('apiLogin', saved).then(function (r) {
+  rpc('apiLogin', saved, '', store.get('ticket', '')).then(function (r) {
+    // บัญชีที่ตั้งรหัสลับไว้และตั๋วหมดอายุ (ไม่ได้แตะเกิน 8 ชม.) ต้องใส่รหัสใหม่
+    if (r.needPin) {
+      S.user = null;
+      S.stage = 'pin2'; S.pin2Id = saved; S.pin2Name = r.name || '';
+      S.pin = ''; S.pinErr = '';
+      go('login');
+      return;
+    }
+    if (r.ticket) store.set('ticket', r.ticket);
+
     var wasWorking = ['form', 'shoot', 'review'].indexOf(S.screen) >= 0;
     applySession(r);
     if (wasWorking) return;                       // กำลังทำงานค้างอยู่ อย่าเด้งกลับหน้าหลัก

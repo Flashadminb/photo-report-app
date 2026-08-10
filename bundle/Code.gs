@@ -46,7 +46,9 @@ var CFG = {
   // ── ลำดับคอลัมน์ (1-based) — ต้องตรงกับหัวตารางในชีทเป๊ะ ──────────────
   COL: {
     // MASTER!พนักงาน
-    STAFF: { ID: 1, NAME: 2, DEPT: 3, SHIFT: 4, ROLE: 5, STATUS: 6 },
+    // PIN2 = รหัสลับ 3 หลักสำหรับเข้าแอพหน้างาน ใครมีค่าในช่องนี้ต้องใส่เพิ่มทุกครั้ง
+    // อ่านตรงจากชีทตอนล็อกอินเท่านั้น ไม่เคยถูกส่งออกไปหน้าจอ
+    STAFF: { ID: 1, NAME: 2, DEPT: 3, SHIFT: 4, ROLE: 5, STATUS: 6, PIN2: 7 },
     // MASTER!เครื่อง
     // DEFECT = "อาการค้าง" ติดตัวเครื่องไปจนกว่าแอดมินจะเคลียร์ — คนละเรื่องกับ STATUS
     // STATUS ซ่อม = เบิกไม่ได้ · DEFECT = เบิกได้ แต่รู้ว่าพังตรงไหนอยู่ก่อนแล้ว
@@ -315,6 +317,28 @@ function setAssetDefects_(codes, text) {
   });
   if (n) clearMasterCache_();
   return n;
+}
+
+/**
+ * รหัสลับ 3 หลักของคนนี้ (ช่อง PIN2 ในชีทพนักงาน) — ว่าง = ไม่ต้องใส่
+ *
+ * จงใจอ่านตรงจากชีททุกครั้ง ไม่เก็บไว้ในออบเจ็กต์ staff และไม่ผ่านแคช
+ * เพื่อให้แน่ใจว่ารหัสไม่มีทางหลุดไปกับข้อมูลที่ส่งให้หน้าจอ
+ */
+function staffPin2_(empId) {
+  var id = s_(empId);
+  if (!id) return '';
+  var C = CFG.COL.STAFF;
+  var sh = masterSS_().getSheetByName(CFG.M.STAFF);
+  if (!sh) return '';
+  var last = sh.getLastRow();
+  if (last < 2 || sh.getLastColumn() < C.PIN2) return '';
+
+  var vals = sh.getRange(2, 1, last - 1, C.PIN2).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (s_(vals[i][C.ID - 1]) === id) return s_(vals[i][C.PIN2 - 1]);
+  }
+  return '';
 }
 
 function masterDelete_(sheetName, keyCol, keyVal) {
@@ -866,21 +890,81 @@ function apiHello() {
 function enableDemoPins()  { PropertiesService.getScriptProperties().setProperty('SHOW_DEMO', 'true'); }
 function disableDemoPins() { PropertiesService.getScriptProperties().deleteProperty('SHOW_DEMO'); }
 
+// ── รหัสลับ 3 หลัก สำหรับบัญชีที่ตั้งไว้ในชีท (ช่อง PIN2) ──────────────
+//
+// ยืนยันรหัสผ่านแล้วเซิร์ฟเวอร์ออก "ตั๋ว" ให้เครื่องนั้นเก็บไว้แทนตัวรหัส
+// ตัวรหัสจริงไม่เคยถูกเก็บในมือถือและไม่เคยถูกส่งกลับไปหน้าจอเลย
+//
+// ตั๋วมีอายุ 8 ชม. นับจากครั้งล่าสุดที่ใช้ ใช้งานอยู่เรื่อย ๆ ก็ไม่ถามซ้ำ
+// ทิ้งไว้ไม่แตะเกิน 8 ชม. หรือกดออกระบบ = ต้องใส่รหัสใหม่
+
+var PIN_TICKET_MS = 8 * 3600 * 1000;
+
+function ticketKey_(t) { return 'pt:' + s_(t); }
+
+function issueTicket_(empId) {
+  var t = Utilities.getUuid();
+  PropertiesService.getScriptProperties()
+    .setProperty(ticketKey_(t), s_(empId) + '|' + (Date.now() + PIN_TICKET_MS));
+  return t;
+}
+
+/** ตั๋วนี้ยังใช้ได้กับคนนี้ไหม — ใช้ได้ก็ต่ออายุออกไปอีก 8 ชม. */
+function useTicket_(empId, t) {
+  if (!s_(t)) return false;
+  var props = PropertiesService.getScriptProperties();
+  var v = props.getProperty(ticketKey_(t));
+  if (!v) return false;
+  var p = String(v).split('|');
+  if (p[0] !== s_(empId) || Number(p[1]) < Date.now()) {
+    props.deleteProperty(ticketKey_(t));
+    return false;
+  }
+  props.setProperty(ticketKey_(t), p[0] + '|' + (Date.now() + PIN_TICKET_MS));
+  return true;
+}
+
+/**
+ * ด่านรหัสลับ — คืน {} ถ้าผ่าน, {needPin:true} ถ้ายังต้องถาม, {ticket} ถ้าเพิ่งยืนยันสำเร็จ
+ * คนที่ไม่ได้ตั้งรหัสไว้ในชีทจะผ่านทันที ไม่มีอะไรเปลี่ยน
+ */
+function pinGate_(u, pin2, ticket) {
+  var need = staffPin2_(u.id);
+  if (!need) return {};
+  if (useTicket_(u.id, ticket)) return {};
+  var got = s_(pin2);
+  if (!got) return { needPin: true };
+  if (got !== need) throw new Error('รหัสลับไม่ถูกต้อง');
+  return { ticket: issueTicket_(u.id) };
+}
+
 /** เข้าสู่ระบบด้วยรหัสพนักงาน แล้วส่งข้อมูลทุกอย่างที่แอพต้องใช้กลับไปทีเดียว */
-function apiLogin(empId) {
+function apiLogin(empId, pin2, ticket) {
   return wrap_(function () {
     var m = getMaster_();
     var u = requireUser_(m, empId);
-    return ok_(sessionPayload_(m, u));
+
+    var gate = pinGate_(u, pin2, ticket);
+    if (gate.needPin) return ok_({ needPin: true, name: u.name });
+
+    var out = sessionPayload_(m, u);
+    if (gate.ticket) out.ticket = gate.ticket;
+    return ok_(out);
   });
 }
 
 /** เรียกซ้ำเพื่อรีเฟรชรายการค้างคืน/ทะเบียนเครื่อง โดยไม่ต้องล็อกอินใหม่ */
-function apiRefresh(empId) {
+function apiRefresh(empId, pin2, ticket) {
   return wrap_(function () {
     var m = getMaster_();
     var u = requireUser_(m, empId);
-    return ok_(sessionPayload_(m, u));
+
+    var gate = pinGate_(u, pin2, ticket);
+    if (gate.needPin) return ok_({ needPin: true, name: u.name });
+
+    var out = sessionPayload_(m, u);
+    if (gate.ticket) out.ticket = gate.ticket;
+    return ok_(out);
   });
 }
 

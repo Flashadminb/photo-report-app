@@ -74,12 +74,19 @@ var SIDE = function (t, n, id, extra) {
 var API = {
   apiHello: function () { return { ok: true, serverTime: '6/8/2026, 16:12:04', today: '6/8/2026',
     demo: STAFF.map(function (p) { return { id: p.id, name: p.name, role: p.role }; }) }; },
-  apiLogin: function (pin) {
+  // จำลองรหัสลับ 3 หลัก: 600112 (แอดมิน) ตั้งไว้ 456 · คนอื่นไม่ได้ตั้ง
+  apiLogin: function (pin, pin2, ticket) {
     var u = STAFF.filter(function (p) { return p.id === String(pin); })[0];
     if (!u) return { ok: false, error: 'ไม่พบรหัสนี้ในชีททะเบียนพนักงาน' };
+    var need = (u.id === '600112') ? '456' : '';
+    if (need && ticket !== 'TICKET-OK') {
+      if (!pin2) return { ok: true, needPin: true, name: u.name };
+      if (String(pin2) !== need) return { ok: false, error: 'รหัสลับไม่ถูกต้อง' };
+      var s = session(u); s.ticket = 'TICKET-OK'; return s;
+    }
     return session(u);
   },
-  apiRefresh: function (id) { return API.apiLogin(id); },
+  apiRefresh: function (id, pin2, ticket) { return API.apiLogin(id, pin2, ticket); },
   apiReserve: function(empId, topicId){ MOCK_CALLS.push('reserve'); return { ok:true, recordId:'PP-20260806-1275', folderId:'FOLDER1', folderUrl:'https://drive.google.com/drive/folders/yyy' }; },
   apiUploadPhoto: function(empId, recId, folderId, slot, dataUrl, time, gps, seq){ MOCK_CALLS.push('upload:'+slot); return { ok:true, slot:slot, url:'https://drive.google.com/open?id=p'+seq, time:time||'00:00:00', gps:gps||'' }; },
   apiCommitSubmit: function(p, rows, recId, folderUrl){ MOCK_CALLS.push('commit:'+(rows||[]).length); return { ok:true, recordId:recId, folderUrl:folderUrl, photoCount:(rows||[]).length, ts:'6/8/2026, 16:12:04' }; },  apiSubmit: function (p) {
