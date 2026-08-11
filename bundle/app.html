@@ -1211,7 +1211,10 @@ function renderForm() {
     || S.user.dept === 'ทุกแผนก'
     || (t.allDepts || []).indexOf(S.user.dept) >= 0;
 
-  var mine = pool.filter(function (a) { return a.dept === S.user.dept; });
+  // เครื่องที่ตั้งแผนกไว้ว่า "ทุกแผนก" คือของกลาง ทุกคนต้องเห็นเสมอ
+  var mine = pool.filter(function (a) {
+    return a.dept === owner().dept || a.dept === 'ทุกแผนก';
+  });
   var list = seeAll ? pool : (mine.length ? mine : pool);
 
   if (S.action === 'คืน') {

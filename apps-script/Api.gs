@@ -906,8 +906,11 @@ function apiSetRule(empId, topicId, ruleId, ruleName, on) {
       }
     }
     if (!row) row = sh.getLastRow() + 1;
+    // เงื่อนไขบางตัวเก็บข้อความ ไม่ใช่แค่ TRUE/FALSE (เช่น tags, extra, alldept)
+    // ส่ง boolean มา = สวิตช์เปิดปิด · ส่งข้อความมา = เขียนข้อความนั้นตรง ๆ
+    var value = (typeof on === 'boolean') ? (on ? 'TRUE' : 'FALSE') : s_(on);
     sh.getRange(row, 1, 1, 4).setValues([[
-      s_(topicId), s_(ruleId), s_(ruleName), on ? 'TRUE' : 'FALSE'
+      s_(topicId), s_(ruleId), s_(ruleName), value
     ]]);
     clearMasterCache_();
     return ok_({ master: getMaster_(true) });

@@ -14,8 +14,29 @@ var A = {
   range: { mode: 'days', n: 7 },
   periods: { months: [], years: [] },
   totalRecords: 0,
-  fTopic: 'ทั้งหมด', fDate: 'ทั้งหมด', fSearch: ''
+  fTopic: 'ทั้งหมด', fDate: 'ทั้งหมด', fSearch: '',
+  fState: 'ทั้งหมด'       // ทั้งหมด · ยังไม่คืน · คืนแล้ว · มีปัญหา · แอดมินบันทึกให้
 };
+
+var STATES = ['ทั้งหมด', 'ยังไม่คืน', 'คืนแล้ว', 'มีปัญหา', 'แอดมินบันทึกให้'];
+
+/** ชุดนี้ตรงกับตัวกรองสถานะที่เลือกไว้ไหม */
+function stateMatch(p) {
+  if (A.fState === 'ยังไม่คืน')      return !p.back;
+  if (A.fState === 'คืนแล้ว')        return !!p.back;
+  if (A.fState === 'มีปัญหา')        return p.status === 'มีปัญหา';
+  if (A.fState === 'แอดมินบันทึกให้') return !!(p.out && p.out.by);
+  return true;
+}
+
+/** ดร็อปดาวน์เลือกสถานะ — ใช้ร่วมกันทั้งคลังรูปและหน้าข้อมูล */
+function stateSelect(onChange) {
+  var s = h('select', { class: 'input', style: 'width:auto' }, STATES.map(function (n) {
+    return h('option', { value: n, selected: n === A.fState ? 'selected' : null }, [n]);
+  }));
+  s.addEventListener('change', function (e) { A.fState = e.target.value; A.sel = {}; onChange(); });
+  return s;
+}
 
 var TABS = [
   { id: 'vault',  label: 'คลังรูป' },
@@ -294,11 +315,21 @@ function section(title, kids, actions) {
     h('div', { class: 'in' }, kids)
   ]);
 }
-function statCard(k, v, accent) {
-  return h('div', { class: 'stat' }, [
+function statCard(k, v, accent, jumpTo) {
+  var n = h('div', { class: 'stat' }, [
     h('div', { class: 'v', style: accent ? 'color:var(--color-accent)' : '' }, [String(v)]),
     h('div', { class: 'k' }, [k])
   ]);
+  // การ์ดที่กดแล้วกรองให้เลย — ทางลัดที่ใช้บ่อยสุดคือดูว่าตัวไหนยังไม่คืน
+  if (jumpTo) {
+    n.style.cursor = 'pointer';
+    n.title = 'กดเพื่อกรองเฉพาะ ' + jumpTo;
+    n.addEventListener('click', function () {
+      A.fState = (A.fState === jumpTo) ? 'ทั้งหมด' : jumpTo;
+      A.sel = {}; renderAll();
+    });
+  }
+  return n;
 }
 
 // ══ คลังรูป ═══════════════════════════════════════════════════════════
@@ -358,12 +389,14 @@ function viewVault(v) {
 
   var clear = h('button', { class: 'btn btn-secondary' }, ['ล้างตัวกรอง']);
   clear.addEventListener('click', function () {
-    A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.fSearch = ''; A.sel = {}; renderAll();
+    A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.fSearch = ''; A.fState = 'ทั้งหมด';
+    A.sel = {}; renderAll();
   });
 
   v.appendChild(rangeBar());
   v.appendChild(h('div', { class: 'bar' }, [
     h('div', {}, [h('span', { class: 'label' }, ['ค้นหา']), find]),
+    h('div', {}, [h('span', { class: 'label' }, ['สถานะ']), stateSelect(fillVault)]),
     h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), selTopic]),
     h('div', {}, [h('span', { class: 'label' }, ['วันที่']), selDate]),
     clear,
@@ -379,6 +412,7 @@ function vaultList() {
   return A.pairs.filter(function (p) {
     if (A.fTopic !== 'ทั้งหมด' && p.topic !== A.fTopic) return false;
     if (A.fDate !== 'ทั้งหมด' && p.date !== A.fDate) return false;
+    if (!stateMatch(p)) return false;
     return pairMatch(p, A.fSearch);
   });
 }
@@ -425,9 +459,9 @@ function fillVault() {
 
   box.appendChild(h('div', { class: 'grid4', style: 'margin-bottom:22px' }, [
     statCard('เบิก', list.length),
-    statCard('คืนแล้ว', list.filter(function (p) { return p.back; }).length),
-    statCard('ยังไม่คืน', list.filter(function (p) { return !p.back; }).length, true),
-    statCard('พบปัญหา', list.filter(function (p) { return p.status === 'มีปัญหา'; }).length, true),
+    statCard('คืนแล้ว', list.filter(function (p) { return p.back; }).length, false, 'คืนแล้ว'),
+    statCard('ยังไม่คืน', list.filter(function (p) { return !p.back; }).length, true, 'ยังไม่คืน'),
+    statCard('พบปัญหา', list.filter(function (p) { return p.status === 'มีปัญหา'; }).length, true, 'มีปัญหา'),
     statCard('รูปบนเว็บ', list.reduce(function (a, p) {
       return a + sidePhotos(p.out).length + sidePhotos(p.back).length;
     }, 0))
@@ -747,13 +781,16 @@ function viewData(v) {
   });
 
   var clear = h('button', { class: 'btn btn-secondary' }, ['ล้างตัวกรอง']);
-  clear.addEventListener('click', function () { A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.fSearch = ''; renderAll(); });
+  clear.addEventListener('click', function () {
+    A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.fSearch = ''; A.fState = 'ทั้งหมด'; renderAll();
+  });
 
   var csv = h('button', { class: 'btn btn-secondary' }, ['ดาวน์โหลด CSV']);
   csv.addEventListener('click', exportCsv);
 
   v.appendChild(rangeBar());
   v.appendChild(h('div', { class: 'bar' }, [
+    h('div', {}, [h('span', { class: 'label' }, ['สถานะ']), stateSelect(renderAll)]),
     h('div', {}, [h('span', { class: 'label' }, ['หัวข้อ']), selT]),
     h('div', {}, [h('span', { class: 'label' }, ['วันที่']), selD]),
     h('div', {}, [h('span', { class: 'label' }, ['ค้นหา']), inp]),
@@ -764,9 +801,9 @@ function viewData(v) {
   var f = filtered();
   v.appendChild(h('div', { class: 'grid4', style: 'margin-bottom:18px' }, [
     statCard('รายการที่กรอง', f.length),
-    statCard('คืนแล้ว', f.filter(function (p) { return p.back; }).length),
-    statCard('ยังไม่คืน', f.filter(function (p) { return !p.back; }).length, true),
-    statCard('พบปัญหา', f.filter(function (p) { return p.status === 'มีปัญหา'; }).length, true)
+    statCard('คืนแล้ว', f.filter(function (p) { return p.back; }).length, false, 'คืนแล้ว'),
+    statCard('ยังไม่คืน', f.filter(function (p) { return !p.back; }).length, true, 'ยังไม่คืน'),
+    statCard('พบปัญหา', f.filter(function (p) { return p.status === 'มีปัญหา'; }).length, true, 'มีปัญหา')
   ]));
 
   var body = h('tbody', { id: 'data-body' }, []);
@@ -784,10 +821,11 @@ function viewData(v) {
 }
 
 function filtered() {
-  // ใช้ตัวค้นหาเดียวกับหน้าคลังรูป จะได้ค้นด้วยรหัสรายการ (หรือเลขท้าย) ได้เหมือนกัน
+  // ใช้ตัวค้นหาและตัวกรองสถานะชุดเดียวกับหน้าคลังรูป
   return A.pairs.filter(function (p) {
     if (A.fTopic !== 'ทั้งหมด' && p.topic !== A.fTopic) return false;
     if (A.fDate !== 'ทั้งหมด' && p.date !== A.fDate) return false;
+    if (!stateMatch(p)) return false;
     return pairMatch(p, A.fSearch);
   });
 }
