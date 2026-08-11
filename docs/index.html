@@ -300,6 +300,20 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="display:grid;grid-template-columns:1fr 1fr" id="auto-info"></div>
       </div>
 
+      <!-- แอดมินบันทึกแทนคนอื่นได้ เช่น พนักงานส่งรูปมาให้แล้วแอดมินกรอกให้ -->
+      <div id="forwho-wrap" class="hide">
+        <span class="label">เบิกให้ใคร · เฉพาะแอดมิน</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary" id="forwho-self" style="flex:1">ตัวเอง</button>
+          <button class="btn btn-secondary" id="forwho-other" style="flex:1">เบิกแทนคนอื่น</button>
+        </div>
+        <div id="forwho-pick" class="hide" style="margin-top:8px">
+          <input class="input" id="forwho-q" placeholder="พิมพ์รหัสพนักงาน หรือชื่อ" autocomplete="off">
+          <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:190px;overflow-y:auto"
+               id="forwho-list"></div>
+        </div>
+      </div>
+
       <div id="shift-wrap" class="hide">
         <span class="label">เลือกกะ · เฉพาะแอดมิน</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="shift-chips"></div>
@@ -782,6 +796,9 @@ var S = {
   action: 'เบิก',
   ref: '',                // รหัสรายการเบิก ตอนกดคืน
   shift: '',
+  forEmp: null,           // แอดมินเบิกแทนใคร (null = เบิกให้ตัวเอง)
+  forPick: false,         // เปิดช่องเลือกคนอยู่ไหม
+  staffList: [],          // รายชื่อให้แอดมินเลือก (เซิร์ฟเวอร์ส่งมาเฉพาะแอดมิน)
   picked: [],             // รหัสเครื่องที่เลือก
   issueCodes: [],         // เครื่องที่แจ้งว่าเสียในรอบนี้ (ตัวไหนบ้างจากที่ติ๊กมา)
   pickedExtra: [],        // อุปกรณ์เสริมที่เบิกพ่วง (เช่น เลเซอร์ลบ) — เป็นเครื่อง นับรวมในจำนวน
@@ -809,6 +826,56 @@ function reqSlots()  { return S.topic ? S.topic.slots.filter(function (x) { retu
 function issueSlot() { return S.topic ? S.topic.slots.filter(function (x) { return x.onIssue; })[0] : null; }
 function issueSlotName() { var s = issueSlot(); return s ? s.th : 'จุดที่มีปัญหา'; }
 function rule(id)    { return !!(S.topic && S.topic.rules && S.topic.rules[id]); }
+
+/**
+ * เจ้าของรายการ — ปกติคือคนที่ล็อกอิน
+ * ถ้าแอดมินเลือก "เบิกแทนคนอื่น" จะเป็นคนนั้นแทน (เขาต้องเป็นคนกดคืนเอง)
+ */
+function owner() { return S.forEmp || S.user; }
+
+/** แถบ "เบิกให้ใคร" — เห็นเฉพาะแอดมินและเฉพาะตอนเบิก */
+function renderForWho() {
+  var on = canPickFor();
+  $('#forwho-wrap').classList.toggle('hide', !on);
+  if (!on) return;
+
+  var other = !!S.forEmp || S.forPick;
+  $('#forwho-self').classList.toggle('btn-primary', !other);
+  $('#forwho-self').classList.toggle('btn-secondary', other);
+  $('#forwho-other').classList.toggle('btn-primary', other);
+  $('#forwho-other').classList.toggle('btn-secondary', !other);
+  $('#forwho-pick').classList.toggle('hide', !other);
+  if (!other) return;
+
+  var q = ($('#forwho-q').value || '').trim().toLowerCase();
+  var list = (S.staffList || []).filter(function (x) {
+    if (x.id === S.user.id) return false;                    // ตัวเองใช้ปุ่ม "ตัวเอง"
+    if (!q) return true;
+    return (x.id + ' ' + x.name + ' ' + x.dept).toLowerCase().indexOf(q) >= 0;
+  }).slice(0, 30);
+
+  var box = $('#forwho-list'); box.innerHTML = '';
+  if (!list.length) {
+    box.appendChild(el('div', { style: 'font-size:12px;opacity:.7;padding:6px' }, ['ไม่พบพนักงานที่ตรงกับที่ค้นหา']));
+    return;
+  }
+  list.forEach(function (x) {
+    var pickedOne = S.forEmp && S.forEmp.id === x.id;
+    var b = el('button', {
+      class: 'btn ' + (pickedOne ? 'btn-primary' : 'btn-secondary'),
+      style: 'text-align:left;justify-content:flex-start;font-size:12.5px;padding:8px 10px'
+    }, [x.id + ' · ' + x.name + ' · ' + x.dept]);
+    b.addEventListener('click', function () {
+      S.forEmp = pickedOne ? null : x;
+      if (S.forEmp) S.shift = x.shift || S.shift;   // ใช้กะของเจ้าของรายการ
+      render();
+    });
+    box.appendChild(b);
+  });
+}
+
+/** แอดมินเลือกคนให้ได้เฉพาะตอนเบิก ตอนคืนต้องเป็นเจ้าของรายการเท่านั้น */
+function canPickFor() { return S.isAdmin && S.action === 'เบิก'; }
 
 /** ประเภทอุปกรณ์เสริมที่เบิกพ่วงได้ — ตั้งจากชีท "เงื่อนไข" แถว extra (ว่าง = ไม่มี) */
 function extraType() { return (S.topic && S.topic.extraType) || ''; }
@@ -884,6 +951,7 @@ function go(screen) {
 
 function resetJob() {
   S.topic = null; S.action = 'เบิก'; S.ref = ''; S.borrowedQty = 0;
+  S.forEmp = null; S.forPick = false;
   S.picked = []; S.pickedExtra = []; S.issueCodes = []; S.qty = 1;
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
@@ -1100,16 +1168,22 @@ function renderHome() {
 // ── หน้าข้อมูลงาน ─────────────────────────────────────────────────────
 
 function renderForm() {
-  var t = S.topic, u = S.user;
+  var t = S.topic, u = owner();
   $('#form-top').innerHTML = S.action === 'คืน'
     ? '<strong>คืน ' + esc(t.name) + '</strong> — เบิกไป ' + (S.borrowedQty || '?') +
       ' เครื่อง (' + esc(S.ref) + ')<br>ถ้าคืนไม่ครบ แก้จำนวนด้านล่างให้ตรงกับที่คืนจริง'
-    : '<strong>' + esc(t.name) + '</strong> — ข้อมูลจะถูกส่งเข้าชีทอัตโนมัติ';
+    : (S.forEmp
+        ? '<strong style="color:var(--color-accent)">กำลังเบิกให้ ' + esc(S.forEmp.name) + '</strong>' +
+          '<br>รายการจะเป็นของเขา และเขาต้องเป็นคนกดคืนเอง'
+        : '<strong>' + esc(t.name) + '</strong> — ข้อมูลจะถูกส่งเข้าชีทอัตโนมัติ');
+
+  renderForWho();
 
   var info = [
     ['วันที่', S.today], ['กะการทำงาน', S.shift], ['ผู้เบิก', u.name],
     ['รหัสพนักงาน', u.id], ['แผนก', u.dept], ['สถานะใช้งาน', S.action]
   ];
+  if (S.forEmp) info.push(['บันทึกโดย', S.user.name]);
   var ai = $('#auto-info'); ai.innerHTML = '';
   info.forEach(function (kv) {
     ai.appendChild(el('div', {
@@ -1123,6 +1197,7 @@ function renderForm() {
 
   // เลือกกะได้เฉพาะแอดมิน
   $('#shift-wrap').classList.toggle('hide', !S.isAdmin);
+
   if (S.isAdmin) {
     var sc = $('#shift-chips'); sc.innerHTML = '';
     S.shifts.forEach(function (sh) {
@@ -1624,10 +1699,14 @@ function missingText() {
 function stampLines(slotName) {
   if (!rule('stamp')) return [];   // หัวข้อนี้ปิดการประทับข้อความบนรูป
   var n = nowParts();
+  var o = owner();
   return [
     n.date + ' ' + n.time + (geo.text() ? ' · GPS ' + geo.text() : ' · ไม่มีพิกัด'),
     slotName + ' · ' + codesText(),
-    S.user.name + ' (' + S.user.id + ') · ' + S.user.dept + ' · ' + S.action
+    // เบิกแทนคนอื่นให้ประทับ 2 ชื่อ จะได้รู้ว่ารูปนี้แอดมินเป็นคนบันทึกให้ ไม่ได้ถ่ายเอง
+    S.forEmp
+      ? 'เบิกให้ ' + o.name + ' (' + o.id + ') · บันทึกโดย ' + S.user.name
+      : o.name + ' (' + o.id + ') · ' + o.dept + ' · ' + S.action
   ];
 }
 
@@ -1817,6 +1896,7 @@ function buildPayload() {
     ref: S.ref,
     shift: S.shift,
     qty: totalQty(),
+    forEmpId: S.forEmp ? S.forEmp.id : '',
     codes: S.picked,
     extraCodes: S.pickedExtra,
     issueCodes: S.result === 'มีปัญหา' ? S.issueCodes : [],
@@ -1993,9 +2073,11 @@ function showDone(res) {
     sub.style.opacity = '.7';
   }
 
+  var o = owner();
   $('#done-info').innerHTML =
-    row2(back ? 'ผู้คืน' : 'ผู้เบิก', S.user ? S.user.name : '—') +
-    row2('รหัสพนักงาน · แผนก', S.user ? (S.user.id + ' · ' + S.user.dept) : '—') +
+    row2(back ? 'ผู้คืน' : 'ผู้เบิก', o ? o.name : '—') +
+    row2('รหัสพนักงาน · แผนก', o ? (o.id + ' · ' + o.dept) : '—') +
+    (S.forEmp ? row2('บันทึกโดย', S.user.name + ' (แอดมิน)') : '') +
     row2('ประทับเวลา', res.ts || (n.date + ', ' + n.time)) +
     row2('จำนวนเครื่อง', qty + ' เครื่อง') +
     ((nx && xt) ? row2(xt, nx + ' เครื่อง') : '') +
@@ -2087,6 +2169,7 @@ function applySession(r, fromCache) {
   // เครื่องที่คนอื่นเบิกไปแล้วยังไม่คืน — ไม่เก็บลงเครื่อง เพราะของเก่าอาจคืนไปแล้ว
   // ตอนเปิดจากแคชจึงว่างไว้ก่อน แล้ว refresh() จะเติมให้เอง (ฝั่งชีทกันซ้ำอีกชั้นอยู่แล้ว)
   S.busyCodes = r.busyCodes || {};
+  S.staffList = r.staffList || [];   // มีเฉพาะแอดมิน ไว้เลือกตอนบันทึกแทนคนอื่น
   if (!S.shift) S.shift = r.user.shift;
 
   // จำข้อมูลตั้งค่าไว้ในเครื่อง เพื่อให้เปิดแอพครั้งหน้าขึ้นหน้าหลักทันทีโดยไม่ต้องรอเซิร์ฟเวอร์
@@ -2124,6 +2207,12 @@ function bind() {
     if (S.shots[st.slot.th]) { nextStep(); return; }
     shootSlot(st.slot.th);
   });
+  $('#forwho-self').addEventListener('click', function () {
+    S.forEmp = null; S.forPick = false; S.shift = S.user.shift; render();
+  });
+  $('#forwho-other').addEventListener('click', function () { S.forPick = true; render(); });
+  $('#forwho-q').addEventListener('input', function () { renderForWho(); });
+
   $('#btn-cam-up').addEventListener('click', function () {
     var st = curStep();
     if (st.type !== 'cam') return;

@@ -51,7 +51,10 @@ var CFG = {
     REC: {
       ID: 1, TS: 2, DATE: 3, SHIFT: 4, EMP_ID: 5, EMP_NAME: 6, DEPT: 7,
       TOPIC: 8, ACTION: 9, QTY: 10, CODES: 11, RESULT: 12, ISSUE: 13,
-      NOTE: 14, PHOTO_N: 15, FOLDER: 16, GPS: 17, REF: 18, SENT: 19
+      NOTE: 14, PHOTO_N: 15, FOLDER: 16, GPS: 17, REF: 18, SENT: 19,
+      // BY = แอดมินที่กดบันทึกแทน (เบิกเองปกติจะว่าง)
+      // คอลัมน์ รหัสพนักงาน/ชื่อ/แผนก ยังเป็นของเจ้าของรายการที่ต้องคืนเสมอ
+      BY: 20
     },
     // DATA!รูปภาพ
     PHOTO: { REC: 1, SLOT: 2, URL: 3, TIME: 4, GPS: 5 }

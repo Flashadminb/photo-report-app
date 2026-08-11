@@ -63,7 +63,10 @@ var CFG = {
     REC: {
       ID: 1, TS: 2, DATE: 3, SHIFT: 4, EMP_ID: 5, EMP_NAME: 6, DEPT: 7,
       TOPIC: 8, ACTION: 9, QTY: 10, CODES: 11, RESULT: 12, ISSUE: 13,
-      NOTE: 14, PHOTO_N: 15, FOLDER: 16, GPS: 17, REF: 18, SENT: 19
+      NOTE: 14, PHOTO_N: 15, FOLDER: 16, GPS: 17, REF: 18, SENT: 19,
+      // BY = แอดมินที่กดบันทึกแทน (เบิกเองปกติจะว่าง)
+      // คอลัมน์ รหัสพนักงาน/ชื่อ/แผนก ยังเป็นของเจ้าของรายการที่ต้องคืนเสมอ
+      BY: 20
     },
     // DATA!รูปภาพ
     PHOTO: { REC: 1, SLOT: 2, URL: 3, TIME: 4, GPS: 5 }
@@ -430,7 +433,8 @@ function allRecords_() {
       folder:   s_(r[C.FOLDER - 1]),
       gps:      s_(r[C.GPS - 1]),
       ref:      s_(r[C.REF - 1]),
-      sent:     s_(r[C.SENT - 1])
+      sent:     s_(r[C.SENT - 1]),
+      by:       s_(r[C.BY - 1])     // แอดมินที่บันทึกแทน ว่าง = เบิกเอง
     };
   }).filter(function (x) { return x.id; });
 }
@@ -577,8 +581,9 @@ function writeRecord_(p, photoRows, guard) {
   row[C.GPS - 1]      = p.gps || '';
   row[C.REF - 1]      = p.ref || '';
   row[C.SENT - 1]     = CFG.V.SENT;
+  row[C.BY - 1]       = p.actedBy || '';
 
-  for (var i = 0; i < C.SENT; i++) if (row[i] === undefined) row[i] = '';
+  for (var i = 0; i < C.BY; i++) if (row[i] === undefined) row[i] = '';
 
   var lock = LockService.getScriptLock();
   lock.waitLock(60000);   // กะเปลี่ยนคนส่งพร้อมกันเยอะ ให้รอคิวได้นานหน่อย
@@ -996,6 +1001,9 @@ function sessionPayload_(m, u) {
     issueTags: m.issueTags,
     openJobs: mine,
     busyCodes: busy,
+    // รายชื่อไว้ให้แอดมินเลือกตอนบันทึกแทนคนอื่น — ส่งเฉพาะแอดมิน และเฉพาะช่องที่ต้องใช้
+    staffList: isAdmin ? m.staff.filter(function (x) { return x.status === CFG.V.ACTIVE; })
+      .map(function (x) { return { id: x.id, name: x.name, dept: x.dept, shift: x.shift }; }) : [],
     today: fmtDate_(new Date()),
     serverTime: fmtStamp_(new Date())
   };
@@ -1132,6 +1140,17 @@ function prepareSubmit_(p) {
   var R = topic.rules || {};
   var action = s_(p.action) || CFG.V.BORROW;
 
+  // แอดมินเบิกแทนคนอื่น — รายการเป็นของคนนั้น (เขาต้องเป็นคนคืนเอง)
+  // แต่จดไว้ด้วยว่าใครเป็นคนกดบันทึกให้ จะได้ไม่ใช่การโยนชื่อใส่กันโดยไม่มีร่องรอย
+  var owner = u, actedBy = '';
+  var forId = s_(p.forEmpId);
+  if (forId && forId !== u.id) {
+    if (u.role !== CFG.V.ROLE_ADMIN) throw new Error('เฉพาะแอดมินเท่านั้นที่บันทึกแทนคนอื่นได้');
+    if (action !== CFG.V.BORROW) throw new Error('บันทึกแทนได้เฉพาะตอนเบิก ตอนคืนให้เจ้าของรายการคืนเอง');
+    owner = requireUser_(m, forId);
+    actedBy = u.name + ' (' + u.id + ')';
+  }
+
   if (R.gps && !s_(p.gps)) throw new Error('หัวข้อนี้บังคับให้เปิดตำแหน่ง (GPS) ก่อนส่ง');
 
   var result = s_(p.result);
@@ -1177,7 +1196,7 @@ function prepareSubmit_(p) {
   }
 
   return {
-    u: u, topic: topic, action: action, result: result,
+    u: owner, actedBy: actedBy, topic: topic, action: action, result: result,
     codes: all, qty: qty, ref: ref, note: note,
     badCodes: badCodes.filter(function (c) { return all.indexOf(c) >= 0; })
   };
@@ -1239,6 +1258,7 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
     recordId: recordId,
     shift: s_(p.shift) || ctx.u.shift,
     empId: ctx.u.id, empName: ctx.u.name, dept: ctx.u.dept,
+    actedBy: ctx.actedBy,
     topicName: ctx.topic.name,
     action: ctx.action,
     qty: ctx.qty,
@@ -1417,7 +1437,7 @@ function buildPairs_(recs, photos, hidden) {
       gps: r.gps,
       // ส่งผลตรวจ/อาการ/หมายเหตุ แยกรายฝั่ง เพราะเบิกกับคืนคนละคนคนละเวลา
       // ของเดิมรวมกันแล้วฝั่งเบิกโดนฝั่งคืนทับจนหายไป
-      empName: r.empName, dept: r.dept,
+      empName: r.empName, dept: r.dept, by: r.by,
       result: r.result, issue: r.issue, note: r.note,
       photos: hide ? [] : (byRec[r.id] || []).map(function (ph) {
         return { slot: ph.slot, url: ph.url, time: ph.time, gps: ph.gps };

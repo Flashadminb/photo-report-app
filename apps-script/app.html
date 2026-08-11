@@ -143,6 +143,20 @@
         <div style="display:grid;grid-template-columns:1fr 1fr" id="auto-info"></div>
       </div>
 
+      <!-- แอดมินบันทึกแทนคนอื่นได้ เช่น พนักงานส่งรูปมาให้แล้วแอดมินกรอกให้ -->
+      <div id="forwho-wrap" class="hide">
+        <span class="label">เบิกให้ใคร · เฉพาะแอดมิน</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary" id="forwho-self" style="flex:1">ตัวเอง</button>
+          <button class="btn btn-secondary" id="forwho-other" style="flex:1">เบิกแทนคนอื่น</button>
+        </div>
+        <div id="forwho-pick" class="hide" style="margin-top:8px">
+          <input class="input" id="forwho-q" placeholder="พิมพ์รหัสพนักงาน หรือชื่อ" autocomplete="off">
+          <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:190px;overflow-y:auto"
+               id="forwho-list"></div>
+        </div>
+      </div>
+
       <div id="shift-wrap" class="hide">
         <span class="label">เลือกกะ · เฉพาะแอดมิน</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="shift-chips"></div>

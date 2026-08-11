@@ -253,6 +253,9 @@ function sessionPayload_(m, u) {
     issueTags: m.issueTags,
     openJobs: mine,
     busyCodes: busy,
+    // รายชื่อไว้ให้แอดมินเลือกตอนบันทึกแทนคนอื่น — ส่งเฉพาะแอดมิน และเฉพาะช่องที่ต้องใช้
+    staffList: isAdmin ? m.staff.filter(function (x) { return x.status === CFG.V.ACTIVE; })
+      .map(function (x) { return { id: x.id, name: x.name, dept: x.dept, shift: x.shift }; }) : [],
     today: fmtDate_(new Date()),
     serverTime: fmtStamp_(new Date())
   };
@@ -389,6 +392,17 @@ function prepareSubmit_(p) {
   var R = topic.rules || {};
   var action = s_(p.action) || CFG.V.BORROW;
 
+  // แอดมินเบิกแทนคนอื่น — รายการเป็นของคนนั้น (เขาต้องเป็นคนคืนเอง)
+  // แต่จดไว้ด้วยว่าใครเป็นคนกดบันทึกให้ จะได้ไม่ใช่การโยนชื่อใส่กันโดยไม่มีร่องรอย
+  var owner = u, actedBy = '';
+  var forId = s_(p.forEmpId);
+  if (forId && forId !== u.id) {
+    if (u.role !== CFG.V.ROLE_ADMIN) throw new Error('เฉพาะแอดมินเท่านั้นที่บันทึกแทนคนอื่นได้');
+    if (action !== CFG.V.BORROW) throw new Error('บันทึกแทนได้เฉพาะตอนเบิก ตอนคืนให้เจ้าของรายการคืนเอง');
+    owner = requireUser_(m, forId);
+    actedBy = u.name + ' (' + u.id + ')';
+  }
+
   if (R.gps && !s_(p.gps)) throw new Error('หัวข้อนี้บังคับให้เปิดตำแหน่ง (GPS) ก่อนส่ง');
 
   var result = s_(p.result);
@@ -434,7 +448,7 @@ function prepareSubmit_(p) {
   }
 
   return {
-    u: u, topic: topic, action: action, result: result,
+    u: owner, actedBy: actedBy, topic: topic, action: action, result: result,
     codes: all, qty: qty, ref: ref, note: note,
     badCodes: badCodes.filter(function (c) { return all.indexOf(c) >= 0; })
   };
@@ -496,6 +510,7 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
     recordId: recordId,
     shift: s_(p.shift) || ctx.u.shift,
     empId: ctx.u.id, empName: ctx.u.name, dept: ctx.u.dept,
+    actedBy: ctx.actedBy,
     topicName: ctx.topic.name,
     action: ctx.action,
     qty: ctx.qty,
@@ -674,7 +689,7 @@ function buildPairs_(recs, photos, hidden) {
       gps: r.gps,
       // ส่งผลตรวจ/อาการ/หมายเหตุ แยกรายฝั่ง เพราะเบิกกับคืนคนละคนคนละเวลา
       // ของเดิมรวมกันแล้วฝั่งเบิกโดนฝั่งคืนทับจนหายไป
-      empName: r.empName, dept: r.dept,
+      empName: r.empName, dept: r.dept, by: r.by,
       result: r.result, issue: r.issue, note: r.note,
       photos: hide ? [] : (byRec[r.id] || []).map(function (ph) {
         return { slot: ph.slot, url: ph.url, time: ph.time, gps: ph.gps };

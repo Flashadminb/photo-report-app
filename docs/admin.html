@@ -1150,6 +1150,9 @@ function pairCard(p) {
       ]),
       side && side.empName
         ? h('span', { class: 'muted', style: 'font-size:12px' }, ['โดย ' + side.empName])
+        : null,
+      side && side.by
+        ? h('span', { class: 'tag', style: 'font-size:11px' }, ['แอดมินบันทึกให้ · ' + side.by])
         : null
     ]);
     if (side && side.folder && !side.deleted) {
@@ -1257,7 +1260,7 @@ function viewData(v) {
       // แยกอาการ/หมายเหตุ ตอนเบิก กับ ตอนคืน คนละคอลัมน์
       // เพราะเป็นคนละคนคนละเวลา รวมกันแล้วอ่านไม่ออกว่าใครแจ้งอะไร
       h('thead', {}, [h('tr', {}, ['รหัสรายการ', 'วันที่', 'กะ', 'ผู้เบิก', 'แผนก', 'หัวข้อ', 'จำนวน', 'รหัสเครื่อง',
-        'เบิก', 'ผลตรวจตอนเบิก', 'อาการตอนเบิก', 'หมายเหตุตอนเบิก',
+        'เบิก', 'ดำเนินการโดย', 'ผลตรวจตอนเบิก', 'อาการตอนเบิก', 'หมายเหตุตอนเบิก',
         'คืน', 'ผลตรวจตอนคืน', 'อาการตอนคืน', 'หมายเหตุตอนคืน'].map(function (t) { return h('th', {}, [t]); }))]),
       body
     ])
@@ -1284,6 +1287,7 @@ function fillDataRows(tbody) {
       h('td', {}, [String(p.qty) + (p.qtyBack !== null && p.qtyBack !== p.qty ? ' → ' + p.qtyBack : '')]),
       h('td', { style: 'font-size:12px' }, [p.codes]),
       h('td', {}, [p.out ? p.out.time + ' (' + sidePhotos(p.out).length + ')' : '—']),
+      textCell(p.out && p.out.by),
       resultCell(p.out), textCell(p.out && p.out.issue), textCell(p.out && p.out.note),
       h('td', { style: p.back ? '' : 'color:var(--color-accent);font-weight:600' },
         [p.back ? p.back.time + ' (' + sidePhotos(p.back).length + ')' : 'ยังไม่คืน']),
@@ -1304,13 +1308,14 @@ function textCell(txt) {
 function exportCsv() {
   var head = ['รหัสรายการเบิก', 'รหัสรายการคืน', 'วันที่', 'กะ', 'รหัสพนักงาน', 'ผู้เบิก', 'แผนก', 'หัวข้อ',
     'จำนวนเบิก', 'จำนวนคืน', 'รหัสเครื่อง',
-    'เวลาเบิก', 'รูปเบิก', 'ผลตรวจตอนเบิก', 'อาการตอนเบิก', 'หมายเหตุตอนเบิก',
+    'เวลาเบิก', 'รูปเบิก', 'ดำเนินการโดย', 'ผลตรวจตอนเบิก', 'อาการตอนเบิก', 'หมายเหตุตอนเบิก',
     'เวลาคืน', 'รูปคืน', 'ผู้คืน', 'ผลตรวจตอนคืน', 'อาการตอนคืน', 'หมายเหตุตอนคืน'];
   var g = function (side, k) { return (side && side[k]) || ''; };
   var rows = filtered().map(function (p) {
     return [p.id, g(p.back, 'recordId'), p.date, p.shift, p.empId, p.name, p.dept, p.topic,
       p.qty, p.qtyBack === null ? '' : p.qtyBack, p.codes,
-      g(p.out, 'time'), sidePhotos(p.out).length, g(p.out, 'result'), g(p.out, 'issue'), g(p.out, 'note'),
+      g(p.out, 'time'), sidePhotos(p.out).length, g(p.out, 'by'),
+      g(p.out, 'result'), g(p.out, 'issue'), g(p.out, 'note'),
       g(p.back, 'time'), sidePhotos(p.back).length, g(p.back, 'empName'),
       g(p.back, 'result'), g(p.back, 'issue'), g(p.back, 'note')];
   });

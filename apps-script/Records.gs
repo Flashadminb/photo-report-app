@@ -75,7 +75,8 @@ function allRecords_() {
       folder:   s_(r[C.FOLDER - 1]),
       gps:      s_(r[C.GPS - 1]),
       ref:      s_(r[C.REF - 1]),
-      sent:     s_(r[C.SENT - 1])
+      sent:     s_(r[C.SENT - 1]),
+      by:       s_(r[C.BY - 1])     // แอดมินที่บันทึกแทน ว่าง = เบิกเอง
     };
   }).filter(function (x) { return x.id; });
 }
@@ -222,8 +223,9 @@ function writeRecord_(p, photoRows, guard) {
   row[C.GPS - 1]      = p.gps || '';
   row[C.REF - 1]      = p.ref || '';
   row[C.SENT - 1]     = CFG.V.SENT;
+  row[C.BY - 1]       = p.actedBy || '';
 
-  for (var i = 0; i < C.SENT; i++) if (row[i] === undefined) row[i] = '';
+  for (var i = 0; i < C.BY; i++) if (row[i] === undefined) row[i] = '';
 
   var lock = LockService.getScriptLock();
   lock.waitLock(60000);   // กะเปลี่ยนคนส่งพร้อมกันเยอะ ให้รอคิวได้นานหน่อย

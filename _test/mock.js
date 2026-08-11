@@ -55,6 +55,8 @@ function session(u) {
     assets: ASSETS, shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.', 'กะ 15:00 - 00:00 น.'],
     issueTags: ['แบตไม่เก็บไฟ', 'ยกไม่ขึ้น', 'ล้อชำรุด'],
     openJobs: OPEN, today: '6/8/2026', serverTime: '6/8/2026, 16:12:04',
+    staffList: u.role === 'แอดมิน'
+      ? STAFF.map(function (p) { return { id: p.id, name: p.name, dept: p.dept, shift: p.shift }; }) : [],
     // จำลองว่ามีคนอื่นเบิกไปแล้วยังไม่คืน
     busyCodes: {
       'PP-INLHBG-02': { by: 'สุพัตรา แก้วมณี', id: '730075', date: '6/8/2026', time: '09:12' },
