@@ -828,6 +828,19 @@ function pairMatch(p, q) {
   return hay.indexOf(q) >= 0;
 }
 
+/**
+ * เปิดคลังรูปแล้วค้นด้วยรหัสเครื่องให้เลย — ใช้จากปุ่ม "ดูรูป" ในทะเบียนอุปกรณ์
+ * ล้างตัวกรองอื่นทิ้งก่อน ไม่งั้นอาจไม่เจอทั้งที่มีข้อมูล
+ */
+function seePhotosOf(code) {
+  A.tab = 'vault';
+  A.fSearch = code;
+  A.fTopic = 'ทั้งหมด'; A.fDate = 'ทั้งหมด'; A.fState = 'ทั้งหมด';
+  A.sel = {};
+  renderAll();
+  window.scrollTo(0, 0);
+}
+
 function viewVault(v) {
   var topics = A.master.topics;
   var dates = ['ทั้งหมด'].concat(A.pairs.map(function (p) { return p.date; })
@@ -943,7 +956,14 @@ function fillVault() {
 
   if (!list.length) {
     box.appendChild(h('p', { class: 'muted' },
-      [A.fSearch ? 'ไม่พบรายการที่ตรงกับ "' + A.fSearch + '"' : 'ยังไม่มีรายการ']));
+      [A.fSearch ? 'ไม่พบรายการที่ตรงกับ "' + A.fSearch + '" ในช่วง' + rangeText(A.range)
+                 : 'ยังไม่มีรายการในช่วง' + rangeText(A.range)]));
+    // ของที่หาอาจอยู่นอกช่วงเวลาที่เลือกไว้ ให้ทางลัดขยายไปหาทั้งหมด
+    if (A.range && A.range.mode !== 'all') {
+      var wide = h('button', { class: 'btn btn-primary', style: 'font-size:12px' }, ['ค้นย้อนหลังทั้งหมด']);
+      wide.addEventListener('click', function () { setRange({ mode: 'all' }); });
+      box.appendChild(h('div', { style: 'margin-top:8px' }, [wide]));
+    }
     return;
   }
   list.forEach(function (p) { box.appendChild(pairCard(p)); });
@@ -1661,8 +1681,13 @@ function viewAssets(v) {
           '\n\nใช้เมื่อซ่อมเสร็จแล้วหรือแจ้งมาไม่ตรง')) return;
         saveThen(rpc('apiSaveAsset', A.empId, Object.assign({}, a, { defect: '' })));
       });
+      // กดที่อาการเพื่อไปดูรูปของเครื่องตัวนั้นในคลังรูปได้เลย
+      var see = h('button', { class: 'btn btn-secondary', style: 'font-size:11px;padding:3px 8px;margin-left:8px' },
+        ['ดูรูป']);
+      see.addEventListener('click', function () { seePhotosOf(a.code); });
+
       defCell = h('td', { style: 'font-size:12px;max-width:280px;color:var(--color-accent);font-weight:600' },
-        [a.defect, clr]);
+        [a.defect, see, clr]);
     } else {
       defCell = h('td', { class: 'muted', style: 'font-size:12px' }, ['—']);
     }
