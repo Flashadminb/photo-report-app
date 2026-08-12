@@ -231,8 +231,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v40';
-window.APP_BUILT   = '13/8/2026 03:45';
+window.APP_VERSION = 'v39';
+window.APP_BUILT   = '12/8/2026 20:51';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1696,11 +1696,7 @@ var RULE_DEFS = [
   { id: 'shift', name: 'ต้องถ่ายภายในกะที่เลือก', desc: 'นอกกะจะบันทึกเป็นข้อยกเว้นในหมายเหตุ' },
   { id: 'issue', name: 'เลือก "มีปัญหา" ต้องแนบรูป + อธิบายอาการ', desc: 'ต้องมีรูปช่อง "จุดที่มีปัญหา"' },
   { id: 'count', name: 'ต้องกรอกจำนวนเครื่องที่เบิก', desc: 'นับจำนวนแทนการเลือกรหัสทีละเครื่อง' },
-  { id: 'draft', name: 'อนุญาตให้บันทึกร่างออฟไลน์', desc: 'เก็บในเครื่องแล้วส่งเมื่อมีสัญญาณ' },
-  // ปกติปิดไว้ — ระบบนี้เป็นสมุดบันทึก ไม่ใช่ระบบขออนุมัติเบิก
-  // หน้างานหยิบของมาก่อนแล้วค่อยบันทึก ถ้าห้ามเบิกซ้ำ คนที่ถือเครื่องอยู่จริงจะบันทึกไม่ได้
-  { id: 'dup',   name: 'กันเบิกซ้ำ (เครื่องที่ยังไม่มีใครกดคืน ห้ามเบิกซ้อน)',
-    desc: 'ปกติปิดไว้ · เปิดแล้วคนที่ถือเครื่องอยู่จริงอาจบันทึกไม่ได้ถ้าคนก่อนหน้าลืมกดคืน' }
+  { id: 'draft', name: 'อนุญาตให้บันทึกร่างออฟไลน์', desc: 'เก็บในเครื่องแล้วส่งเมื่อมีสัญญาณ' }
 ];
 
 var ruleTopic = null;
@@ -1794,30 +1790,6 @@ function viewRules(v) {
       tg
     ]);
   })));
-
-  // ── ใครเห็นเครื่องของแผนกไหนบ้าง ──────────────────────────────────
-  //
-  // เงื่อนไข alldept เก็บ "รายชื่อแผนก" ไม่ใช่ค่าเปิด/ปิด จึงทำเป็นสวิตช์ไม่ได้
-  // (สวิตช์จะเขียนทับเป็น TRUE/FALSE แล้วรายชื่อแผนกที่ตั้งไว้จะหายหมด)
-  var deptVal = (T.ruleText && T.ruleText.alldept) || '';
-  var deptIn = h('input', { class: 'input', style: 'width:100%', value: deptVal,
-    placeholder: 'เว้นว่าง = เห็นเฉพาะแผนกตัวเอง' });
-  var deptSave = h('button', { class: 'btn btn-primary', style: 'white-space:nowrap' }, ['บันทึก']);
-  deptSave.addEventListener('click', function () {
-    if (!guardEdit()) return;
-    saveThen(rpc('apiSetRule', A.empId, T.id, 'alldept', 'แผนกที่เห็นเครื่องทุกแผนก', deptIn.value.trim()));
-  });
-  var deptAll = h('button', { class: 'btn btn-secondary', style: 'white-space:nowrap' }, ['ให้ทุกคนเห็น']);
-  deptAll.addEventListener('click', function () { deptIn.value = 'ทุกคน'; });
-
-  v.appendChild(section('ใครเห็นเครื่องของหัวข้อ ' + T.name + ' บ้าง', [
-    h('p', { class: 'muted', style: 'font-size:13px;margin-bottom:10px' }, [
-      'ใส่ชื่อแผนกคั่นด้วยจุลภาค = แผนกเหล่านั้นเห็นเครื่องของทุกแผนก · ' +
-      'ใส่คำว่า "ทุกคน" = ทุกคนเห็นเครื่องทุกแผนก (ใช้กับเครื่องของกลางอย่าง Power Pallet) · ' +
-      'เว้นว่าง = ทุกคนเห็นเฉพาะเครื่องของแผนกตัวเอง'
-    ]),
-    h('div', { class: 'bar', style: 'margin:0' }, [deptIn, deptSave, deptAll])
-  ]));
 }
 
 // ══ ทะเบียนพนักงาน ════════════════════════════════════════════════════
