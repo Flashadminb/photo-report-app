@@ -534,8 +534,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v44';
-window.APP_BUILT   = '13/8/2026 05:33';
+window.APP_VERSION = 'v45';
+window.APP_BUILT   = '13/8/2026 05:40';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -2271,11 +2271,9 @@ function submit() {
    *
    * ปลอดภัยเพราะฝั่งเซิร์ฟเวอร์จำรหัสงาน (clientId) — ส่งซ้ำได้แถวเดียวเสมอ
    */
-  // ⚠️ เปิดได้ก็ต่อเมื่อหลังบ้านมีตัวกันแถวซ้ำแล้วเท่านั้น (apiCommitSubmit จำ clientId)
-  //
-  // ถ้าเปิดตอนหลังบ้านยังไม่มี แล้วบังเอิญเขียนแถวสำเร็จแต่คำตอบหายกลางทาง
-  // การลองใหม่จะได้แถวซ้ำสองแถวในชีท — ยอมให้ช้ากว่าดีกว่าได้ข้อมูลผิด
-  var RETRY_ON = false;
+  // เปิดได้เพราะหลังบ้าน (เวอร์ชัน 27 ขึ้นไป) จำ clientId แล้ว — ส่งซ้ำได้แถวเดียวเสมอ
+  // ถ้าวันไหนต้องถอยหลังบ้านกลับไปก่อนหน้านั้น ต้องปิดตัวนี้ด้วย ไม่งั้นเสี่ยงแถวซ้ำ
+  var RETRY_ON = true;
 
   var RETRY_MS = [3000, 8000, 20000];
   var attempt = function (i, lastErr) {
