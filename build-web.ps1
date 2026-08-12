@@ -44,6 +44,22 @@ if ('serviceWorker' in navigator) {
     reloading = true;
     location.reload();
   });
+
+  // เช็คเวอร์ชันใหม่ตอนสลับกลับมาที่แอพด้วย ไม่ใช่แค่ตอนเปิดใหม่
+  //
+  // ปกติเบราว์เซอร์เช็คไฟล์ Service Worker เฉพาะตอน "โหลดหน้าใหม่จริง ๆ"
+  // คนที่กดปุ่มโฮมออกไปแล้วสลับกลับมา ไม่นับเป็นการโหลดใหม่
+  // ถ้าเขาไม่เคยรูดแอพทิ้งเลย จะติดอยู่กับเวอร์ชันเก่าได้เป็นสัปดาห์
+  // เช็คไม่เกิน 15 นาทีครั้ง (ไฟล์แค่ 3 KB) เจอของใหม่เมื่อไหร่รีเฟรชให้เองตามกติกาข้างบน
+  var lastCheck = Date.now();
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastCheck < 900000) return;
+    lastCheck = Date.now();
+    navigator.serviceWorker.getRegistration()
+      .then(function (reg) { if (reg) reg.update(); })
+      .catch(function () { /* เช็คไม่ได้ก็ใช้ของเดิมไปก่อน */ });
+  });
 }
 </script>
 '@

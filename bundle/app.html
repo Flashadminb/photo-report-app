@@ -2555,7 +2555,16 @@ function bind() {
   window.addEventListener('pagehide', function () { saveDraft(); stopCam(); });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') { saveDraft(); stopCam(); }
-    else if (S.screen === 'shoot' && curStep() && curStep().type === 'cam') startCam();
+    else {
+      if (S.screen === 'shoot' && curStep() && curStep().type === 'cam') startCam();
+      // สลับกลับมาที่แอพ = จังหวะที่ต้องรีบส่งของค้างที่สุด
+      //
+      // มือถือจะ "แช่แข็ง" หน้าเว็บที่ไม่ได้อยู่บนจอเพื่อประหยัดแบต
+      // ตัวนับ 30 วินาทีจึงถูกหน่วงแล้วหยุดไปเลย และบางเครื่องไม่ฟื้นเองด้วย
+      // คนที่กดปุ่มโฮมออกไปแล้ววันหลังสลับกลับมา (ไม่ได้เปิดใหม่)
+      // จึงไม่เคยมีอะไรมากระตุ้นให้ส่ง — รูปค้างเงียบอยู่ในเครื่องได้เป็นวัน
+      if (S.user && navigator.onLine && (S.queueCount || S.photoCount)) flushPending();
+    }
   });
 }
 
