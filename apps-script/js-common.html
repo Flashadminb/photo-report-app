@@ -43,8 +43,11 @@ function rpcNative(name, args) {
 var RPC_TIMEOUT_MS = 25000;
 var RPC_TIMEOUT_UPLOAD_MS = 60000;   // รูป 1 ใบราว 150 KB เน็ตหน้างานช้าต้องให้เวลามากกว่า
 
+// คำสั่งที่ต้องคุยกับ Drive ทีละไฟล์ ใช้เวลานานกว่าคำสั่งที่อ่านแต่ชีท
+var RPC_SLOW = { apiUploadPhoto: 1, apiSyncPhotos: 1, apiAdminDeletePhotosBulk: 1 };
+
 function rpcTimeout(name) {
-  return name === 'apiUploadPhoto' ? RPC_TIMEOUT_UPLOAD_MS : RPC_TIMEOUT_MS;
+  return RPC_SLOW[name] ? RPC_TIMEOUT_UPLOAD_MS : RPC_TIMEOUT_MS;
 }
 
 function rpcFetch(name, args) {

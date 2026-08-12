@@ -231,8 +231,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v41';
-window.APP_BUILT   = '13/8/2026 04:43';
+window.APP_VERSION = 'v42';
+window.APP_BUILT   = '13/8/2026 05:01';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -281,8 +281,11 @@ function rpcNative(name, args) {
 var RPC_TIMEOUT_MS = 25000;
 var RPC_TIMEOUT_UPLOAD_MS = 60000;   // รูป 1 ใบราว 150 KB เน็ตหน้างานช้าต้องให้เวลามากกว่า
 
+// คำสั่งที่ต้องคุยกับ Drive ทีละไฟล์ ใช้เวลานานกว่าคำสั่งที่อ่านแต่ชีท
+var RPC_SLOW = { apiUploadPhoto: 1, apiSyncPhotos: 1, apiAdminDeletePhotosBulk: 1 };
+
 function rpcTimeout(name) {
-  return name === 'apiUploadPhoto' ? RPC_TIMEOUT_UPLOAD_MS : RPC_TIMEOUT_MS;
+  return RPC_SLOW[name] ? RPC_TIMEOUT_UPLOAD_MS : RPC_TIMEOUT_MS;
 }
 
 function rpcFetch(name, args) {
@@ -1634,7 +1637,12 @@ function viewDash(v) {
       toast(r.added ? 'ดึงรูปเข้าระบบแล้ว ' + r.added + ' ใบ (รวมเป็น ' + r.total + ' ใบ)'
                     : 'ไม่มีรูปใหม่ในไดรฟ์ — ชีทครบอยู่แล้ว');
       return reload();
-    }).catch(function (e) { toast(e.message, true); })
+    }).catch(function (e) {
+      // งานนี้กดซ้ำได้ไม่เสียหาย (เจอไฟล์เดิมก็ข้าม) หมดเวลารอจึงไม่ได้แปลว่าล้มเหลว
+      toast(/เซิร์ฟเวอร์/.test(e.message)
+        ? e.message + ' — งานอาจทำสำเร็จไปแล้ว กดรีเฟรชดูก่อน ถ้ายังไม่ครบค่อยกดซ้ำ'
+        : e.message, true, 8000);
+    })
       .then(function () { fixGo.disabled = false; fixGo.textContent = 'ดึงรูปจากไดรฟ์'; });
   });
 

@@ -1017,7 +1017,12 @@ function viewDash(v) {
       toast(r.added ? 'ดึงรูปเข้าระบบแล้ว ' + r.added + ' ใบ (รวมเป็น ' + r.total + ' ใบ)'
                     : 'ไม่มีรูปใหม่ในไดรฟ์ — ชีทครบอยู่แล้ว');
       return reload();
-    }).catch(function (e) { toast(e.message, true); })
+    }).catch(function (e) {
+      // งานนี้กดซ้ำได้ไม่เสียหาย (เจอไฟล์เดิมก็ข้าม) หมดเวลารอจึงไม่ได้แปลว่าล้มเหลว
+      toast(/เซิร์ฟเวอร์/.test(e.message)
+        ? e.message + ' — งานอาจทำสำเร็จไปแล้ว กดรีเฟรชดูก่อน ถ้ายังไม่ครบค่อยกดซ้ำ'
+        : e.message, true, 8000);
+    })
       .then(function () { fixGo.disabled = false; fixGo.textContent = 'ดึงรูปจากไดรฟ์'; });
   });
 
