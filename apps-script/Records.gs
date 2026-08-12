@@ -315,6 +315,21 @@ function pendingPhotoRecords_() {
   }).filter(function (x) { return x.id; }).reverse();
 }
 
+/** แถวเดียว + ลิงก์รูปที่ชีทรู้จักอยู่แล้ว — ใช้ตอนซ่อมรายการ */
+function recordWithPhotos_(recordId) {
+  var C = CFG.COL.REC;
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var row = findRecordRow_(sh, recordId);
+  if (!row) throw new Error('ไม่พบรายการ ' + recordId + ' ในชีท');
+
+  var width = Math.min(C.BY, sh.getMaxColumns());
+  var rec = mkRecord_(sh.getRange(row, 1, 1, width).getValues()[0]);
+
+  var keep = {};
+  keep[rec.id] = true;
+  return { rec: rec, urls: photosForRecords_(keep).map(function (p) { return p.url; }) };
+}
+
 /** แถวรูปของรายการที่เลือกไว้ — อ่านเฉพาะช่วงแถวที่มีของจริง ไม่ใช่ทั้งใบ */
 function photosForRecords_(keep) {
   var C = CFG.COL.PHOTO;

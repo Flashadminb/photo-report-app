@@ -706,6 +706,21 @@ function pendingPhotoRecords_() {
   }).filter(function (x) { return x.id; }).reverse();
 }
 
+/** แถวเดียว + ลิงก์รูปที่ชีทรู้จักอยู่แล้ว — ใช้ตอนซ่อมรายการ */
+function recordWithPhotos_(recordId) {
+  var C = CFG.COL.REC;
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var row = findRecordRow_(sh, recordId);
+  if (!row) throw new Error('ไม่พบรายการ ' + recordId + ' ในชีท');
+
+  var width = Math.min(C.BY, sh.getMaxColumns());
+  var rec = mkRecord_(sh.getRange(row, 1, 1, width).getValues()[0]);
+
+  var keep = {};
+  keep[rec.id] = true;
+  return { rec: rec, urls: photosForRecords_(keep).map(function (p) { return p.url; }) };
+}
+
 /** แถวรูปของรายการที่เลือกไว้ — อ่านเฉพาะช่วงแถวที่มีของจริง ไม่ใช่ทั้งใบ */
 function photosForRecords_(keep) {
   var C = CFG.COL.PHOTO;
@@ -955,27 +970,111 @@ function recordFolder_(recordId, when) {
  * รับ folder เข้ามาเลย เพราะการหาโฟลเดอร์ซ้ำทุกใบทำให้ช้ามาก
  * (การส่ง 1 ครั้งมี 5–6 รูป — เรียก Drive API ซ้ำหลายสิบครั้งโดยไม่จำเป็น)
  *
- * @param {Folder} folder    โฟลเดอร์ของรายการ จาก recordFolder_()
- * @param {string} recordId
- * @param {string} slot      ชื่อช่องถ่าย เช่น "กุญแจ"
- * @param {string} dataUrl   "data:image/jpeg;base64,...."
- * @returns {{url:string, id:string}}
+ * ── กันรูปหลุดตอนส่งซ้ำ ────────────────────────────────────────────
+ *
+ * เน็ตหน้างานสะดุดบ่อย: ไฟล์ขึ้นไดรฟ์สำเร็จแล้ว แต่คำตอบหายกลางทาง
+ * แอปนึกว่าล้มเหลวเลยส่งใหม่ → ได้ไฟล์ซ้ำในไดรฟ์ และใบแรกกลายเป็นไฟล์ลอย
+ * ที่ชีทไม่รู้จัก (เป็นต้นเหตุของรายการที่ค้าง "รอรูป")
+ *
+ * แก้ด้วยการตั้งชื่อไฟล์จาก "รหัสรูปฝั่งแอป" ซึ่งคงที่ตลอดไม่ว่าจะส่งกี่รอบ
+ * ถ้าเจอว่ามีไฟล์ชื่อนี้อยู่แล้วก็ใช้ใบเดิม ไม่สร้างซ้ำ — ส่งกี่ครั้งผลก็เหมือนเดิม
+ *
+ * @param {string} [key]  รหัสรูปฝั่งแอป (คงที่ข้ามการส่งซ้ำ) — ไม่ส่งมาก็ยังทำงานได้
+ * @returns {{url:string, id:string, reused:boolean}}
  */
-function savePhoto_(folder, recordId, slot, dataUrl, seq) {
+function savePhoto_(folder, recordId, slot, dataUrl, seq, key) {
   var m = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(dataUrl || '');
   if (!m) throw new Error('รูปไม่ถูกต้อง (' + slot + ')');
 
   var mime = m[1];
-  var bytes = Utilities.base64Decode(m[2]);
   var ext = mime.indexOf('png') >= 0 ? 'png' : 'jpg';
-  var name = recordId + '-' + pad2_(seq || 1) + '-' + safeName_(slot) + '.' + ext;
+  // มีรหัสรูป = ไม่ใส่เลขลำดับในชื่อ เพราะเลขลำดับเปลี่ยนทุกครั้งที่ส่งใหม่
+  // ชื่อจะได้คงที่และจับคู่ของเดิมเจอ (เลขลำดับไม่ได้ใช้ทำอะไร ลำดับจริงอยู่ในชีท)
+  var k = safeName_(key);
+  var name = k
+    ? recordId + '-' + safeName_(slot) + '~' + k + '.' + ext
+    : recordId + '-' + pad2_(seq || 1) + '-' + safeName_(slot) + '.' + ext;
 
-  var file = folder.createFile(Utilities.newBlob(bytes, mime, name));
+  // มีไฟล์ชื่อนี้อยู่แล้ว = เคยอัปใบนี้สำเร็จไปแล้ว ใช้ของเดิม
+  if (k) {
+    var it = folder.getFilesByName(name);
+    if (it.hasNext()) {
+      var old = it.next();
+      return { id: old.getId(), url: driveUrl_(old.getId()), reused: true };
+    }
+  }
 
-  return {
-    id: file.getId(),
-    url: 'https://drive.google.com/open?id=' + file.getId()
-  };
+  var file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), mime, name));
+  return { id: file.getId(), url: driveUrl_(file.getId()), reused: false };
+}
+
+function driveUrl_(id) { return 'https://drive.google.com/open?id=' + id; }
+
+/** ดึงรหัสไฟล์ออกจากลิงก์ที่เก็บในชีท */
+function fileIdFromUrl_(url) {
+  var m = /[-\w]{25,}/.exec(s_(url));
+  return m ? m[0] : '';
+}
+
+/**
+ * ซ่อมรายการ: ไล่ดูไฟล์ในโฟลเดอร์ของรายการ แล้วเติมใบที่ชีทยังไม่รู้จัก
+ *
+ * ใช้ได้กับ 2 กรณีที่เจอจริง:
+ *   1. ไฟล์ขึ้นไดรฟ์แล้วแต่แถวไม่ได้ถูกเขียน (คำตอบหายกลางทาง) — รายการค้าง "รอรูป"
+ *   2. คนเอารูปไปใส่ในโฟลเดอร์เองจากไดรฟ์ตรง ๆ — เว็บไม่มีทางรู้ ต้องมาดึงเข้าระบบ
+ *
+ * ชื่อช่องถ่ายอ่านจากชื่อไฟล์ที่ระบบตั้งไว้ตอนอัป (รหัสรายการ-ลำดับ-ชื่อช่อง)
+ * ไฟล์ที่คนตั้งชื่อเองอ่านไม่ออกก็ยังดึงเข้ามา แต่ทำเครื่องหมายว่ามาจากไดรฟ์
+ *
+ * @returns {{added:number, total:number, skipped:number}}
+ */
+function syncPhotosFromDrive_(recordId, folderUrl, knownUrls) {
+  var id = s_(recordId);
+  var fid = fileIdFromUrl_(folderUrl);
+  if (!fid) throw new Error('รายการ ' + id + ' ไม่มีโฟลเดอร์รูปในชีท');
+
+  var folder;
+  try { folder = DriveApp.getFolderById(fid); }
+  catch (e) { throw new Error('เปิดโฟลเดอร์ของรายการ ' + id + ' ไม่ได้ (อาจถูกลบไปแล้ว)'); }
+
+  var have = {};
+  (knownUrls || []).forEach(function (u) {
+    var f = fileIdFromUrl_(u);
+    if (f) have[f] = true;
+  });
+
+  var rows = [], skipped = 0;
+  var it = folder.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (have[f.getId()]) { skipped++; continue; }
+    if (String(f.getMimeType() || '').indexOf('image/') !== 0) { skipped++; continue; }
+
+    rows.push({
+      slot: slotFromFileName_(f.getName(), id),
+      url: driveUrl_(f.getId()),
+      time: Utilities.formatDate(f.getDateCreated(), CFG.TZ, 'HH:mm:ss'),
+      gps: ''
+    });
+  }
+
+  if (!rows.length) return { added: 0, total: (knownUrls || []).length, skipped: skipped };
+
+  var r = addPhotoRows_(id, rows, true);
+  return { added: r.added, total: r.total, skipped: skipped };
+}
+
+/**
+ * แกะชื่อช่องถ่ายออกจากชื่อไฟล์ "รหัสรายการ-ลำดับ-ชื่อช่อง[~รหัสรูป].นามสกุล"
+ * อ่านไม่ออก = ไฟล์ที่คนเอามาใส่เอง บอกไปตรง ๆ ว่ามาจากไดรฟ์
+ */
+function slotFromFileName_(name, recordId) {
+  var n = String(name || '').replace(/\.[a-z0-9]+$/i, '');
+  if (n.indexOf(recordId + '-') === 0) {
+    var rest = n.slice(recordId.length + 1).replace(/^\d+-/, '').split('~')[0];
+    if (rest) return rest;
+  }
+  return 'เพิ่มจากไดรฟ์';
 }
 
 function pad2_(n) { return (n < 10 ? '0' : '') + n; }
@@ -1120,6 +1219,7 @@ function apiDispatch_(name) {
     apiUploadPhoto: apiUploadPhoto,
     apiCommitSubmit: apiCommitSubmit,
     apiAddPhotos: apiAddPhotos,
+    apiSyncPhotos: apiSyncPhotos,
     apiAdminLoad: apiAdminLoad,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
@@ -1448,14 +1548,18 @@ function apiReserve(empId, topicId) {
   });
 }
 
-/** จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้) */
-function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq) {
+/**
+ * จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้)
+ *
+ * @param {string} [key]  รหัสรูปฝั่งแอป คงที่ข้ามการส่งซ้ำ — ส่งซ้ำจะได้ไฟล์เดิม ไม่เกิดใบซ้ำ
+ */
+function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq, key) {
   return wrap_(function () {
     requireUserLight_(empId);
     var folder = DriveApp.getFolderById(s_(folderId));
-    var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1);
+    var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1, key);
     return ok_({
-      slot: s_(slot), url: saved.url,
+      slot: s_(slot), url: saved.url, reused: saved.reused,
       time: s_(time) || fmtTime_(new Date()),
       gps: s_(gps)
     });
@@ -1482,6 +1586,24 @@ function apiCommitSubmit(payload, photoRows, recordId, folderUrl, pendingSlots) 
     var ctx = prepareSubmit_(p);
     checkPhotoSlots_(ctx, rows.map(function (x) { return s_(x.slot); }).concat(pending));
     return ok_(finishSubmit_(ctx, p, s_(recordId), s_(folderUrl), rows, pending.length));
+  });
+}
+
+/**
+ * ซ่อมรายการ — ดึงรูปที่อยู่ในโฟลเดอร์ไดรฟ์แต่ชีทไม่รู้จัก เข้ามาให้ครบ
+ *
+ * แก้ 2 กรณี: ไฟล์ขึ้นไดรฟ์แล้วแต่แถวไม่ได้เขียน (รายการค้าง "รอรูป")
+ * และกรณีที่คนเอารูปไปใส่ในโฟลเดอร์เองจากไดรฟ์ตรง ๆ
+ */
+function apiSyncPhotos(empId, recordId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ซ่อมรายการไม่ได้');
+
+    var info = recordWithPhotos_(s_(recordId));
+    var r = syncPhotosFromDrive_(info.rec.id, info.rec.folder, info.urls);
+    return ok_({ recordId: info.rec.id, added: r.added, total: r.total, เดิมมี: info.urls.length });
   });
 }
 

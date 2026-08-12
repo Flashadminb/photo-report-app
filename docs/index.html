@@ -533,8 +533,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v40';
-window.APP_BUILT   = '13/8/2026 03:45';
+window.APP_VERSION = 'v41';
+window.APP_BUILT   = '13/8/2026 04:43';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -2155,7 +2155,7 @@ function bgUpload(p, slot) {
   if (S.up[p.id] || S.upBusy[p.id]) return;
   S.upBusy[p.id] = ensureJob().then(function (j) {
     return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
-               slot, p.dataUrl, p.time, p.gps, ++S.upSeq);
+               slot, p.dataUrl, p.time, p.gps, ++S.upSeq, p.id);
   }).then(function (row) {
     S.up[p.id] = row;
     delete S.upBusy[p.id];
@@ -2170,14 +2170,14 @@ function upDone(photos) {
 }
 
 /**
- * ส่ง: รอเฉพาะใบที่กำลังวิ่งอยู่ → ปิดรายการทันที → รูปที่เหลือตามส่งทีหลัง
+ * ส่ง: อัปรูปให้ครบก่อน แล้วค่อยเขียนแถว — สำเร็จทั้งก้อน หรือไม่ได้อะไรเลย
  *
- * ของเดิมต้องอัปรูปที่ค้างให้ครบก่อนถึงจะยอมเขียนแถว
- * เน็ตหน้างานสะดุดทีเดียว = ยืนรอเป็นนาที และถ้าล้มก็ไม่ได้แถวเลย
- * ทั้งที่ข้อมูลสำคัญจริง ๆ ("เบิกไปแล้ว / คืนแล้ว") หนักไม่ถึงกิโลไบต์
+ * เคยลองแยกเป็น "เขียนแถวก่อน รูปตามทีหลัง" เพื่อไม่ให้เครื่องล็อกค้าง
+ * ตอนงานคืนส่งไม่ผ่าน — แต่พอเลิกล็อกการเบิกแล้ว เหตุผลนั้นก็หมดไป
+ * เหลือแต่ผลข้างเคียงคือ "แถวมีแต่รูปไม่มี" ซึ่งตามเก็บยาก
  *
- * ตอนนี้ปิดรายการด้วยรูปเท่าที่ขึ้นไปแล้ว แล้วโยนที่เหลือเข้าคิวรูป
- * เครื่องจึงไม่มีวันล็อกค้างเพราะรูปอัปไม่ทัน
+ * กลับมาเป็นก้อนเดียวแบบฟอร์ม: มีแค่ 2 สถานะ สำเร็จ กับ เข้าคิวไปส่งใหม่ทั้งก้อน
+ * ไม่ช้าลง เพราะรูปวิ่งขึ้นเบื้องหลังตั้งแต่ตอนถ่ายอยู่แล้ว
  */
 function sendNow(payload) {
   var photos = payload.photos || [];
@@ -2187,32 +2187,41 @@ function sendNow(payload) {
   setProgress(upDone(photos), photos.length);
 
   return ensureJob().then(function (j) {
-    // รอใบที่กำลังวิ่งอยู่ให้จบก่อน (ใกล้เสร็จแล้ว) จะได้ไม่อัปซ้ำเป็นสองใบ
+    // รอใบที่กำลังวิ่งอยู่ให้จบก่อน จะได้ไม่อัปซ้ำ
     return Promise.all(Object.keys(S.upBusy).map(function (k) { return S.upBusy[k]; }))
       .catch(function () {})
       .then(function () {
-        var rows = photos.map(function (p) { return S.up[p.id]; }).filter(Boolean);
         var left = photos.filter(function (p) { return !S.up[p.id]; });
-        // บอกเซิร์ฟเวอร์ว่าช่องไหนถ่ายไว้แล้วแต่รูปยังเดินทางอยู่
-        // การตรวจ "ถ่ายครบทุกช่องบังคับ" จึงยังเข้มเท่าเดิม
-        var pending = left.map(function (p) { return p.slot || ''; }).filter(Boolean);
-
+        return uploadPhotos(payload.empId, j, left, upDone(photos), photos.length);
+      })
+      .then(function () {
+        var rows = photos.map(function (p) { return S.up[p.id]; }).filter(Boolean);
         S.sendMsg = 'กำลังบันทึกลงชีท…'; renderFooter();
-        return rpc('apiCommitSubmit', lite, rows, j.recordId, j.folderUrl, pending)
-          .then(function (res) {
-            if (!left.length) return res;
-            return queuePhotos(payload.empId, j, left).then(function () {
-              refreshQueueCount();
-              res.pendingPhotos = left.length;
-              return res;
-            });
-          });
+        return rpc('apiCommitSubmit', lite, rows, j.recordId, j.folderUrl);
       });
   }).catch(function (e) {
     // หลังบ้านยังเป็นเวอร์ชันเก่า — ถอยไปส่งครั้งเดียวแบบเดิม
     if (/ไม่รู้จักคำสั่ง/.test(e.message)) return rpc('apiSubmit', payload);
     throw e;
   });
+}
+
+/**
+ * อัปโหลดรูปที่ยังไม่ขึ้น พร้อมกันทีละหลายใบ
+ * ส่งรหัสรูป (p.id) ไปด้วย เพื่อให้ส่งซ้ำแล้วได้ไฟล์เดิม ไม่เกิดใบซ้ำในไดรฟ์
+ */
+function uploadPhotos(empId, job, photos, doneAlready, total) {
+  var next = 0, done = doneAlready || 0;
+  function worker() {
+    if (next >= photos.length) return Promise.resolve();
+    var ph = photos[next++];
+    return rpc('apiUploadPhoto', empId, job.recordId, job.folderId,
+               ph.slot, ph.dataUrl, ph.time, ph.gps, ++S.upSeq, ph.id)
+      .then(function (r) { S.up[ph.id] = r; setProgress(++done, total); return worker(); });
+  }
+  var lanes = [];
+  for (var k = 0; k < Math.min(UPLOAD_PARALLEL, photos.length); k++) lanes.push(worker());
+  return Promise.all(lanes);
 }
 
 function submit() {

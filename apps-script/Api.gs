@@ -58,6 +58,7 @@ function apiDispatch_(name) {
     apiUploadPhoto: apiUploadPhoto,
     apiCommitSubmit: apiCommitSubmit,
     apiAddPhotos: apiAddPhotos,
+    apiSyncPhotos: apiSyncPhotos,
     apiAdminLoad: apiAdminLoad,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
@@ -386,14 +387,18 @@ function apiReserve(empId, topicId) {
   });
 }
 
-/** จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้) */
-function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq) {
+/**
+ * จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้)
+ *
+ * @param {string} [key]  รหัสรูปฝั่งแอป คงที่ข้ามการส่งซ้ำ — ส่งซ้ำจะได้ไฟล์เดิม ไม่เกิดใบซ้ำ
+ */
+function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq, key) {
   return wrap_(function () {
     requireUserLight_(empId);
     var folder = DriveApp.getFolderById(s_(folderId));
-    var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1);
+    var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1, key);
     return ok_({
-      slot: s_(slot), url: saved.url,
+      slot: s_(slot), url: saved.url, reused: saved.reused,
       time: s_(time) || fmtTime_(new Date()),
       gps: s_(gps)
     });
@@ -420,6 +425,24 @@ function apiCommitSubmit(payload, photoRows, recordId, folderUrl, pendingSlots) 
     var ctx = prepareSubmit_(p);
     checkPhotoSlots_(ctx, rows.map(function (x) { return s_(x.slot); }).concat(pending));
     return ok_(finishSubmit_(ctx, p, s_(recordId), s_(folderUrl), rows, pending.length));
+  });
+}
+
+/**
+ * ซ่อมรายการ — ดึงรูปที่อยู่ในโฟลเดอร์ไดรฟ์แต่ชีทไม่รู้จัก เข้ามาให้ครบ
+ *
+ * แก้ 2 กรณี: ไฟล์ขึ้นไดรฟ์แล้วแต่แถวไม่ได้เขียน (รายการค้าง "รอรูป")
+ * และกรณีที่คนเอารูปไปใส่ในโฟลเดอร์เองจากไดรฟ์ตรง ๆ
+ */
+function apiSyncPhotos(empId, recordId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    if (!canWriteMaster_(u)) throw new Error('หัวหน้างานดูได้อย่างเดียว ซ่อมรายการไม่ได้');
+
+    var info = recordWithPhotos_(s_(recordId));
+    var r = syncPhotosFromDrive_(info.rec.id, info.rec.folder, info.urls);
+    return ok_({ recordId: info.rec.id, added: r.added, total: r.total, เดิมมี: info.urls.length });
   });
 }
 

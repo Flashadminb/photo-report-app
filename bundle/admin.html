@@ -1594,6 +1594,45 @@ function viewDash(v) {
   // แถวลงชีทแล้ว เครื่องไม่ล็อกค้าง งานเดินต่อได้ — ขาดแค่หลักฐาน
   // แอพจะตื๊อส่งเองและเตือนเจ้าตัวตอนเปิดแอพรอบหน้า ตรงนี้ไว้ให้ตามตัวได้
   // ถ้าค้างข้ามวันแปลว่าเครื่องเขาน่าจะไม่ได้เปิดแอพ หรือรูปหายไปแล้วจริง
+  // ปุ่มซ่อม: ไล่ดูโฟลเดอร์ในไดรฟ์ของรายการนั้น เจอไฟล์ที่ชีทไม่รู้จักก็ดึงเข้ามา
+  // ใช้ได้ทั้งกรณีรูปขึ้นไดรฟ์แล้วแต่แถวไม่ได้เขียน และกรณีเอารูปไปใส่ในไดรฟ์เอง
+  var fixBtn = function (id, label) {
+    var b = h('button', { class: 'btn btn-secondary', style: 'font-size:12px;white-space:nowrap' }, [label || 'ดึงรูปจากไดรฟ์']);
+    b.addEventListener('click', function () {
+      if (!guardEdit()) return;
+      b.disabled = true; b.textContent = 'กำลังดึง…';
+      rpc('apiSyncPhotos', A.empId, id).then(function (r) {
+        toast(r.added ? 'ดึงรูปเข้าระบบแล้ว ' + r.added + ' ใบ (รวมเป็น ' + r.total + ' ใบ)'
+                      : 'ไม่มีรูปใหม่ในไดรฟ์ — ชีทครบอยู่แล้ว');
+        return reload();
+      }).catch(function (e) { toast(e.message, true); b.disabled = false; b.textContent = 'ดึงรูปจากไดรฟ์'; });
+    });
+    return b;
+  };
+
+  var fixIn = h('input', { class: 'input', style: 'width:260px', placeholder: 'รหัสรายการ เช่น IDATA-20260812-1560' });
+  var fixGo = h('button', { class: 'btn btn-primary', style: 'white-space:nowrap' }, ['ดึงรูปจากไดรฟ์']);
+  fixGo.addEventListener('click', function () {
+    var id = fixIn.value.trim();
+    if (!id) { toast('ใส่รหัสรายการก่อน', true); return; }
+    if (!guardEdit()) return;
+    fixGo.disabled = true; fixGo.textContent = 'กำลังดึง…';
+    rpc('apiSyncPhotos', A.empId, id).then(function (r) {
+      toast(r.added ? 'ดึงรูปเข้าระบบแล้ว ' + r.added + ' ใบ (รวมเป็น ' + r.total + ' ใบ)'
+                    : 'ไม่มีรูปใหม่ในไดรฟ์ — ชีทครบอยู่แล้ว');
+      return reload();
+    }).catch(function (e) { toast(e.message, true); })
+      .then(function () { fixGo.disabled = false; fixGo.textContent = 'ดึงรูปจากไดรฟ์'; });
+  });
+
+  v.appendChild(section('ซ่อมรูปของรายการ', [
+    h('p', { class: 'muted', style: 'font-size:13px;margin-bottom:10px' }, [
+      'ถ้ารูปอยู่ในไดรฟ์แล้วแต่เว็บไม่โชว์ (หรือเอารูปไปใส่ในโฟลเดอร์เอง) ' +
+      'ใส่รหัสรายการแล้วกดปุ่มนี้ ระบบจะไล่ดูโฟลเดอร์แล้วดึงใบที่ขาดเข้ามาให้'
+    ]),
+    h('div', { class: 'bar', style: 'margin:0' }, [fixIn, fixGo])
+  ]));
+
   var pend = A.pendingPhotos || [];
   v.appendChild(section('รูปยังไม่ครบ (' + pend.length + ')', pend.length ? pend.map(function (r) {
     var hrs = hoursSince(r.ts);
@@ -1609,7 +1648,8 @@ function viewDash(v) {
       h('span', {
         style: 'font-size:11px;padding:2px 6px;white-space:nowrap;color:var(--color-bg);background:' +
                (late ? 'var(--color-accent)' : 'var(--color-neutral-500)')
-      }, [hrs === null ? 'รอรูป' : (hrs < 1 ? 'เพิ่งส่ง' : 'ค้าง ' + hrs + ' ชม.')])
+      }, [hrs === null ? 'รอรูป' : (hrs < 1 ? 'เพิ่งส่ง' : 'ค้าง ' + hrs + ' ชม.')]),
+      fixBtn(r.id)
     ]);
   }) : [h('p', { class: 'muted' }, ['รูปครบทุกรายการ'])]));
 
