@@ -275,13 +275,9 @@ function sessionPayload_(m, u) {
   var seeAll = isAdmin || u.role === CFG.V.ROLE_LEAD;
   var mine = seeAll ? open : open.filter(function (j) { return j.empId === u.id; });
 
-  // เครื่องที่คนอื่นเบิกไปแล้วยังไม่คืน — ส่งไปให้หน้าจอปิดปุ่มไว้
-  // จะได้ไม่ติ๊กไปจนถ่ายรูปเสร็จแล้วค่อยมาโดนปฏิเสธตอนกดส่ง
-  var busy = {}, b = busyCodes_(open);
-  Object.keys(b).forEach(function (c) {
-    busy[c] = { by: b[c].empName, id: b[c].empId, date: b[c].date, time: b[c].time };
-  });
-
+  // ไม่ส่ง "ใครถือเครื่องไหนอยู่" ไปให้มือถืออีกแล้ว
+  // หน้างานหยิบของมาก่อนแล้วค่อยบันทึก การบอกว่าคนอื่นยังไม่กดคืน
+  // ทั้งที่เครื่องอยู่ในมือเขามีแต่ทำให้งง และก้อนนี้หนักถึง 6 KB จาก 31 KB
   return {
     user: u,
     isAdmin: isAdmin,
@@ -291,7 +287,6 @@ function sessionPayload_(m, u) {
     shifts: m.shifts,
     issueTags: m.issueTags,
     openJobs: mine,
-    busyCodes: busy,
     // รายชื่อไว้ให้แอดมินเลือกตอนบันทึกแทนคนอื่น — ส่งเฉพาะแอดมิน และเฉพาะช่องที่ต้องใช้
     staffList: isAdmin ? m.staff.filter(function (x) { return x.status === CFG.V.ACTIVE; })
       .map(function (x) { return { id: x.id, name: x.name, dept: x.dept, shift: x.shift }; }) : [],
@@ -595,7 +590,17 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows, pendingCount) {
     gps: s_(p.gps),
     ref: ctx.ref
   }, photoRows, function () {
-    if (ctx.action === CFG.V.BORROW) assertCodesFree_(ctx.codes);
+    // ระบบนี้เป็น "สมุดบันทึก" ไม่ใช่ระบบขออนุมัติเบิก
+    //
+    // หน้างานไปหยิบเครื่องมาก่อน แล้วค่อยมาบันทึกว่าหยิบอะไรไปพร้อมรูป
+    // ของที่ไม่ได้อยู่ตรงนั้นเขาก็ติ๊กไม่ได้อยู่แล้ว — ความจริงหน้างานล็อกตัวมันเอง
+    // ซอฟต์แวร์จึงไม่ต้องมาห้ามซ้ำ และการห้ามทำให้คนที่ถือเครื่องอยู่จริงบันทึกไม่ได้
+    // กลายเป็นการใช้งานที่มองไม่เห็น ซึ่งแย่กว่าการมีข้อมูลซ้อนเสียอีก
+    //
+    // เปิดสวิตช์ "กันเบิกซ้ำ" ในชีทเงื่อนไขของหัวข้อนั้นเมื่อไหร่ ถึงจะกลับมาตรวจ
+    if (ctx.action === CFG.V.BORROW && ctx.topic.rules && ctx.topic.rules.dup) {
+      assertCodesFree_(ctx.codes);
+    }
   });
 
   if (p.clientId) rememberSubmitted_(p.clientId, recordId);
