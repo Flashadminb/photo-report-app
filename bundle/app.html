@@ -262,6 +262,10 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="font-size:12px;font-weight:600" id="open-count">ค้างคืน 0 รายการ</div>
       </div>
 
+      <!-- งานที่ยังไม่ถึงชีท / ข้อมูลบนจอไม่ใช่ล่าสุด — ต้องเห็นก่อนเริ่มงานใหม่ -->
+      <div id="home-warn" class="hide" style="padding:9px 10px;background:var(--color-accent);
+           color:var(--color-bg);font-size:12px;line-height:1.5;font-weight:600"></div>
+
       <div id="open-wrap">
         <div class="kicker" style="margin-bottom:8px">ค้างคืน / TO RETURN</div>
         <div style="border-top:2px solid var(--color-text)" id="open-list"></div>
@@ -553,21 +557,45 @@ function rpcNative(name, args) {
   });
 }
 
+/**
+ * เวลารอสูงสุดต่อ 1 คำขอ
+ *
+ * ไม่ใส่ไว้ = fetch รอจนกว่าเบราว์เซอร์จะยอมแพ้เอง ซึ่งนานเป็นนาที
+ * พนักงานเห็นแต่ปุ่มหมุน ๆ ไม่รู้ว่าเกิดอะไรขึ้น กดซ้ำก็ไม่ได้
+ * ครบเวลาแล้วตัดเลย ให้ชั้นบนเก็บงานเข้าคิวไปส่งใหม่ทีหลัง
+ */
+var RPC_TIMEOUT_MS = 25000;
+var RPC_TIMEOUT_UPLOAD_MS = 60000;   // รูป 1 ใบราว 150 KB เน็ตหน้างานช้าต้องให้เวลามากกว่า
+
+function rpcTimeout(name) {
+  return name === 'apiUploadPhoto' ? RPC_TIMEOUT_UPLOAD_MS : RPC_TIMEOUT_MS;
+}
+
 function rpcFetch(name, args) {
   if (!API_URL) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า API_URL'));
   // ส่งเป็น text/plain เพื่อให้เป็น "simple request" เบราว์เซอร์จะได้ไม่ยิง preflight
   // (Apps Script ตอบ OPTIONS ไม่ได้)
   var body = JSON.stringify({ fn: name, args: args });
+  var ms = rpcTimeout(name);
+  var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var late = false;
+  var timer = setTimeout(function () { late = true; if (ctl) ctl.abort(); }, ms);
+  var stop = function () { clearTimeout(timer); };
+
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: body,
     redirect: 'follow',
+    signal: ctl ? ctl.signal : undefined,
     // ให้คำขอวิ่งต่อแม้ผู้ใช้ปิดแท็บไปแล้ว (เบราว์เซอร์จำกัดขนาดไว้ที่ 64KB)
     // ใช้กับงานที่กดแล้วไม่ต้องรอ เช่น ลบรูป — ปิดหน้าเว็บทันทีของก็ยังถูกลบ
     keepalive: body.length < 60000
   }).catch(function () {
-    throw new Error('ติดต่อเซิร์ฟเวอร์ไม่ได้');
+    // ข้อความต้องมีคำว่า "เซิร์ฟเวอร์" เสมอ — ชั้นบนใช้คำนี้ตัดสินว่าควรเก็บเข้าคิว
+    throw new Error(late
+      ? 'เซิร์ฟเวอร์ไม่ตอบใน ' + Math.round(ms / 1000) + ' วินาที'
+      : 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
   }).then(function (r) {
     if (!r.ok) throw new Error('เซิร์ฟเวอร์ตอบกลับผิดพลาด (' + r.status + ')');
     return r.text();
@@ -577,7 +605,8 @@ function rpcFetch(name, args) {
     catch (e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกรูปแบบ'); }
     if (res && res.ok === false) throw new Error(res.error || 'ทำรายการไม่สำเร็จ');
     return res;
-  });
+  }).then(function (v) { stop(); return v; },
+          function (e) { stop(); throw e; });
 }
 
 var $  = function (sel, root) { return (root || document).querySelector(sel); };
@@ -745,19 +774,41 @@ var Q = {
   count:function ()    { return this.all().then(function (a) { return a.length; }); }
 };
 
-/** พยายามส่งทุกงานในคิว คืนจำนวนที่ส่งสำเร็จ */
+/**
+ * งานที่ส่งไปกี่ครั้งก็ไม่มีวันผ่าน — พักไว้ ไม่ต้องลองซ้ำวนไม่จบ
+ *
+ * จับเฉพาะข้อความที่เจาะจงจริง ๆ เท่านั้น
+ * ของเดิมจับคำว่า "ไม่พบ" ลอย ๆ ซึ่งกินไปถึง "ไม่พบรหัสนี้ในชีททะเบียนพนักงาน"
+ * และ "ไม่พบหัวข้อ" ด้วย — พวกนี้แค่ชีทยังไม่อัปเดต ส่งใหม่ทีหลังผ่านได้
+ */
+var QUEUE_STUCK = /ถูกคืนไปแล้ว|ปิดใช้งานอยู่|ถูกระงับการใช้งาน/;
+
+/**
+ * พยายามส่งทุกงานในคิว คืนจำนวนที่ส่งสำเร็จ
+ *
+ * กติกาเหล็ก: งานในคิว "ห้ามหายเงียบ" ไม่ว่ากรณีใด
+ * ส่งไม่ผ่าน = ยังอยู่ในคิว พร้อมจดสาเหตุและจำนวนครั้งที่ลองไว้ให้เห็นบนหน้าจอ
+ * ตัวที่ส่งไปก็ไม่มีวันผ่านจะติดธง stuck ไว้ ข้ามไปไม่ลองซ้ำ แต่ยังอยู่ในคิวเหมือนเดิม
+ * ให้คนตัดสินใจลบเองจากหน้าคิว — ระบบไม่ลบให้เอง
+ *
+ * งานหนึ่งพังไม่ทำให้งานที่เหลือหยุดตาม (ของเดิม throw ทิ้งทั้งชุด)
+ */
 function flushQueue(onProgress) {
   return Q.all().then(function (jobs) {
+    var live = jobs.filter(function (j) { return !j.stuck; });
     var sent = 0;
-    return jobs.reduce(function (chain, job) {
+    return live.reduce(function (chain, job) {
       return chain.then(function () {
-        if (onProgress) onProgress(job, sent, jobs.length);
+        if (onProgress) onProgress(job, sent, live.length);
         return rpc('apiSubmit', job.payload)
           .then(function () { sent++; return Q.del(job.clientId); })
           .catch(function (e) {
-            // ข้อมูลผิดกติกา (เช่นรายการถูกคืนไปแล้ว) — เอาออกจากคิว ไม่ลองซ้ำวนไม่จบ
-            if (/ถูกคืนไปแล้ว|ไม่พบ|ปิดใช้งาน/.test(e.message)) return Q.del(job.clientId);
-            throw e;
+            var msg = (e && e.message) ? e.message : 'ส่งไม่สำเร็จ';
+            job.tries = (job.tries || 0) + 1;
+            job.err = msg;
+            job.errAt = Date.now();
+            if (QUEUE_STUCK.test(msg)) job.stuck = true;
+            return Q.put(job);   // เก็บกลับเข้าคิวเสมอ ไม่ทิ้ง
           });
       });
     }, Promise.resolve()).then(function () { return sent; })
@@ -798,6 +849,7 @@ var S = {
   issueShots: [],         // รูปจุดที่มีปัญหา — หลายรูปได้ เสียหลายเครื่องก็ถ่ายครบทุกเครื่อง
   result: '', issueText: '', note: '',
   busy: false, queueCount: 0,
+  stale: false,           // ดึงข้อมูลใหม่จากเซิร์ฟเวอร์ไม่สำเร็จ = ของบนจอเป็นของเก่า
 
   // ทยอยอัปโหลดรูประหว่างที่ยังถ่ายอยู่ — ตอนกดส่งจะได้ไม่ต้องรออัปโหลดอีก
   job: null,          // { recordId, folderId, folderUrl } ที่จองไว้
@@ -1103,6 +1155,7 @@ function renderHome() {
   $('#admin-link').href = window.ADMIN_URL || (WEBAPP_URL + '?page=admin');
   $('#today-label').textContent = 'วันนี้ · ' + S.today;
   $('#open-count').textContent = 'ค้างคืน ' + S.openJobs.length + ' รายการ';
+  renderHomeWarn();
 
   var list = $('#open-list'); list.innerHTML = '';
   $('#open-wrap').classList.toggle('hide', !S.openJobs.length);
@@ -1152,6 +1205,27 @@ function renderHome() {
   }
 
   $('#queue-badge').textContent = S.queueCount;
+}
+
+/**
+ * แถบเตือนบนหน้าหลัก
+ *
+ * สองเรื่องที่พนักงานต้องรู้ก่อนเริ่มงานใหม่ และของเดิมไม่เคยบอกเลย:
+ *   · ยังมีงานที่กดส่งไปแล้วแต่ยังไม่ถึงชีท (ค้างอยู่ในเครื่องตัวเอง)
+ *   · รายการค้างคืนบนจอเป็นของเก่า เพราะดึงข้อมูลใหม่ไม่สำเร็จ
+ */
+function renderHomeWarn() {
+  var box = $('#home-warn');
+  if (!box) return;
+  var msg = [];
+  if (S.queueCount) {
+    msg.push('⚠ ยังมี ' + S.queueCount + ' รายการที่ยังไม่ถึงชีท — กด "คิวรอส่ง" ด้านล่างเพื่อส่งให้จบ');
+  }
+  if (S.stale) {
+    msg.push('⚠ ข้อมูลบนหน้านี้เป็นของเก่า (ดึงข้อมูลใหม่ไม่สำเร็จ) รายการค้างคืนอาจไม่ตรงกับความจริง');
+  }
+  box.innerHTML = msg.map(esc).join('<br>');
+  box.classList.toggle('hide', !msg.length);
 }
 
 // ── หน้าข้อมูลงาน ─────────────────────────────────────────────────────
@@ -1600,17 +1674,40 @@ function renderQueue() {
       return;
     }
     jobs.forEach(function (j) {
+      // ส่งไม่ผ่านต้องเห็นสาเหตุตรงนี้ — ไม่งั้นงานค้างอยู่โดยไม่มีใครรู้ว่าทำไม
+      var rows = [
+        el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' }, [j.title]),
+        el('div', { style: 'font-size:11px;opacity:.7' }, [j.meta])
+      ];
+      if (j.err) {
+        rows.push(el('div', {
+          style: 'font-size:11px;line-height:1.4;margin-top:4px;color:var(--color-accent);font-weight:600'
+        }, ['ส่งไม่ผ่าน ' + (j.tries || 1) + ' ครั้ง · ' + j.err]));
+      }
+
+      var del = el('button', {
+        class: 'btn btn-secondary',
+        style: 'font-size:11px;padding:6px 8px;white-space:nowrap'
+      }, ['ลบทิ้ง']);
+      del.addEventListener('click', function () {
+        if (!confirm('ลบงานนี้ทิ้งถาวร?\n\n' + j.title + '\n' + j.meta +
+                     '\n\nรูปที่ถ่ายไว้จะหายไปด้วย และจะไม่มีข้อมูลนี้ในชีท')) return;
+        Q.del(j.clientId).then(function () { refreshQueueCount(); renderQueue(); });
+      });
+
       w.appendChild(el('div', {
-        style: 'border:1px solid var(--color-divider);padding:10px;display:flex;gap:10px;align-items:center'
+        style: 'border:1px solid ' + (j.stuck ? 'var(--color-accent)' : 'var(--color-divider)') +
+               ';padding:10px;display:flex;gap:10px;align-items:center'
       }, [
-        el('div', { style: 'line-height:1.35;flex:1' }, [
-          el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' }, [j.title]),
-          el('div', { style: 'font-size:11px;opacity:.7' }, [j.meta])
-        ]),
-        el('div', {
-          style: 'font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 6px;' +
-                 'background:var(--color-accent);color:var(--color-bg)'
-        }, ['รอส่ง'])
+        el('div', { style: 'line-height:1.35;flex:1' }, rows),
+        el('div', { style: 'display:flex;flex-direction:column;gap:6px;align-items:flex-end' }, [
+          el('div', {
+            style: 'font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 6px;' +
+                   'white-space:nowrap;color:var(--color-bg);background:' +
+                   (j.stuck ? 'var(--color-text)' : 'var(--color-accent)')
+          }, [j.stuck ? 'ส่งไม่ได้' : 'รอส่ง']),
+          j.stuck ? del : null
+        ])
       ]));
     });
   });
@@ -2010,11 +2107,12 @@ function submit() {
     meta: n.date + ' ' + n.hhmm + ' · ' + payload.photos.length + ' รูป',
     payload: payload
   };
-  var queueIt = function () {
+  var queueIt = function (why) {
     clearProgress();
+    if (why) { meta.err = why; meta.tries = 1; meta.errAt = Date.now(); }
     Q.put(meta).then(function () {
       refreshQueueCount();
-      showDone({ queued: true, photoCount: payload.photos.length });
+      showDone({ queued: true, photoCount: payload.photos.length, why: why });
     });
   };
 
@@ -2030,17 +2128,21 @@ function submit() {
   }).catch(function (e) {
     S.busy = false;
     // ส่งไม่ผ่านเพราะเน็ต → เก็บเข้าคิวส่งใหม่ทีหลัง; ผิดกติกา → บอกให้แก้
-    if (/เซิร์ฟเวอร์|network|timeout|failed to fetch/i.test(e.message)) queueIt();
+    if (/เซิร์ฟเวอร์|network|timeout|failed to fetch/i.test(e.message)) queueIt(e.message);
     else { clearProgress(); renderFooter(); toast(e.message, true); }
   });
 }
 
 function showDone(res) {
   var n = nowParts();
-  $('#done-title').textContent = res.queued ? 'บันทึกไว้ในเครื่องแล้ว'
+  // ยังไม่ถึงชีท ต้องพูดให้ชัดว่า "ยังไม่เสร็จ" ไม่ใช่ขึ้นว่าเรียบร้อยแล้วปล่อยเลยไป
+  // ของเดิมขึ้นว่า "บันทึกไว้ในเครื่องแล้ว" ซึ่งอ่านแล้วเข้าใจว่าจบงาน
+  $('#done-title').textContent = res.queued ? 'ยังไม่ถึงชีท · เก็บไว้ในเครื่องก่อน'
     : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย');
   $('#done-sub').textContent = res.queued
-    ? 'อยู่ในคิว จะส่งอัตโนมัติเมื่อสัญญาณกลับมา'
+    ? ((res.why ? res.why + ' · ' : '') +
+       'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
+       'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
     : (S.action === 'คืน'
         ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
         : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน');
@@ -2139,7 +2241,10 @@ function restoreDraft() {
 }
 
 function refreshQueueCount() {
-  Q.count().then(function (n) { S.queueCount = n; if (S.screen === 'home') $('#queue-badge').textContent = n; });
+  Q.count().then(function (n) {
+    S.queueCount = n;
+    if (S.screen === 'home') { $('#queue-badge').textContent = n; renderHomeWarn(); }
+  });
 }
 
 function refresh() {
@@ -2149,9 +2254,15 @@ function refresh() {
     // ต้องใส่รหัสลับใหม่ตอนเปิดแอพครั้งหน้า
     if (r.needPin) return;
     if (r.ticket) store.set('ticket', r.ticket);
+    S.stale = false;
     applySession(r);
     if (S.screen === 'home') renderHome();
-  }).catch(function () { /* ออฟไลน์ — ใช้ข้อมูลเดิมไปก่อน */ });
+  }).catch(function () {
+    // ดึงของใหม่ไม่ได้ — ใช้ข้อมูลเดิมไปก่อนได้ แต่ต้องบอกให้รู้ว่าเป็นของเก่า
+    // ไม่งั้นจะเห็นรายการค้างคืนที่คนอื่นคืนไปแล้วค้างอยู่บนจอโดยไม่รู้ตัว
+    S.stale = true;
+    if (S.screen === 'home') renderHomeWarn();
+  });
 }
 
 function applySession(r, fromCache) {
@@ -2250,7 +2361,7 @@ function bind() {
     toast('กำลังส่ง…');
     flushQueue().then(function (n) {
       refreshQueueCount(); renderQueue(); refresh();
-      toast(n ? 'ส่งสำเร็จ ' + n + ' รายการ' : 'ยังส่งไม่ได้ ลองใหม่อีกครั้ง', !n);
+      toast(n ? 'ส่งสำเร็จ ' + n + ' รายการ' : 'ยังส่งไม่ได้ — ดูสาเหตุใต้ชื่อรายการด้านล่าง', !n);
     });
   });
 

@@ -150,8 +150,30 @@ function buildMaster_() {
   };
 }
 
+/**
+ * แผนที่ รหัสพนักงาน -> สถานะ ก้อนเล็ก ๆ สำหรับตรวจสิทธิ์อย่างเดียว
+ *
+ * ตอนอัปโหลดรูป เซิร์ฟเวอร์ต้องตรวจสิทธิ์ซ้ำทุกใบ (5-6 ครั้งต่อ 1 งาน)
+ * ถ้าใช้ getMaster_() จะต้องแกะ JSON ของทะเบียนเครื่อง+หัวข้อ+ช่องถ่ายรูปทั้งชุดทุกครั้ง
+ * ทั้งที่ใช้แค่ช่องสถานะช่องเดียว
+ */
+function staffStatusMap_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('staffmap');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+
+  var map = {};
+  getMaster_().staff.forEach(function (p) { map[p.id] = p.status; });
+  try { cache.put('staffmap', JSON.stringify(map), CFG.CACHE_SEC); } catch (e) {}
+  return map;
+}
+
 function clearMasterCache_() {
-  try { CacheService.getScriptCache().remove('master'); } catch (e) {}
+  try {
+    var c = CacheService.getScriptCache();
+    c.remove('master');
+    c.remove('staffmap');
+  } catch (e) {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════

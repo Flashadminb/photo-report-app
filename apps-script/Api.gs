@@ -114,6 +114,16 @@ function requireAdmin_(master, empId) {
 
 function canWriteMaster_(u) { return u.role === CFG.V.ROLE_ADMIN; }
 
+/**
+ * ตรวจสิทธิ์แบบเบา — ผลเหมือน requireUser_ ทุกประการ แต่ไม่ต้องแกะ MASTER ทั้งก้อน
+ * ใช้เฉพาะจุดที่ถูกเรียกซ้ำ ๆ และไม่ต้องใช้ข้อมูลอื่นของผู้ใช้เลย (อัปโหลดรูปทีละใบ)
+ */
+function requireUserLight_(empId) {
+  var st = staffStatusMap_()[s_(empId)];
+  if (!st) throw new Error('ไม่พบรหัสนี้ในชีททะเบียนพนักงาน');
+  if (st === CFG.V.SUSPENDED) throw new Error('รหัสนี้ถูกระงับการใช้งาน ติดต่อแอดมิน');
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  แอพมือถือ
 // ══════════════════════════════════════════════════════════════════════════
@@ -163,7 +173,34 @@ function issueTicket_(empId) {
   var t = Utilities.getUuid();
   PropertiesService.getScriptProperties()
     .setProperty(ticketKey_(t), s_(empId) + '|' + (Date.now() + PIN_TICKET_MS));
+  sweepTickets_();
   return t;
+}
+
+/**
+ * เก็บกวาดตั๋วที่หมดอายุแล้วทิ้ง
+ *
+ * ตั๋วถูกลบเมื่อเจ้าของเอามาใช้แล้วพบว่าหมดอายุเท่านั้น
+ * ใครเปลี่ยนเครื่อง / ล้างข้อมูลเบราว์เซอร์ / ไม่กลับมาอีก = ตั๋วค้างอยู่ตลอดกาล
+ * สะสมไปเรื่อย ๆ ทำให้ hiddenIds_() ที่ดึง property ทั้งกองช้าลงทุกวัน
+ * และถ้าชนเพดานที่เก็บได้ (~500KB) จะออกตั๋วใหม่ไม่ได้ = ล็อกอินพังทั้งระบบ
+ *
+ * กวาดอย่างมากชั่วโมงละครั้ง เพื่อไม่ให้ไปถ่วงคนที่กำลังล็อกอินอยู่
+ */
+function sweepTickets_() {
+  var props = PropertiesService.getScriptProperties();
+  try {
+    var now = Date.now();
+    if (Number(props.getProperty('ptSweep') || 0) > now - 3600000) return;
+    props.setProperty('ptSweep', String(now));
+
+    var all = props.getProperties();
+    Object.keys(all).forEach(function (k) {
+      if (k.indexOf('pt:') !== 0) return;
+      var exp = Number(String(all[k]).split('|')[1]);
+      if (!exp || exp < now) props.deleteProperty(k);
+    });
+  } catch (e) { /* กวาดไม่ได้ก็ไม่เป็นไร ไม่ควรทำให้ล็อกอินพัง */ }
 }
 
 /** ตั๋วนี้ยังใช้ได้กับคนนี้ไหม — ใช้ได้ก็ต่ออายุออกไปอีก 8 ชม. */
@@ -229,8 +266,9 @@ function sessionPayload_(m, u) {
   var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
 
   // อ่านรายการค้างคืนของทุกคนรอบเดียว แล้วค่อยแยกใช้ 2 ทาง
-  // ใช้ตัวที่อ่านเฉพาะคอลัมน์ที่ใช้ ไม่งั้นล็อกอินจะช้าลงเรื่อย ๆ ตามข้อมูลที่สะสม
-  var open = openJobsFast_(null);
+  // ผ่านแคชสั้น ๆ เพราะหน้านี้ถูกเรียกทุกครั้งที่เปิดแอพ/กดกลับหน้าหลัก/ส่งงานเสร็จ
+  // (แคชล้างทันทีที่มีการเขียนแถวใหม่ — ไม่มีทางเห็นของค้างข้ามการเปลี่ยนแปลง)
+  var open = openJobsCached_();
 
   // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
   var seeAll = isAdmin || u.role === CFG.V.ROLE_LEAD;
@@ -355,7 +393,7 @@ function apiReserve(empId, topicId) {
 /** จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้) */
 function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq) {
   return wrap_(function () {
-    requireUser_(getMaster_(), empId);
+    requireUserLight_(empId);
     var folder = DriveApp.getFolderById(s_(folderId));
     var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1);
     return ok_({
@@ -435,7 +473,12 @@ function prepareSubmit_(p) {
   if (action === CFG.V.RETURN) {
     ref = s_(p.ref);
     if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
-    var found = openJobsFast_(null).filter(function (j) { return j.id === ref; })[0];
+    var pick = function (list) {
+      return list.filter(function (j) { return j.id === ref; })[0];
+    };
+    // ดูจากแคชก่อน — หาไม่เจอค่อยอ่านสดยืนยันอีกรอบ
+    // จะได้ไม่ปฏิเสธงานคืนเพียงเพราะแคชยังตามไม่ทันรายการที่เพิ่งเบิกไปเมื่อครู่
+    var found = pick(openJobsCached_()) || pick(openJobsFast_(null));
     if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
     if (!all.length) all = found.codes ? found.codes.split(/\s*,\s*/).filter(Boolean) : [];
     qty = all.length || qty;
@@ -581,25 +624,25 @@ function apiAdminLoad(empId, range) {
   return wrap_(function () {
     var m = getMaster_();
     var u = requireAdmin_(m, empId);
-    var recs = allRecords_();
 
     var r = normRange_(range);
-    var picked = filterRecords_(recs, r);
+    var sel = recordsForRange_(r);
+    var picked = sel.picked;
 
     var keep = {};
     picked.forEach(function (x) { keep[x.id] = true; });
-    var photos = allPhotos_().filter(function (ph) { return keep[ph.rec]; });
+    var photos = photosForRecords_(keep);
 
     return ok_({
       user: u,
       canEdit: canWriteMaster_(u),
       master: m,
       range: r,
-      periods: periods_(recs),
-      totalRecords: recs.length,
+      periods: sel.periods,
+      totalRecords: sel.total,
       pairs: buildPairs_(picked, photos, hiddenIds_()),
       records: picked,
-      openJobs: openJobs_(recs, null),
+      openJobs: openJobsCached_(),
       today: fmtDate_(new Date())
     });
   });
@@ -614,56 +657,6 @@ function normRange_(range) {
   if (mode === 'year')  return { mode: 'year',  y: Number(r.y) };
   if (mode === 'all')   return { mode: 'all' };
   return { mode: 'days', n: Number(r.n) || 7 };
-}
-
-function filterRecords_(recs, r) {
-  if (r.mode === 'all') return recs;
-
-  var from = null, one = null;
-  if (r.mode === 'days') {
-    from = new Date(); from.setHours(0, 0, 0, 0);
-    from.setDate(from.getDate() - (r.n - 1));
-  }
-  if (r.mode === 'day') {
-    var g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.d || '');
-    if (!g) return [];
-    one = new Date(Number(g[1]), Number(g[2]) - 1, Number(g[3])).getTime();
-  }
-
-  var keep = recs.filter(function (x) {
-    var d = recDay_(x);
-    if (!d) return false;
-    if (r.mode === 'day')   return d.getTime() === one;
-    if (r.mode === 'month') return d.getFullYear() === r.y && (d.getMonth() + 1) === r.m;
-    if (r.mode === 'year')  return d.getFullYear() === r.y;
-    return d >= from;
-  });
-
-  // ดึงคู่ที่ขาดมาด้วย — เบิกเดือนก่อนแล้วมาคืนในช่วงนี้ ต้องเห็นทั้งคู่
-  var have = {}, need = {};
-  keep.forEach(function (x) { have[x.id] = true; });
-  keep.forEach(function (x) { if (x.ref && !have[x.ref]) need[x.ref] = true; });
-  recs.forEach(function (x) {
-    if (have[x.id]) return;
-    if (need[x.id] || (x.ref && have[x.ref])) { keep.push(x); have[x.id] = true; }
-  });
-  return keep;
-}
-
-/** เดือน/ปีที่มีข้อมูลจริง เอาไปทำดร็อปดาวน์ให้เลือกย้อนหลัง */
-function periods_(recs) {
-  var mo = {}, yr = {};
-  recs.forEach(function (x) {
-    var d = recDay_(x);
-    if (!d) return;
-    var y = d.getFullYear(), m = d.getMonth() + 1;
-    yr[y] = true;
-    mo[y + '-' + (m < 10 ? '0' + m : m)] = true;
-  });
-  return {
-    months: Object.keys(mo).sort().reverse(),
-    years: Object.keys(yr).sort().reverse()
-  };
 }
 
 /**
@@ -735,12 +728,22 @@ function apiAdminDeletePhotos(empId, recordId) {
 var HIDE_PREFIX = 'h:';
 
 function hiddenIds_() {
+  // getProperties() ดึงทุก property ของโปรเจกต์มาทั้งกอง (รวมตั๋วรหัสลับ) จึงไม่ควรทำซ้ำบ่อย
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('hidden');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+
   var all = PropertiesService.getScriptProperties().getProperties();
   var out = {};
   Object.keys(all).forEach(function (k) {
     if (k.indexOf(HIDE_PREFIX) === 0) out[k.slice(HIDE_PREFIX.length)] = true;
   });
+  try { cache.put('hidden', JSON.stringify(out), 120); } catch (e) {}
   return out;
+}
+
+function clearHiddenCache_() {
+  try { CacheService.getScriptCache().remove('hidden'); } catch (e) {}
 }
 
 /**
@@ -764,6 +767,7 @@ function apiAdminHidePhotos(empId, recordIds, show) {
       ids.forEach(function (id) { add[HIDE_PREFIX + id] = '1'; });
       props.setProperties(add, false);
     }
+    clearHiddenCache_();
     return ok_({ n: ids.length, show: !!show });
   });
 }

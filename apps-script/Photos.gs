@@ -15,10 +15,30 @@ function photoRoot_() {
   return folderChild_(parent, CFG.PHOTO_ROOT_NAME);
 }
 
+/**
+ * โฟลเดอร์ประจำวัน — จำรหัสไว้ในแคช
+ *
+ * ของเดิมทุกครั้งที่จองงานต้องไล่หาโฟลเดอร์ใหม่ทั้งสายตั้งแต่ต้น
+ * (เปิดโฟลเดอร์แม่ → ค้นหา "รูปถ่ายหน้างาน" → ค้นหาโฟลเดอร์วันที่)
+ * ทั้งที่ทั้งวันมันคือโฟลเดอร์เดิมตัวเดียว — เรียก Drive ฟรี ๆ 3 ครั้งต่องาน
+ */
+function dayFolder_(day) {
+  var cache = CacheService.getScriptCache();
+  var key = 'fld:' + day;
+  var id = cache.get(key);
+  if (id) {
+    try { return DriveApp.getFolderById(id); }
+    catch (e) { /* โฟลเดอร์ถูกลบ/ย้าย — ตกไปสร้างใหม่ข้างล่าง */ }
+  }
+  var f = folderChild_(photoRoot_(), day);
+  try { cache.put(key, f.getId(), CFG.FOLDER_CACHE_SEC); } catch (e) {}
+  return f;
+}
+
 /** โฟลเดอร์ของรายการหนึ่ง ๆ — สร้างเมื่อเรียกครั้งแรก */
 function recordFolder_(recordId, when) {
   var day = Utilities.formatDate(when || new Date(), CFG.TZ, 'yyyy-MM-dd');
-  return folderChild_(folderChild_(photoRoot_(), day), recordId);
+  return folderChild_(dayFolder_(day), recordId);
 }
 
 /**

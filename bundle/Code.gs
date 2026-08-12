@@ -102,7 +102,15 @@ var CFG = {
   // อาการยอดฮิต (ปุ่มลัดตอนแจ้งปัญหา)
   ISSUE_TAGS: ['แบตไม่เก็บไฟ', 'ยกไม่ขึ้น', 'ล้อชำรุด', 'จอไม่ติด', 'มีเสียงดัง', 'น้ำมันรั่ว'],
 
-  CACHE_SEC: 300 // อายุแคชของข้อมูล MASTER (วินาที)
+  CACHE_SEC: 300, // อายุแคชของข้อมูล MASTER (วินาที)
+
+  // อายุแคชรายการค้างคืน — ใช้กับ "หน้าจอ" เท่านั้น (ล็อกอิน/รีเฟรช)
+  // การตรวจกันเบิกซ้ำตอนเขียนจริงยังอ่านสดจากชีทเสมอ ไม่แตะแคชตัวนี้
+  // ทุกครั้งที่มีการเขียนแถวใหม่ แคชจะถูกล้างทันทีอยู่แล้ว
+  OPEN_CACHE_SEC: 30,
+
+  // อายุแคชรหัสโฟลเดอร์รายวันใน Drive — ประหยัดการค้นหาโฟลเดอร์ซ้ำทุกครั้งที่จองงาน
+  FOLDER_CACHE_SEC: 21600
 };
 
 
@@ -262,8 +270,30 @@ function buildMaster_() {
   };
 }
 
+/**
+ * แผนที่ รหัสพนักงาน -> สถานะ ก้อนเล็ก ๆ สำหรับตรวจสิทธิ์อย่างเดียว
+ *
+ * ตอนอัปโหลดรูป เซิร์ฟเวอร์ต้องตรวจสิทธิ์ซ้ำทุกใบ (5-6 ครั้งต่อ 1 งาน)
+ * ถ้าใช้ getMaster_() จะต้องแกะ JSON ของทะเบียนเครื่อง+หัวข้อ+ช่องถ่ายรูปทั้งชุดทุกครั้ง
+ * ทั้งที่ใช้แค่ช่องสถานะช่องเดียว
+ */
+function staffStatusMap_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('staffmap');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+
+  var map = {};
+  getMaster_().staff.forEach(function (p) { map[p.id] = p.status; });
+  try { cache.put('staffmap', JSON.stringify(map), CFG.CACHE_SEC); } catch (e) {}
+  return map;
+}
+
 function clearMasterCache_() {
-  try { CacheService.getScriptCache().remove('master'); } catch (e) {}
+  try {
+    var c = CacheService.getScriptCache();
+    c.remove('master');
+    c.remove('staffmap');
+  } catch (e) {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -411,10 +441,10 @@ function makeRecordId_(topicId, when) {
 
 // ── อ่านบันทึกทั้งหมด ─────────────────────────────────────────────────────
 
-function allRecords_() {
+/** แถวดิบจากชีท "บันทึก" -> ออบเจ็กต์ที่หน้าบ้านใช้ */
+function mkRecord_(r) {
   var C = CFG.COL.REC;
-  return readRows_(dataSS_(), CFG.D.RECORDS).map(function (r) {
-    return {
+  return {
       id:       s_(r[C.ID - 1]),
       ts:       cellDate_(r[C.TS - 1], true),
       date:     cellDate_(r[C.DATE - 1], false),
@@ -435,54 +465,191 @@ function allRecords_() {
       ref:      s_(r[C.REF - 1]),
       sent:     s_(r[C.SENT - 1]),
       by:       s_(r[C.BY - 1])     // แอดมินที่บันทึกแทน ว่าง = เบิกเอง
-    };
-  }).filter(function (x) { return x.id; });
+  };
 }
 
-function allPhotos_() {
+// ══════════════════════════════════════════════════════════════════════════
+//  อ่านเฉพาะช่วงที่หน้าแอดมินขอ (แทนการอ่านทั้งใบแล้วค่อยกรองทีหลัง)
+//
+//  ของเดิม: เลือก "7 วันล่าสุด" ก็ยังอ่านชีทบันทึกทั้งใบครบ 20 คอลัมน์
+//  และอ่านชีทรูปทั้งใบ (1 แถวต่อ 1 รูป — โตเร็วกว่าชีทบันทึก 5-6 เท่า)
+//  แล้วค่อยเอามาทิ้งใน memory ทีหลัง การเลือกช่วงจึงไม่ได้ช่วยให้เร็วขึ้นเลย
+//
+//  ของใหม่: อ่านคอลัมน์แคบ ๆ ก่อน (รหัสรายการ + อ้างอิง) เพื่อรู้ว่าต้องการแถวไหนบ้าง
+//  แล้วค่อยอ่านข้อมูลเต็มเฉพาะช่วงแถวที่ครอบคลุมแถวเหล่านั้น
+//  เพราะแถวถูกต่อท้ายเรียงเวลาอยู่แล้ว ช่วงวันที่จึงมักเป็นแถวท้าย ๆ ก้อนเดียว
+//
+//  ผลลัพธ์เหมือนเดิมทุกประการ รวมถึงลำดับแถวและการดึง "คู่เบิก-คืน" ข้ามช่วงมาด้วย
+//  กรณีแย่ที่สุด (เลือก "ทั้งหมด" หรือมีแถวที่อ่านวันที่จากรหัสไม่ออก) = เท่าของเดิม
+// ══════════════════════════════════════════════════════════════════════════
+
+/** วันที่ของรายการจากรหัส (หัวข้อ-yyyyMMdd-เลขรัน) — null ถ้าอ่านไม่ออก */
+function dayOfId_(id) {
+  var m = /-(\d{4})(\d{2})(\d{2})-/.exec(s_(id));
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+
+/** แปลงช่วงที่หน้าแอดมินขอ เป็นฟังก์ชันตรวจว่า "วันนี้อยู่ในช่วงไหม" */
+function rangeTest_(r) {
+  if (r.mode === 'all') return function () { return true; };
+
+  var from = null, one = null;
+  if (r.mode === 'days') {
+    from = new Date(); from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - (r.n - 1));
+  }
+  if (r.mode === 'day') {
+    var g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.d || '');
+    if (!g) return function () { return false; };
+    one = new Date(Number(g[1]), Number(g[2]) - 1, Number(g[3])).getTime();
+  }
+  return function (d) {
+    if (!d) return false;
+    if (r.mode === 'day')   return d.getTime() === one;
+    if (r.mode === 'month') return d.getFullYear() === r.y && (d.getMonth() + 1) === r.m;
+    if (r.mode === 'year')  return d.getFullYear() === r.y;
+    return d >= from;
+  };
+}
+
+/**
+ * @returns {{picked:Array, periods:Object, total:number}}
+ */
+function recordsForRange_(r) {
+  var C = CFG.COL.REC;
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var empty = { picked: [], periods: { months: [], years: [] }, total: 0 };
+  var last = sh.getLastRow();
+  if (last < 2) return empty;
+
+  var n = last - 1;
+  var full = Math.min(C.BY, sh.getMaxColumns());
+
+  // ขอ "ทั้งหมด" อยู่แล้ว — อ่านรวดเดียวจบ ไม่ต้องเสียเวลาสำรวจว่าต้องการแถวไหน
+  if (r.mode === 'all') {
+    var every = sh.getRange(2, 1, n, full).getValues()
+      .map(mkRecord_).filter(function (x) { return x.id; });
+    var amo = {}, ayr = {};
+    every.forEach(function (x) {
+      var d = recDay_(x);
+      if (!d) return;
+      var ay = d.getFullYear(), am = d.getMonth() + 1;
+      ayr[ay] = true;
+      amo[ay + '-' + (am < 10 ? '0' + am : am)] = true;
+    });
+    return { picked: every, periods: sortPeriods_(amo, ayr), total: every.length };
+  }
+
+  var ids  = sh.getRange(2, C.ID,  n, 1).getValues();
+  var refs = sh.getRange(2, C.REF, n, 1).getValues();
+  var hit = rangeTest_(r);
+
+  var rowOf = {}, inRange = {}, need = {}, unknown = [];
+  var mo = {}, yr = {}, total = 0;
+
+  for (var i = 0; i < n; i++) {
+    var id = s_(ids[i][0]);
+    if (!id) continue;
+    total++;
+    rowOf[id] = i;
+
+    var d = dayOfId_(id);
+    if (d) {
+      var y = d.getFullYear(), m = d.getMonth() + 1;
+      yr[y] = true;
+      mo[y + '-' + (m < 10 ? '0' + m : m)] = true;
+      if (hit(d)) { inRange[i] = true; need[i] = true; }
+    } else {
+      // อ่านวันที่จากรหัสไม่ออก (แถวที่กรอกมือ) — ต้องอ่านข้อมูลเต็มมาตัดสินจากคอลัมน์วันที่
+      unknown.push(i);
+      need[i] = true;
+    }
+  }
+
+  // ดึงคู่ที่ขาดมาด้วย — เบิกเดือนก่อนแล้วมาคืนในช่วงนี้ ต้องเห็นทั้งคู่
+  // ตรรกะตรงกับของเดิมเป๊ะ: ทำรอบเดียว ไม่ไล่ต่อเป็นทอด ๆ
+  var haveId = {};
+  Object.keys(need).forEach(function (k) { haveId[s_(ids[k][0])] = true; });
+  Object.keys(need).forEach(function (k) {
+    var rf = s_(refs[k][0]);
+    if (rf && !haveId[rf] && rowOf[rf] !== undefined) need[rowOf[rf]] = true;
+  });
+  for (var j = 0; j < n; j++) {
+    if (need[j]) continue;
+    var rf2 = s_(refs[j][0]);
+    if (rf2 && haveId[rf2]) need[j] = true;
+  }
+
+  var idx = Object.keys(need).map(Number).sort(function (a, b) { return a - b; });
+  if (!idx.length) return { picked: [], periods: sortPeriods_(mo, yr), total: total };
+
+  var from = idx[0], to = idx[idx.length - 1];
+  var block = sh.getRange(2 + from, 1, to - from + 1, full).getValues();
+  var mk = function (i) { return mkRecord_(block[i - from]); };
+
+  // ลำดับต้องเหมือนของเดิม: แถวในช่วงตามลำดับในชีทก่อน แล้วค่อยต่อด้วยคู่ที่ดึงเพิ่ม
+  var picked = [], taken = {};
+  idx.forEach(function (i) {
+    if (!inRange[i] && unknown.indexOf(i) < 0) return;
+    var rec = mk(i);
+    if (!rec.id) return;
+    if (!inRange[i] && !hit(recDay_(rec))) return;   // แถวกรอกมือ — ตัดสินจากคอลัมน์วันที่
+    picked.push(rec); taken[i] = true;
+  });
+  idx.forEach(function (i) {
+    if (taken[i]) return;
+    var rec = mk(i);
+    if (rec.id) picked.push(rec);
+  });
+
+  return { picked: picked, periods: sortPeriods_(mo, yr), total: total };
+}
+
+function sortPeriods_(mo, yr) {
+  return {
+    months: Object.keys(mo).sort().reverse(),
+    years: Object.keys(yr).sort().reverse()
+  };
+}
+
+/** แถวรูปของรายการที่เลือกไว้ — อ่านเฉพาะช่วงแถวที่มีของจริง ไม่ใช่ทั้งใบ */
+function photosForRecords_(keep) {
   var C = CFG.COL.PHOTO;
-  return readRows_(dataSS_(), CFG.D.PHOTOS).map(function (r) {
-    return {
-      rec:  s_(r[C.REC - 1]),
-      slot: s_(r[C.SLOT - 1]),
-      url:  s_(r[C.URL - 1]),
-      time: cellDate_(r[C.TIME - 1], false),
-      gps:  s_(r[C.GPS - 1])
-    };
-  }).filter(function (x) { return x.rec; });
+  var sh = dataSS_().getSheetByName(CFG.D.PHOTOS);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+
+  var n = last - 1;
+  var recCol = sh.getRange(2, C.REC, n, 1).getValues();
+  var from = -1, to = -1;
+  for (var i = 0; i < n; i++) {
+    if (keep[s_(recCol[i][0])]) { if (from < 0) from = i; to = i; }
+  }
+  if (from < 0) return [];
+
+  var block = sh.getRange(2 + from, 1, to - from + 1, 5).getValues();
+  var out = [];
+  for (var j = 0; j < block.length; j++) {
+    var row = block[j];
+    var rec = s_(row[C.REC - 1]);
+    if (!keep[rec]) continue;
+    out.push({
+      rec:  rec,
+      slot: s_(row[C.SLOT - 1]),
+      url:  s_(row[C.URL - 1]),
+      time: cellDate_(row[C.TIME - 1], false),
+      gps:  s_(row[C.GPS - 1])
+    });
+  }
+  return out;
 }
 
 /**
  * รายการที่ยังไม่คืน — ตรรกะเดียวกับสูตร FILTER ในชีท "ค้างคืน":
  * แถวที่สถานะใช้งาน = "เบิก" และยังไม่มีแถวไหนอ้างอิงรหัสรายการนี้
- */
-function openJobs_(records, empId) {
-  var referenced = {};
-  records.forEach(function (r) { if (r.ref) referenced[r.ref] = true; });
-  return records.filter(function (r) {
-    if (r.action !== CFG.V.BORROW) return false;
-    if (referenced[r.id]) return false;
-    if (empId && r.empId !== empId) return false;
-    return true;
-  }).map(function (r) {
-    return {
-      id: r.id, codes: r.codes, qty: r.qty, topic: r.topic,
-      empId: r.empId, empName: r.empName, dept: r.dept,
-      date: r.date, ts: r.ts,
-      time: (/(\d{1,2}:\d{2})/.exec(r.ts) || [, ''])[1]
-    };
-  }).reverse();
-}
-
-/**
- * รายการค้างคืน แบบไม่ต้องอ่านชีททั้งใบ — ใช้ในแอพหน้างานตอนล็อกอิน/รีเฟรช
  *
- * ของเดิมเรียก allRecords_() ซึ่งอ่านครบ 19 คอลัมน์แล้วแปลงเป็นออบเจ็กต์ทุกแถว
- * รวมถึงจัดรูปแบบวันที่ทีละแถว ยิ่งข้อมูลสะสมยิ่งช้าขึ้นเรื่อย ๆ ทั้งที่
- * รายการค้างคืนจริง ๆ มีแค่ไม่กี่รายการ
- *
- * ตัวนี้อ่านเฉพาะคอลัมน์ที่ใช้ กรองจากตัวเลขดิบก่อน แล้วค่อยแปลงเป็นออบเจ็กต์
- * เฉพาะแถวที่รอดจริง — ผลลัพธ์เหมือนเดิมทุกประการ
+ * อ่านเฉพาะคอลัมน์ที่ใช้ กรองจากค่าดิบก่อน แล้วค่อยแปลงเป็นออบเจ็กต์
+ * เฉพาะแถวที่รอดจริง — รายการค้างคืนมีไม่กี่รายการ แต่แถวสะสมมีเป็นหมื่น
  */
 function openJobsFast_(empId) {
   var C = CFG.COL.REC;
@@ -524,6 +691,30 @@ function openJobsFast_(empId) {
     });
   }
   return out.reverse();
+}
+
+/**
+ * รายการค้างคืน "สำหรับแสดงบนหน้าจอ" — ผ่านแคชสั้น ๆ
+ *
+ * ล็อกอิน/รีเฟรช/กดปุ่มหน้าหลัก ล้วนต้องใช้ลิสต์นี้ และของเดิมอ่านชีททั้งใบใหม่ทุกครั้ง
+ * กะเปลี่ยนคน 30 คนเปิดแอพพร้อมกัน = อ่านชีทเต็ม 30 รอบใน 5 นาที ทั้งที่ข้อมูลชุดเดียวกัน
+ *
+ * ห้ามใช้ตัวนี้ตอนตรวจกันเบิกซ้ำเด็ดขาด — ตรงนั้นต้อง assertCodesFree_ ที่อ่านสดในล็อก
+ * เพราะข้อมูลช้าไปแม้ครึ่งวินาทีก็ทำให้เครื่องตัวเดียวถูกเบิกซ้อนได้
+ *
+ * เขียนแถวใหม่เมื่อไหร่ writeRecord_ ล้างแคชให้ทันที หน้าจอจึงไม่ค้างข้อมูลเก่า
+ */
+function openJobsCached_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('openjobs');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  var list = openJobsFast_(null);
+  try { cache.put('openjobs', JSON.stringify(list), CFG.OPEN_CACHE_SEC); } catch (e) {}
+  return list;
+}
+
+function clearOpenJobsCache_() {
+  try { CacheService.getScriptCache().remove('openjobs'); } catch (e) {}
 }
 
 /** รหัสเครื่องที่ยังไม่ได้คืน -> รายการที่เบิกไป { รหัสเครื่อง: งาน } */
@@ -589,9 +780,16 @@ function writeRecord_(p, photoRows, guard) {
   lock.waitLock(60000);   // กะเปลี่ยนคนส่งพร้อมกันเยอะ ให้รอคิวได้นานหน่อย
   try {
     if (guard) guard();
-    shR.appendRow(row);
-    // บังคับให้รหัสพนักงานเป็นข้อความ กันชีทตัดเลข 0 นำหน้า
-    shR.getRange(shR.getLastRow(), C.EMP_ID).setNumberFormat('@').setValue(p.empId);
+
+    // อยู่ในล็อกแล้ว จึงรู้แน่ว่าไม่มีใครแทรกแถว — คำนวณแถวเป้าหมายเองได้
+    // ของเดิมยิงชีท 3 รอบ (appendRow + setNumberFormat + setValue) เหลือ 2 รอบ
+    // ตั้งรูปแบบเป็นข้อความก่อนเขียน กันชีทตัดเลข 0 นำหน้าของรหัสพนักงาน
+    var at = shR.getLastRow() + 1;
+    // appendRow ขยายคอลัมน์ให้เองถ้าชีทแคบกว่าแถวที่เขียน — setValues ไม่ทำให้ ต้องกันไว้เอง
+    var wide = shR.getMaxColumns();
+    if (wide < C.BY) shR.insertColumnsAfter(wide, C.BY - wide);
+    shR.getRange(at, C.EMP_ID).setNumberFormat('@');
+    shR.getRange(at, 1, 1, C.BY).setValues([row]);
 
     if (photoRows.length) {
       var shP = ss.getSheetByName(CFG.D.PHOTOS);
@@ -604,6 +802,8 @@ function writeRecord_(p, photoRows, guard) {
   } finally {
     lock.releaseLock();
   }
+  // มีแถวใหม่แล้ว — ลิสต์ค้างคืนที่แคชไว้ใช้ไม่ได้อีกต่อไป
+  clearOpenJobsCache_();
   return p.recordId;
 }
 
@@ -629,10 +829,30 @@ function photoRoot_() {
   return folderChild_(parent, CFG.PHOTO_ROOT_NAME);
 }
 
+/**
+ * โฟลเดอร์ประจำวัน — จำรหัสไว้ในแคช
+ *
+ * ของเดิมทุกครั้งที่จองงานต้องไล่หาโฟลเดอร์ใหม่ทั้งสายตั้งแต่ต้น
+ * (เปิดโฟลเดอร์แม่ → ค้นหา "รูปถ่ายหน้างาน" → ค้นหาโฟลเดอร์วันที่)
+ * ทั้งที่ทั้งวันมันคือโฟลเดอร์เดิมตัวเดียว — เรียก Drive ฟรี ๆ 3 ครั้งต่องาน
+ */
+function dayFolder_(day) {
+  var cache = CacheService.getScriptCache();
+  var key = 'fld:' + day;
+  var id = cache.get(key);
+  if (id) {
+    try { return DriveApp.getFolderById(id); }
+    catch (e) { /* โฟลเดอร์ถูกลบ/ย้าย — ตกไปสร้างใหม่ข้างล่าง */ }
+  }
+  var f = folderChild_(photoRoot_(), day);
+  try { cache.put(key, f.getId(), CFG.FOLDER_CACHE_SEC); } catch (e) {}
+  return f;
+}
+
 /** โฟลเดอร์ของรายการหนึ่ง ๆ — สร้างเมื่อเรียกครั้งแรก */
 function recordFolder_(recordId, when) {
   var day = Utilities.formatDate(when || new Date(), CFG.TZ, 'yyyy-MM-dd');
-  return folderChild_(folderChild_(photoRoot_(), day), recordId);
+  return folderChild_(dayFolder_(day), recordId);
 }
 
 /**
@@ -862,6 +1082,16 @@ function requireAdmin_(master, empId) {
 
 function canWriteMaster_(u) { return u.role === CFG.V.ROLE_ADMIN; }
 
+/**
+ * ตรวจสิทธิ์แบบเบา — ผลเหมือน requireUser_ ทุกประการ แต่ไม่ต้องแกะ MASTER ทั้งก้อน
+ * ใช้เฉพาะจุดที่ถูกเรียกซ้ำ ๆ และไม่ต้องใช้ข้อมูลอื่นของผู้ใช้เลย (อัปโหลดรูปทีละใบ)
+ */
+function requireUserLight_(empId) {
+  var st = staffStatusMap_()[s_(empId)];
+  if (!st) throw new Error('ไม่พบรหัสนี้ในชีททะเบียนพนักงาน');
+  if (st === CFG.V.SUSPENDED) throw new Error('รหัสนี้ถูกระงับการใช้งาน ติดต่อแอดมิน');
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  แอพมือถือ
 // ══════════════════════════════════════════════════════════════════════════
@@ -911,7 +1141,34 @@ function issueTicket_(empId) {
   var t = Utilities.getUuid();
   PropertiesService.getScriptProperties()
     .setProperty(ticketKey_(t), s_(empId) + '|' + (Date.now() + PIN_TICKET_MS));
+  sweepTickets_();
   return t;
+}
+
+/**
+ * เก็บกวาดตั๋วที่หมดอายุแล้วทิ้ง
+ *
+ * ตั๋วถูกลบเมื่อเจ้าของเอามาใช้แล้วพบว่าหมดอายุเท่านั้น
+ * ใครเปลี่ยนเครื่อง / ล้างข้อมูลเบราว์เซอร์ / ไม่กลับมาอีก = ตั๋วค้างอยู่ตลอดกาล
+ * สะสมไปเรื่อย ๆ ทำให้ hiddenIds_() ที่ดึง property ทั้งกองช้าลงทุกวัน
+ * และถ้าชนเพดานที่เก็บได้ (~500KB) จะออกตั๋วใหม่ไม่ได้ = ล็อกอินพังทั้งระบบ
+ *
+ * กวาดอย่างมากชั่วโมงละครั้ง เพื่อไม่ให้ไปถ่วงคนที่กำลังล็อกอินอยู่
+ */
+function sweepTickets_() {
+  var props = PropertiesService.getScriptProperties();
+  try {
+    var now = Date.now();
+    if (Number(props.getProperty('ptSweep') || 0) > now - 3600000) return;
+    props.setProperty('ptSweep', String(now));
+
+    var all = props.getProperties();
+    Object.keys(all).forEach(function (k) {
+      if (k.indexOf('pt:') !== 0) return;
+      var exp = Number(String(all[k]).split('|')[1]);
+      if (!exp || exp < now) props.deleteProperty(k);
+    });
+  } catch (e) { /* กวาดไม่ได้ก็ไม่เป็นไร ไม่ควรทำให้ล็อกอินพัง */ }
 }
 
 /** ตั๋วนี้ยังใช้ได้กับคนนี้ไหม — ใช้ได้ก็ต่ออายุออกไปอีก 8 ชม. */
@@ -977,8 +1234,9 @@ function sessionPayload_(m, u) {
   var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
 
   // อ่านรายการค้างคืนของทุกคนรอบเดียว แล้วค่อยแยกใช้ 2 ทาง
-  // ใช้ตัวที่อ่านเฉพาะคอลัมน์ที่ใช้ ไม่งั้นล็อกอินจะช้าลงเรื่อย ๆ ตามข้อมูลที่สะสม
-  var open = openJobsFast_(null);
+  // ผ่านแคชสั้น ๆ เพราะหน้านี้ถูกเรียกทุกครั้งที่เปิดแอพ/กดกลับหน้าหลัก/ส่งงานเสร็จ
+  // (แคชล้างทันทีที่มีการเขียนแถวใหม่ — ไม่มีทางเห็นของค้างข้ามการเปลี่ยนแปลง)
+  var open = openJobsCached_();
 
   // พนักงานหน้างานเห็นเฉพาะรายการค้างคืนของตัวเอง แอดมิน/หัวหน้างานเห็นทุกคน
   var seeAll = isAdmin || u.role === CFG.V.ROLE_LEAD;
@@ -1103,7 +1361,7 @@ function apiReserve(empId, topicId) {
 /** จังหวะ 2 — บันทึกรูป 1 ใบ (หน้าบ้านยิงพร้อมกันหลายคำขอได้) */
 function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq) {
   return wrap_(function () {
-    requireUser_(getMaster_(), empId);
+    requireUserLight_(empId);
     var folder = DriveApp.getFolderById(s_(folderId));
     var saved = savePhoto_(folder, s_(recordId), s_(slot), dataUrl, Number(seq) || 1);
     return ok_({
@@ -1183,7 +1441,12 @@ function prepareSubmit_(p) {
   if (action === CFG.V.RETURN) {
     ref = s_(p.ref);
     if (!ref) throw new Error('ไม่พบรายการเบิกที่จะคืน');
-    var found = openJobsFast_(null).filter(function (j) { return j.id === ref; })[0];
+    var pick = function (list) {
+      return list.filter(function (j) { return j.id === ref; })[0];
+    };
+    // ดูจากแคชก่อน — หาไม่เจอค่อยอ่านสดยืนยันอีกรอบ
+    // จะได้ไม่ปฏิเสธงานคืนเพียงเพราะแคชยังตามไม่ทันรายการที่เพิ่งเบิกไปเมื่อครู่
+    var found = pick(openJobsCached_()) || pick(openJobsFast_(null));
     if (!found) throw new Error('รายการ ' + ref + ' ถูกคืนไปแล้ว หรือไม่มีอยู่ในชีท');
     if (!all.length) all = found.codes ? found.codes.split(/\s*,\s*/).filter(Boolean) : [];
     qty = all.length || qty;
@@ -1329,25 +1592,25 @@ function apiAdminLoad(empId, range) {
   return wrap_(function () {
     var m = getMaster_();
     var u = requireAdmin_(m, empId);
-    var recs = allRecords_();
 
     var r = normRange_(range);
-    var picked = filterRecords_(recs, r);
+    var sel = recordsForRange_(r);
+    var picked = sel.picked;
 
     var keep = {};
     picked.forEach(function (x) { keep[x.id] = true; });
-    var photos = allPhotos_().filter(function (ph) { return keep[ph.rec]; });
+    var photos = photosForRecords_(keep);
 
     return ok_({
       user: u,
       canEdit: canWriteMaster_(u),
       master: m,
       range: r,
-      periods: periods_(recs),
-      totalRecords: recs.length,
+      periods: sel.periods,
+      totalRecords: sel.total,
       pairs: buildPairs_(picked, photos, hiddenIds_()),
       records: picked,
-      openJobs: openJobs_(recs, null),
+      openJobs: openJobsCached_(),
       today: fmtDate_(new Date())
     });
   });
@@ -1362,56 +1625,6 @@ function normRange_(range) {
   if (mode === 'year')  return { mode: 'year',  y: Number(r.y) };
   if (mode === 'all')   return { mode: 'all' };
   return { mode: 'days', n: Number(r.n) || 7 };
-}
-
-function filterRecords_(recs, r) {
-  if (r.mode === 'all') return recs;
-
-  var from = null, one = null;
-  if (r.mode === 'days') {
-    from = new Date(); from.setHours(0, 0, 0, 0);
-    from.setDate(from.getDate() - (r.n - 1));
-  }
-  if (r.mode === 'day') {
-    var g = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.d || '');
-    if (!g) return [];
-    one = new Date(Number(g[1]), Number(g[2]) - 1, Number(g[3])).getTime();
-  }
-
-  var keep = recs.filter(function (x) {
-    var d = recDay_(x);
-    if (!d) return false;
-    if (r.mode === 'day')   return d.getTime() === one;
-    if (r.mode === 'month') return d.getFullYear() === r.y && (d.getMonth() + 1) === r.m;
-    if (r.mode === 'year')  return d.getFullYear() === r.y;
-    return d >= from;
-  });
-
-  // ดึงคู่ที่ขาดมาด้วย — เบิกเดือนก่อนแล้วมาคืนในช่วงนี้ ต้องเห็นทั้งคู่
-  var have = {}, need = {};
-  keep.forEach(function (x) { have[x.id] = true; });
-  keep.forEach(function (x) { if (x.ref && !have[x.ref]) need[x.ref] = true; });
-  recs.forEach(function (x) {
-    if (have[x.id]) return;
-    if (need[x.id] || (x.ref && have[x.ref])) { keep.push(x); have[x.id] = true; }
-  });
-  return keep;
-}
-
-/** เดือน/ปีที่มีข้อมูลจริง เอาไปทำดร็อปดาวน์ให้เลือกย้อนหลัง */
-function periods_(recs) {
-  var mo = {}, yr = {};
-  recs.forEach(function (x) {
-    var d = recDay_(x);
-    if (!d) return;
-    var y = d.getFullYear(), m = d.getMonth() + 1;
-    yr[y] = true;
-    mo[y + '-' + (m < 10 ? '0' + m : m)] = true;
-  });
-  return {
-    months: Object.keys(mo).sort().reverse(),
-    years: Object.keys(yr).sort().reverse()
-  };
 }
 
 /**
@@ -1483,12 +1696,22 @@ function apiAdminDeletePhotos(empId, recordId) {
 var HIDE_PREFIX = 'h:';
 
 function hiddenIds_() {
+  // getProperties() ดึงทุก property ของโปรเจกต์มาทั้งกอง (รวมตั๋วรหัสลับ) จึงไม่ควรทำซ้ำบ่อย
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('hidden');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+
   var all = PropertiesService.getScriptProperties().getProperties();
   var out = {};
   Object.keys(all).forEach(function (k) {
     if (k.indexOf(HIDE_PREFIX) === 0) out[k.slice(HIDE_PREFIX.length)] = true;
   });
+  try { cache.put('hidden', JSON.stringify(out), 120); } catch (e) {}
   return out;
+}
+
+function clearHiddenCache_() {
+  try { CacheService.getScriptCache().remove('hidden'); } catch (e) {}
 }
 
 /**
@@ -1512,6 +1735,7 @@ function apiAdminHidePhotos(empId, recordIds, show) {
       ids.forEach(function (id) { add[HIDE_PREFIX + id] = '1'; });
       props.setProperties(add, false);
     }
+    clearHiddenCache_();
     return ok_({ n: ids.length, show: !!show });
   });
 }
