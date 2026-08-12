@@ -751,13 +751,16 @@ var Q = {
     var self = this;
     if (self.db) return Promise.resolve(self.db);
     return new Promise(function (resolve, reject) {
-      var rq = indexedDB.open('ppr-queue', 2);
+      var rq = indexedDB.open('ppr-queue', 3);
       rq.onupgradeneeded = function () {
         var db = rq.result;
         if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'clientId' });
         // งานที่ทำค้างไว้ (ยังไม่กดส่ง) — Android มักฆ่าหน้าเว็บทิ้งตอนเปิดกล้อง
         // เก็บไว้ที่นี่เพื่อกู้กลับมาให้ถ่ายต่อจากจุดเดิมได้
         if (!db.objectStoreNames.contains('draft')) db.createObjectStore('draft');
+        // รูปของรายการที่ปิดไปแล้วแต่ยังอัปไม่ขึ้น — ต้องอยู่รอดข้ามการปิดแอพ
+        // ไม่งั้นปิดแอพแล้วรูปหายทั้งที่แถวลงชีทไปแล้ว = หลักฐานขาดโดยไม่มีใครรู้
+        if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' });
       };
       rq.onsuccess = function () { self.db = rq.result; resolve(self.db); };
       rq.onerror = function () { reject(rq.error); };
@@ -782,7 +785,13 @@ var Q = {
   put:  function (job) { return this.tx('readwrite', function (s) { return s.put(job); }); },
   del:  function (id)  { return this.tx('readwrite', function (s) { return s.delete(id); }); },
   all:  function ()    { return this.tx('readonly',  function (s) { return s.getAll(); }); },
-  count:function ()    { return this.all().then(function (a) { return a.length; }); }
+  count:function ()    { return this.all().then(function (a) { return a.length; }); },
+
+  // ── รูปที่ตามส่งทีหลัง (รายการปิดไปแล้ว) ───────────────────────────
+  pPut: function (p)  { return this.tx('readwrite', function (s) { return s.put(p); }, 'photos'); },
+  pDel: function (id) { return this.tx('readwrite', function (s) { return s.delete(id); }, 'photos'); },
+  pAll: function ()   { return this.tx('readonly',  function (s) { return s.getAll(); }, 'photos'); },
+  pCount: function () { return this.pAll().then(function (a) { return a.length; }); }
 };
 
 /**
@@ -826,6 +835,80 @@ function flushQueue(onProgress) {
       .catch(function () { return sent; });
   });
 }
+
+/* ── รูปที่ตามส่งทีหลัง ───────────────────────────────────────────────── */
+
+/**
+ * เก็บรูปที่ยังอัปไม่ขึ้นไว้ส่งทีหลัง — เรียกตอนปิดรายการโดยรูปยังไม่ครบ
+ * @param {Array} list  [{id, slot, dataUrl, time, gps}]
+ */
+function queuePhotos(empId, job, list) {
+  return Promise.all((list || []).map(function (p) {
+    return Q.pPut({
+      id: p.id,
+      empId: empId,
+      recordId: job.recordId,
+      folderId: job.folderId,
+      slot: p.slot || '',
+      dataUrl: p.dataUrl,
+      time: p.time || '',
+      gps: p.gps || '',
+      at: Date.now(),
+      tries: 0
+    });
+  }));
+}
+
+/**
+ * พยายามส่งรูปที่ค้างทั้งหมด คืนจำนวนใบที่ส่งสำเร็จ
+ *
+ * ทำทีละรายการ (recordId) เพื่อให้บอกเซิร์ฟเวอร์ได้ว่า "ชุดนี้ครบแล้ว"
+ * ป้าย "รอรูป" ในชีทจะเปลี่ยนเป็น "ส่งแล้ว" ก็ต่อเมื่อใบสุดท้ายของรายการนั้นขึ้นครบ
+ *
+ * รูปที่ยังส่งไม่ผ่านค้างอยู่ในคิวเหมือนเดิม ไม่ลบทิ้ง — กติกาเดียวกับคิวงาน
+ */
+function flushPhotos(onProgress) {
+  if (!navigator.onLine) return Promise.resolve(0);
+
+  return Q.pAll().then(function (all) {
+    if (!all.length) return 0;
+
+    var byRec = {};
+    all.forEach(function (p) { (byRec[p.recordId] = byRec[p.recordId] || []).push(p); });
+
+    var sent = 0, done = 0;
+    return Object.keys(byRec).reduce(function (chain, rec) {
+      return chain.then(function () {
+        var list = byRec[rec], rows = [], okIds = [], failed = 0;
+
+        return list.reduce(function (c2, p) {
+          return c2.then(function () {
+            if (onProgress) onProgress(++done, all.length);
+            return rpc('apiUploadPhoto', p.empId, p.recordId, p.folderId,
+                       p.slot, p.dataUrl, p.time, p.gps, 1)
+              .then(function (row) { rows.push(row); okIds.push(p.id); })
+              .catch(function (e) {
+                failed++;
+                p.tries = (p.tries || 0) + 1;
+                p.err = (e && e.message) ? e.message : 'ส่งรูปไม่สำเร็จ';
+                return Q.pPut(p);
+              });
+          });
+        }, Promise.resolve()).then(function () {
+          if (!rows.length) return;
+          // ครบก็ต่อเมื่อใบที่เหลือของรายการนี้ไม่มีตัวไหนพลาดเลย
+          return rpc('apiAddPhotos', list[0].empId, rec, rows, failed === 0)
+            .then(function () {
+              sent += rows.length;
+              return Promise.all(okIds.map(function (id) { return Q.pDel(id); }));
+            })
+            .catch(function () { /* แปะไม่ผ่าน — คงไว้ในคิว ค่อยลองใหม่ */ });
+        });
+      });
+    }, Promise.resolve()).then(function () { return sent; })
+      .catch(function () { return sent; });
+  });
+}
 </script>
 
 <!-- ===== js-app.html ===== -->
@@ -860,6 +943,7 @@ var S = {
   issueShots: [],         // รูปจุดที่มีปัญหา — หลายรูปได้ เสียหลายเครื่องก็ถ่ายครบทุกเครื่อง
   result: '', issueText: '', note: '',
   busy: false, queueCount: 0,
+  photoCount: 0,          // รูปที่ค้างส่ง (รายการปิดไปแล้ว แต่รูปยังไม่ถึงชีท)
   stale: false,           // ดึงข้อมูลใหม่จากเซิร์ฟเวอร์ไม่สำเร็จ = ของบนจอเป็นของเก่า
 
   // ทยอยอัปโหลดรูประหว่างที่ยังถ่ายอยู่ — ตอนกดส่งจะได้ไม่ต้องรออัปโหลดอีก
@@ -1215,7 +1299,7 @@ function renderHome() {
       ['ยังไม่มีหัวข้อที่เปิดใช้งาน — แอดมินเปิดได้ที่ชีท "หัวข้อสำรวจ"']));
   }
 
-  $('#queue-badge').textContent = S.queueCount;
+  $('#queue-badge').textContent = S.queueCount + S.photoCount;
 }
 
 /**
@@ -1231,6 +1315,10 @@ function renderHomeWarn() {
   var msg = [];
   if (S.queueCount) {
     msg.push('⚠ ยังมี ' + S.queueCount + ' รายการที่ยังไม่ถึงชีท — กด "คิวรอส่ง" ด้านล่างเพื่อส่งให้จบ');
+  }
+  if (S.photoCount) {
+    // รายการปิดไปแล้ว งานไม่ติด แต่หลักฐานยังขาด — ต้องทวงให้เห็นชัด
+    msg.push('🔴 คุณมีรูปค้างส่ง ' + S.photoCount + ' ใบ (ถ่ายไว้แล้ว ไม่ต้องถ่ายใหม่) — กด "คิวรอส่ง" แล้วกดส่งให้จบ');
   }
   if (S.stale) {
     msg.push('⚠ ข้อมูลบนหน้านี้เป็นของเก่า (ดึงข้อมูลใหม่ไม่สำเร็จ) รายการค้างคืนอาจไม่ตรงกับความจริง');
@@ -1678,10 +1766,41 @@ function allPhotoList() {
 // ── คิวรอส่ง ──────────────────────────────────────────────────────────
 
 function renderQueue() {
-  Q.all().then(function (jobs) {
+  Promise.all([Q.all(), Q.pAll()]).then(function (r) {
+    var jobs = r[0], pics = r[1];
     var w = $('#queue-list'); w.innerHTML = '';
+
+    // ── รูปค้างส่ง: รายการปิดไปแล้ว งานไม่ติด แต่หลักฐานยังไม่ถึงชีท ──
+    if (pics.length) {
+      var byRec = {};
+      pics.forEach(function (p) { (byRec[p.recordId] = byRec[p.recordId] || []).push(p); });
+      w.appendChild(el('div', { class: 'kicker', style: 'margin-bottom:8px' }, ['รูปค้างส่ง / PHOTOS PENDING']));
+      Object.keys(byRec).forEach(function (rec) {
+        var list = byRec[rec];
+        var err = list.filter(function (p) { return p.err; })[0];
+        w.appendChild(el('div', {
+          style: 'border:1px solid var(--color-accent);padding:10px;display:flex;gap:10px;align-items:center;margin-bottom:8px'
+        }, [
+          el('div', { style: 'line-height:1.35;flex:1' }, [
+            el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' },
+              ['รูป ' + list.length + ' ใบ · ' + list[0].slot]),
+            el('div', { style: 'font-size:11px;opacity:.7' }, ['รายการ ' + rec + ' — บันทึกลงชีทแล้ว รอแค่รูป']),
+            err ? el('div', { style: 'font-size:11px;color:var(--color-accent);font-weight:600;margin-top:4px' },
+              ['ส่งไม่ผ่าน · ' + err.err]) : null
+          ]),
+          el('div', {
+            style: 'font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 6px;white-space:nowrap;' +
+                   'background:var(--color-accent);color:var(--color-bg)'
+          }, ['รอส่งรูป'])
+        ]));
+      });
+      if (jobs.length) w.appendChild(el('div', { class: 'kicker', style: 'margin:14px 0 8px' }, ['งานรอส่ง / JOBS']));
+    }
+
     if (!jobs.length) {
-      w.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่มีรายการค้างในคิว']));
+      if (!pics.length) {
+        w.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่มีรายการค้างในคิว']));
+      }
       return;
     }
     jobs.forEach(function (j) {
@@ -2066,22 +2185,16 @@ function upDone(photos) {
   return photos.filter(function (p) { return S.up[p.id]; }).length;
 }
 
-/** อัปโหลดรูปที่ยังไม่ขึ้น พร้อมกันทีละหลายใบ */
-function uploadPhotos(empId, job, photos, doneAlready, total) {
-  var next = 0, done = doneAlready || 0;
-  function worker() {
-    if (next >= photos.length) return Promise.resolve();
-    var ph = photos[next++];
-    return rpc('apiUploadPhoto', empId, job.recordId, job.folderId,
-               ph.slot, ph.dataUrl, ph.time, ph.gps, ++S.upSeq)
-      .then(function (r) { S.up[ph.id] = r; setProgress(++done, total); return worker(); });
-  }
-  var lanes = [];
-  for (var k = 0; k < Math.min(UPLOAD_PARALLEL, photos.length); k++) lanes.push(worker());
-  return Promise.all(lanes);
-}
-
-/** ส่ง: รอรูปที่กำลังอัปอยู่ → อัปใบที่ยังไม่ขึ้น → เขียนชีท */
+/**
+ * ส่ง: รอเฉพาะใบที่กำลังวิ่งอยู่ → ปิดรายการทันที → รูปที่เหลือตามส่งทีหลัง
+ *
+ * ของเดิมต้องอัปรูปที่ค้างให้ครบก่อนถึงจะยอมเขียนแถว
+ * เน็ตหน้างานสะดุดทีเดียว = ยืนรอเป็นนาที และถ้าล้มก็ไม่ได้แถวเลย
+ * ทั้งที่ข้อมูลสำคัญจริง ๆ ("เบิกไปแล้ว / คืนแล้ว") หนักไม่ถึงกิโลไบต์
+ *
+ * ตอนนี้ปิดรายการด้วยรูปเท่าที่ขึ้นไปแล้ว แล้วโยนที่เหลือเข้าคิวรูป
+ * เครื่องจึงไม่มีวันล็อกค้างเพราะรูปอัปไม่ทัน
+ */
 function sendNow(payload) {
   var photos = payload.photos || [];
   var lite = Object.assign({}, payload);
@@ -2090,16 +2203,26 @@ function sendNow(payload) {
   setProgress(upDone(photos), photos.length);
 
   return ensureJob().then(function (j) {
-    // รอใบที่กำลังวิ่งอยู่ให้จบก่อน จะได้ไม่อัปซ้ำ
+    // รอใบที่กำลังวิ่งอยู่ให้จบก่อน (ใกล้เสร็จแล้ว) จะได้ไม่อัปซ้ำเป็นสองใบ
     return Promise.all(Object.keys(S.upBusy).map(function (k) { return S.upBusy[k]; }))
       .catch(function () {})
       .then(function () {
-        var left = photos.filter(function (p) { return !S.up[p.id]; });
-        return uploadPhotos(payload.empId, j, left, upDone(photos), photos.length);
-      })
-      .then(function () {
         var rows = photos.map(function (p) { return S.up[p.id]; }).filter(Boolean);
-        return rpc('apiCommitSubmit', lite, rows, j.recordId, j.folderUrl);
+        var left = photos.filter(function (p) { return !S.up[p.id]; });
+        // บอกเซิร์ฟเวอร์ว่าช่องไหนถ่ายไว้แล้วแต่รูปยังเดินทางอยู่
+        // การตรวจ "ถ่ายครบทุกช่องบังคับ" จึงยังเข้มเท่าเดิม
+        var pending = left.map(function (p) { return p.slot || ''; }).filter(Boolean);
+
+        S.sendMsg = 'กำลังบันทึกลงชีท…'; renderFooter();
+        return rpc('apiCommitSubmit', lite, rows, j.recordId, j.folderUrl, pending)
+          .then(function (res) {
+            if (!left.length) return res;
+            return queuePhotos(payload.empId, j, left).then(function () {
+              refreshQueueCount();
+              res.pendingPhotos = left.length;
+              return res;
+            });
+          });
       });
   }).catch(function (e) {
     // หลังบ้านยังเป็นเวอร์ชันเก่า — ถอยไปส่งครั้งเดียวแบบเดิม
@@ -2154,9 +2277,15 @@ function showDone(res) {
     ? ((res.why ? res.why + ' · ' : '') +
        'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
        'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
-    : (S.action === 'คืน'
+    : ((S.action === 'คืน'
         ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
-        : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน');
+        : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน') +
+       // รูปยังไม่ครบไม่ได้แปลว่างานไม่สำเร็จ — แถวลงชีทแล้ว เครื่องไม่ล็อกค้าง
+       // แต่ต้องบอกให้รู้ว่ายังมีรูปเดินทางอยู่ ไม่ใช่ปล่อยให้เข้าใจว่าจบสมบูรณ์
+       (res.pendingPhotos
+         ? '\n\nรูปอีก ' + res.pendingPhotos + ' ใบกำลังตามส่งเบื้องหลัง ระบบส่งเองให้ ' +
+           'ถ้ายังไม่หมดจะขึ้นเตือนที่หน้าหลัก — ไม่ต้องถ่ายใหม่'
+         : ''));
   // ── จำนวนตัวใหญ่ ให้เห็นชัดว่าเพิ่งเบิกหรือคืนไปกี่เครื่อง ──
   var back = S.action === 'คืน';
   var qty = totalQty(), xt = extraType(), nx = S.pickedExtra.length;
@@ -2252,9 +2381,50 @@ function restoreDraft() {
 }
 
 function refreshQueueCount() {
-  Q.count().then(function (n) {
-    S.queueCount = n;
-    if (S.screen === 'home') { $('#queue-badge').textContent = n; renderHomeWarn(); }
+  return Promise.all([Q.count(), Q.pCount()]).then(function (r) {
+    S.queueCount = r[0];
+    S.photoCount = r[1];
+    if (S.screen === 'home') {
+      $('#queue-badge').textContent = r[0] + r[1];
+      renderHomeWarn();
+    }
+  });
+}
+
+/**
+ * ตื๊อส่งของค้างเองระหว่างที่แอพยังเปิดอยู่
+ *
+ * ของเดิมลองใหม่แค่ตอน "สัญญาณกลับมา" กับตอนเปิดแอพ
+ * แต่กรณีที่เจอบ่อยคือสัญญาณติด ๆ ดับ ๆ อยู่กับที่ ไม่เคยยิง event ให้เลย
+ * พนักงานส่วนใหญ่ยังยืนอยู่หน้างานตอนนั้น — ลองเองเงียบ ๆ ทุก 30 วิ
+ * ส่วนใหญ่จะขึ้นครบตั้งแต่ยังไม่ทันเดินออกจากพื้นที่ โดยไม่ต้องรู้ตัวด้วยซ้ำ
+ */
+var AUTO_RETRY_MS = 30000;
+var autoRetryTimer = null;
+
+function startAutoRetry() {
+  if (autoRetryTimer) return;
+  autoRetryTimer = setInterval(function () {
+    if (!S.user || !navigator.onLine || S.busy) return;
+    if (!S.queueCount && !S.photoCount) return;
+    flushPending();
+  }, AUTO_RETRY_MS);
+}
+
+/** ส่งของค้างทั้งสองคิว (งาน + รูป) แล้วอัปเดตหน้าจอ */
+function flushPending(loud) {
+  return flushQueue().then(function (n) {
+    return flushPhotos().then(function (k) {
+      return refreshQueueCount().then(function () {
+        if (S.screen === 'queue') renderQueue();
+        if (n) refresh();
+        if (loud && (n || k)) {
+          toast('ส่งของค้างแล้ว' + (n ? ' · งาน ' + n + ' รายการ' : '') +
+                (k ? ' · รูป ' + k + ' ใบ' : ''));
+        }
+        return { jobs: n, photos: k };
+      });
+    });
   });
 }
 
@@ -2370,9 +2540,12 @@ function bind() {
   $('#btn-sync').addEventListener('click', function () {
     if (!navigator.onLine) { toast('ยังไม่มีสัญญาณ', true); return; }
     toast('กำลังส่ง…');
-    flushQueue().then(function (n) {
-      refreshQueueCount(); renderQueue(); refresh();
-      toast(n ? 'ส่งสำเร็จ ' + n + ' รายการ' : 'ยังส่งไม่ได้ — ดูสาเหตุใต้ชื่อรายการด้านล่าง', !n);
+    flushPending().then(function (r) {
+      var ok = [];
+      if (r.jobs)   ok.push('งาน ' + r.jobs + ' รายการ');
+      if (r.photos) ok.push('รูป ' + r.photos + ' ใบ');
+      toast(ok.length ? 'ส่งสำเร็จ · ' + ok.join(' · ')
+                      : 'ยังส่งไม่ได้ — ดูสาเหตุใต้ชื่อรายการด้านล่าง', !ok.length);
     });
   });
 
@@ -2385,9 +2558,7 @@ function bind() {
 
   window.addEventListener('online', function () {
     render();
-    Q.count().then(function (n) { if (n) flushQueue().then(function (k) {
-      refreshQueueCount(); if (k) { toast('ส่งคิวค้าง ' + k + ' รายการแล้ว'); refresh(); }
-    }); });
+    if (S.queueCount || S.photoCount) flushPending(true);
   });
   window.addEventListener('offline', render);
 
@@ -2434,6 +2605,8 @@ function doLogin() {
     applySession(r);
     S.pin = ''; S.pinErr = ''; S.stage = 'id'; S.pin2Id = ''; S.pin2Name = '';
     go('home');
+    startAutoRetry();
+    if (navigator.onLine) flushPending();
   }).catch(function (e) {
     S.busy = false; S.pin = ''; S.pinErr = e.message; render();
   });
@@ -2489,7 +2662,11 @@ function backToId() {
     if (wasWorking) return;                       // กำลังทำงานค้างอยู่ อย่าเด้งกลับหน้าหลัก
     if (S.screen === 'home') renderHome(); else go('home');
     if (!restored) restoreDraft();
-    if (navigator.onLine) flushQueue().then(function (n) { if (n) { refreshQueueCount(); refresh(); } });
+    // เปิดแอพรอบใหม่ = จังหวะที่ดักคนที่ยังมีของค้างได้แน่นอนที่สุด
+    // (กะหน้าเขาต้องเปิดแอพมาเบิกอยู่แล้ว) ส่งให้เองเงียบ ๆ ก่อน
+    // เหลืออะไรค้างค่อยขึ้นแถบเตือนที่หน้าหลักให้กดส่งเอง
+    startAutoRetry();
+    if (navigator.onLine) flushPending();
   }).catch(function () {
     // ไม่มีสัญญาณ: ถ้ามีข้อมูลที่จำไว้ก็ใช้ต่อได้ ถ้าไม่มีค่อยกลับไปหน้าล็อกอิน
     if (!S.user) { store.del('empId'); go('login'); loadDemo(); }

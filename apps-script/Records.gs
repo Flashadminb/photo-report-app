@@ -224,6 +224,97 @@ function sortPeriods_(mo, yr) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  แปะรูปให้รายการที่เขียนแถวไปแล้ว
+//
+//  ของเดิม "แถวบันทึก + รูป" ต้องสำเร็จพร้อมกันทั้งก้อน
+//  รูปอัปไม่ผ่านแม้ใบเดียว = ทั้งรายการไม่ถูกเขียน = เครื่องล็อกค้างในระบบ
+//  ทั้งที่ข้อมูลสำคัญจริง ๆ ("เครื่องกลับมาแล้ว") หนักแค่ไม่กี่ร้อยไบต์
+//
+//  ตอนนี้เขียนแถวก่อนเลย ติดป้าย "รอรูป" ไว้ แล้วรูปตามมาแปะทีหลังได้
+//  ครบเมื่อไหร่ป้ายเปลี่ยนเป็น "ส่งแล้ว" — ระหว่างนั้นแอดมินเห็นว่ารายการไหนยังขาด
+// ══════════════════════════════════════════════════════════════════════════
+
+/** หาแถวของรหัสรายการ — ไล่จากท้ายขึ้นมา เพราะของที่เพิ่งส่งอยู่ท้ายชีทเสมอ */
+function findRecordRow_(sh, recordId) {
+  var C = CFG.COL.REC;
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var ids = sh.getRange(2, C.ID, last - 1, 1).getValues();
+  for (var i = ids.length - 1; i >= 0; i--) {
+    if (s_(ids[i][0]) === s_(recordId)) return i + 2;
+  }
+  return 0;
+}
+
+/**
+ * @param {boolean} done  true = ครบแล้ว เปลี่ยนป้ายเป็น "ส่งแล้ว"
+ * @returns {{added:number, total:number, done:boolean}}
+ */
+function addPhotoRows_(recordId, photoRows, done) {
+  var id = s_(recordId);
+  if (!id) throw new Error('ไม่ได้ระบุรหัสรายการ');
+
+  var ss = dataSS_();
+  var shR = ss.getSheetByName(CFG.D.RECORDS);
+  var C = CFG.COL.REC;
+
+  var rows = (photoRows || []).filter(function (x) { return x && x.url; });
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);   // ใช้ล็อกตัวเดียวกับตอนเขียนแถว กันแถวรูปทับกัน
+  try {
+    var row = findRecordRow_(shR, id);
+    if (!row) throw new Error('ไม่พบรายการ ' + id + ' ในชีท');
+
+    if (rows.length) {
+      var shP = ss.getSheetByName(CFG.D.PHOTOS);
+      var start = shP.getLastRow() + 1;
+      shP.getRange(start, 1, rows.length, 5).setValues(rows.map(function (ph) {
+        return [id, s_(ph.slot), s_(ph.url), s_(ph.time), s_(ph.gps)];
+      }));
+    }
+
+    var total = (Number(shR.getRange(row, C.PHOTO_N).getValue()) || 0) + rows.length;
+    shR.getRange(row, C.PHOTO_N).setValue(total);
+    shR.getRange(row, C.SENT).setValue(done ? CFG.V.SENT : CFG.V.PENDING);
+
+    return { added: rows.length, total: total, done: !!done };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * รายการที่รูปยังมาไม่ครบ — ให้หน้าแอดมินตามเก็บได้ว่าใครยังไม่ส่ง
+ * อ่านแค่ 6 คอลัมน์แคบ ๆ ไม่ใช่ทั้งใบ เพราะเรียกทุกครั้งที่เปิดหน้าแอดมิน
+ */
+function pendingPhotoRecords_() {
+  var C = CFG.COL.REC;
+  var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+
+  var n = last - 1;
+  var sent = sh.getRange(2, C.SENT, n, 1).getValues();
+  var hit = [];
+  for (var i = 0; i < n; i++) if (s_(sent[i][0]) === CFG.V.PENDING) hit.push(i);
+  if (!hit.length) return [];
+
+  // แถวที่ค้างมักกระจุกอยู่ท้ายชีท อ่านเป็นก้อนเดียวคลุมตั้งแต่ตัวแรกถึงตัวสุดท้าย
+  var from = hit[0], to = hit[hit.length - 1];
+  var block = sh.getRange(2 + from, 1, to - from + 1, Math.min(C.BY, sh.getMaxColumns())).getValues();
+
+  return hit.map(function (i) {
+    var r = mkRecord_(block[i - from]);
+    return {
+      id: r.id, ts: r.ts, date: r.date, action: r.action, topic: r.topic,
+      empId: r.empId, empName: r.empName, dept: r.dept,
+      codes: r.codes, photoN: r.photoN, folder: r.folder
+    };
+  }).filter(function (x) { return x.id; }).reverse();
+}
+
 /** แถวรูปของรายการที่เลือกไว้ — อ่านเฉพาะช่วงแถวที่มีของจริง ไม่ใช่ทั้งใบ */
 function photosForRecords_(keep) {
   var C = CFG.COL.PHOTO;
@@ -383,7 +474,7 @@ function writeRecord_(p, photoRows, guard) {
   row[C.FOLDER - 1]   = p.folderUrl || '';
   row[C.GPS - 1]      = p.gps || '';
   row[C.REF - 1]      = p.ref || '';
-  row[C.SENT - 1]     = CFG.V.SENT;
+  row[C.SENT - 1]     = p.sent || CFG.V.SENT;
   row[C.BY - 1]       = p.actedBy || '';
 
   for (var i = 0; i < C.BY; i++) if (row[i] === undefined) row[i] = '';

@@ -57,6 +57,7 @@ function apiDispatch_(name) {
     apiReserve: apiReserve,
     apiUploadPhoto: apiUploadPhoto,
     apiCommitSubmit: apiCommitSubmit,
+    apiAddPhotos: apiAddPhotos,
     apiAdminLoad: apiAdminLoad,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
@@ -404,14 +405,39 @@ function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq
   });
 }
 
-/** จังหวะ 3 — ตรวจว่ารูปครบ แล้วเขียนลงชีท */
-function apiCommitSubmit(payload, photoRows, recordId, folderUrl) {
+/**
+ * จังหวะ 3 — ตรวจว่ารูปครบ แล้วเขียนลงชีท
+ *
+ * @param {string[]} [pendingSlots]  ช่องที่ถ่ายไว้แล้วแต่รูปยังอัปไม่ขึ้น
+ *
+ * รูปที่ยังไม่ขึ้นไม่เป็นเหตุให้ปิดรายการไม่ได้อีกต่อไป — ของเดิมต้องอัปให้ครบก่อน
+ * ถึงจะยอมเขียนแถว เน็ตหน้างานสะดุดทีเดียวเครื่องเลยล็อกค้างทั้งที่คืนของแล้ว
+ *
+ * ความเข้มของการตรวจเท่าเดิมทุกประการ: ยังต้อง "ถ่ายครบทุกช่องบังคับ" เหมือนเดิม
+ * แค่ยอมรับว่าบางใบยังเดินทางอยู่ แล้วติดป้าย "รอรูป" ไว้ให้ตามเก็บ
+ */
+function apiCommitSubmit(payload, photoRows, recordId, folderUrl, pendingSlots) {
   return wrap_(function () {
     var p = payload || {};
     var rows = (photoRows || []).filter(function (x) { return x && x.url; });
+    var pending = (pendingSlots || []).map(s_).filter(Boolean);
+
     var ctx = prepareSubmit_(p);
-    checkPhotoSlots_(ctx, rows.map(function (x) { return s_(x.slot); }));
-    return ok_(finishSubmit_(ctx, p, s_(recordId), s_(folderUrl), rows));
+    checkPhotoSlots_(ctx, rows.map(function (x) { return s_(x.slot); }).concat(pending));
+    return ok_(finishSubmit_(ctx, p, s_(recordId), s_(folderUrl), rows, pending.length));
+  });
+}
+
+/**
+ * แปะรูปที่ตามมาทีหลังให้รายการที่ปิดไปแล้ว
+ *
+ * @param {boolean} done  true = ใบนี้เป็นชุดสุดท้าย ไม่มีอะไรค้างแล้ว
+ */
+function apiAddPhotos(empId, recordId, photoRows, done) {
+  return wrap_(function () {
+    requireUserLight_(empId);
+    var rows = (photoRows || []).filter(function (x) { return x && x.url; });
+    return ok_(addPhotoRows_(s_(recordId), rows, !!done));
   });
 }
 
@@ -547,9 +573,13 @@ function assertCodesFree_(codes) {
     ' (' + j.date + ' ' + j.time + ' น.) ยังไม่คืน\n\nติ๊กเครื่องนั้นออกแล้วกดส่งใหม่ รูปที่ถ่ายไว้ไม่หาย');
 }
 
-/** เขียนแถวลงชีทแล้วคืนผลให้หน้าบ้าน */
-function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
+/**
+ * เขียนแถวลงชีทแล้วคืนผลให้หน้าบ้าน
+ * @param {number} [pendingCount]  จำนวนรูปที่ยังตามมาไม่ถึง — มีก็ติดป้าย "รอรูป"
+ */
+function finishSubmit_(ctx, p, recordId, folderUrl, photoRows, pendingCount) {
   writeRecord_({
+    sent: pendingCount ? CFG.V.PENDING : CFG.V.SENT,
     recordId: recordId,
     shift: s_(p.shift) || ctx.u.shift,
     empId: ctx.u.id, empName: ctx.u.name, dept: ctx.u.dept,
@@ -584,6 +614,7 @@ function finishSubmit_(ctx, p, recordId, folderUrl, photoRows) {
     recordId: recordId,
     folderUrl: folderUrl,
     photoCount: photoRows.length,
+    pendingPhotos: Number(pendingCount) || 0,
     ts: fmtStamp_(new Date())
   };
 }
@@ -643,6 +674,9 @@ function apiAdminLoad(empId, range) {
       pairs: buildPairs_(picked, photos, hiddenIds_()),
       records: picked,
       openJobs: openJobsCached_(),
+      // รายการที่ปิดไปแล้วแต่รูปยังตามมาไม่ครบ — ดูจากทั้งชีทเสมอ ไม่ผูกกับช่วงที่เลือก
+      // เพราะของค้างจากเมื่อวานต้องเห็นแม้จะเลือกดูเฉพาะวันนี้
+      pendingPhotos: pendingPhotoRecords_(),
       today: fmtDate_(new Date())
     });
   });

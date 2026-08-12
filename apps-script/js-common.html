@@ -216,13 +216,16 @@ var Q = {
     var self = this;
     if (self.db) return Promise.resolve(self.db);
     return new Promise(function (resolve, reject) {
-      var rq = indexedDB.open('ppr-queue', 2);
+      var rq = indexedDB.open('ppr-queue', 3);
       rq.onupgradeneeded = function () {
         var db = rq.result;
         if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'clientId' });
         // งานที่ทำค้างไว้ (ยังไม่กดส่ง) — Android มักฆ่าหน้าเว็บทิ้งตอนเปิดกล้อง
         // เก็บไว้ที่นี่เพื่อกู้กลับมาให้ถ่ายต่อจากจุดเดิมได้
         if (!db.objectStoreNames.contains('draft')) db.createObjectStore('draft');
+        // รูปของรายการที่ปิดไปแล้วแต่ยังอัปไม่ขึ้น — ต้องอยู่รอดข้ามการปิดแอพ
+        // ไม่งั้นปิดแอพแล้วรูปหายทั้งที่แถวลงชีทไปแล้ว = หลักฐานขาดโดยไม่มีใครรู้
+        if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' });
       };
       rq.onsuccess = function () { self.db = rq.result; resolve(self.db); };
       rq.onerror = function () { reject(rq.error); };
@@ -247,7 +250,13 @@ var Q = {
   put:  function (job) { return this.tx('readwrite', function (s) { return s.put(job); }); },
   del:  function (id)  { return this.tx('readwrite', function (s) { return s.delete(id); }); },
   all:  function ()    { return this.tx('readonly',  function (s) { return s.getAll(); }); },
-  count:function ()    { return this.all().then(function (a) { return a.length; }); }
+  count:function ()    { return this.all().then(function (a) { return a.length; }); },
+
+  // ── รูปที่ตามส่งทีหลัง (รายการปิดไปแล้ว) ───────────────────────────
+  pPut: function (p)  { return this.tx('readwrite', function (s) { return s.put(p); }, 'photos'); },
+  pDel: function (id) { return this.tx('readwrite', function (s) { return s.delete(id); }, 'photos'); },
+  pAll: function ()   { return this.tx('readonly',  function (s) { return s.getAll(); }, 'photos'); },
+  pCount: function () { return this.pAll().then(function (a) { return a.length; }); }
 };
 
 /**
@@ -286,6 +295,80 @@ function flushQueue(onProgress) {
             if (QUEUE_STUCK.test(msg)) job.stuck = true;
             return Q.put(job);   // เก็บกลับเข้าคิวเสมอ ไม่ทิ้ง
           });
+      });
+    }, Promise.resolve()).then(function () { return sent; })
+      .catch(function () { return sent; });
+  });
+}
+
+/* ── รูปที่ตามส่งทีหลัง ───────────────────────────────────────────────── */
+
+/**
+ * เก็บรูปที่ยังอัปไม่ขึ้นไว้ส่งทีหลัง — เรียกตอนปิดรายการโดยรูปยังไม่ครบ
+ * @param {Array} list  [{id, slot, dataUrl, time, gps}]
+ */
+function queuePhotos(empId, job, list) {
+  return Promise.all((list || []).map(function (p) {
+    return Q.pPut({
+      id: p.id,
+      empId: empId,
+      recordId: job.recordId,
+      folderId: job.folderId,
+      slot: p.slot || '',
+      dataUrl: p.dataUrl,
+      time: p.time || '',
+      gps: p.gps || '',
+      at: Date.now(),
+      tries: 0
+    });
+  }));
+}
+
+/**
+ * พยายามส่งรูปที่ค้างทั้งหมด คืนจำนวนใบที่ส่งสำเร็จ
+ *
+ * ทำทีละรายการ (recordId) เพื่อให้บอกเซิร์ฟเวอร์ได้ว่า "ชุดนี้ครบแล้ว"
+ * ป้าย "รอรูป" ในชีทจะเปลี่ยนเป็น "ส่งแล้ว" ก็ต่อเมื่อใบสุดท้ายของรายการนั้นขึ้นครบ
+ *
+ * รูปที่ยังส่งไม่ผ่านค้างอยู่ในคิวเหมือนเดิม ไม่ลบทิ้ง — กติกาเดียวกับคิวงาน
+ */
+function flushPhotos(onProgress) {
+  if (!navigator.onLine) return Promise.resolve(0);
+
+  return Q.pAll().then(function (all) {
+    if (!all.length) return 0;
+
+    var byRec = {};
+    all.forEach(function (p) { (byRec[p.recordId] = byRec[p.recordId] || []).push(p); });
+
+    var sent = 0, done = 0;
+    return Object.keys(byRec).reduce(function (chain, rec) {
+      return chain.then(function () {
+        var list = byRec[rec], rows = [], okIds = [], failed = 0;
+
+        return list.reduce(function (c2, p) {
+          return c2.then(function () {
+            if (onProgress) onProgress(++done, all.length);
+            return rpc('apiUploadPhoto', p.empId, p.recordId, p.folderId,
+                       p.slot, p.dataUrl, p.time, p.gps, 1)
+              .then(function (row) { rows.push(row); okIds.push(p.id); })
+              .catch(function (e) {
+                failed++;
+                p.tries = (p.tries || 0) + 1;
+                p.err = (e && e.message) ? e.message : 'ส่งรูปไม่สำเร็จ';
+                return Q.pPut(p);
+              });
+          });
+        }, Promise.resolve()).then(function () {
+          if (!rows.length) return;
+          // ครบก็ต่อเมื่อใบที่เหลือของรายการนี้ไม่มีตัวไหนพลาดเลย
+          return rpc('apiAddPhotos', list[0].empId, rec, rows, failed === 0)
+            .then(function () {
+              sent += rows.length;
+              return Promise.all(okIds.map(function (id) { return Q.pDel(id); }));
+            })
+            .catch(function () { /* แปะไม่ผ่าน — คงไว้ในคิว ค่อยลองใหม่ */ });
+        });
       });
     }, Promise.resolve()).then(function () { return sent; })
       .catch(function () { return sent; });
