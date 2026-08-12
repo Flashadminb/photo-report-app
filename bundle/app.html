@@ -916,7 +916,6 @@ var S = {
   pin2Id: '', pin2Name: '',
   user: null, isAdmin: false,
   topics: [], assets: [], shifts: [], issueTags: [], openJobs: [], today: '',
-  busyCodes: {},          // { รหัสเครื่อง: {by,id,date,time} } เครื่องที่ยังไม่ได้คืน
 
   topic: null,            // หัวข้อที่กำลังทำ
   action: 'เบิก',
@@ -1370,9 +1369,13 @@ function renderForm() {
   var pool = S.assets.filter(function (a) {
     return a.status === 'พร้อมใช้' && (a.type === t.assetType || a.type === t.name);
   });
-  // ปกติเห็นเฉพาะเครื่องของแผนกตัวเอง ยกเว้น 3 กรณีนี้ให้เห็นทุกแผนก:
+  // ปกติเห็นเฉพาะเครื่องของแผนกตัวเอง ยกเว้น 4 กรณีนี้ให้เห็นทุกแผนก:
   //   แอดมิน/หัวหน้างาน · คนที่แผนกเป็น "ทุกแผนก" · แผนกที่ระบุไว้ในชีท (เงื่อนไข alldept)
+  //   และเงื่อนไข alldept ที่ใส่คำว่า "ทุกคน" = หัวข้อนี้ทุกคนเห็นเครื่องทุกแผนก
+  //   (ใช้กับหัวข้อที่เครื่องเป็นของกลางจริง ๆ อย่าง Power Pallet ที่ใครหยิบคันไหนก็ได้)
+  var everyone = (t.allDepts || []).indexOf('ทุกคน') >= 0;
   var seeAll = S.isAdmin
+    || everyone
     || S.user.role === 'หัวหน้างาน'
     || S.user.dept === 'ทุกแผนก'
     || (t.allDepts || []).indexOf(S.user.dept) >= 0;
@@ -1398,7 +1401,6 @@ function renderForm() {
     ? 'รหัสเครื่องที่คืน (ติ๊กออกถ้าคืนไม่ครบ)'
     : 'รหัสเครื่องที่เบิก (ติ๊กได้หลายตัว จำนวนนับให้เอง)';
   var cw = $('#code-chips'); cw.innerHTML = '';
-  var nBusy = 0;
   list.forEach(function (a) {
     var on = S.picked.indexOf(a.code) >= 0;
     // เครื่องที่ค้างอาการอยู่ ติดดาวไว้เฉย ๆ ยังเบิกได้ปกติ รายละเอียดอยู่หน้าเลือกสถานะ
@@ -1406,21 +1408,12 @@ function renderForm() {
     if (a.defect) b.title = a.defect;
     cw.appendChild(b);
 
-    // เครื่องที่คนอื่นเบิกไปแล้วยังไม่คืน กดไม่ได้ จะได้ไม่เสียเวลาถ่ายรูปฟรี
-    // แล้วมาโดนปฏิเสธตอนกดส่ง (ฝั่งชีทก็กันซ้ำอีกชั้นตอนเขียนจริง)
-    var busy = (S.action === 'เบิก' && !on) ? S.busyCodes[a.code] : null;
-    if (busy) {
-      nBusy++;
-      b.className = 'chip';
-      b.style.opacity = '.4';
-      b.style.textDecoration = 'line-through';
-      b.title = busy.by + ' เบิกไปเมื่อ ' + busy.date + ' ' + busy.time + ' น. ยังไม่คืน';
-      b.addEventListener('click', function () {
-        toast(a.code + ' — ' + busy.by + ' เบิกไปเมื่อ ' + busy.date + ' ' + busy.time + ' น. ยังไม่คืน');
-      });
-      return;
-    }
-
+    // เครื่องทุกตัวติ๊กได้เท่ากัน ไม่มีตัวไหนถูกปิด
+    //
+    // ระบบนี้เป็นสมุดบันทึก ไม่ใช่ระบบขออนุมัติเบิก — หน้างานไปหยิบของมาก่อน
+    // แล้วค่อยมาบันทึกว่าหยิบอะไรไปพร้อมรูป ของที่ไม่อยู่ตรงนั้นเขาก็ไม่ติ๊กอยู่แล้ว
+    // ความจริงหน้างานล็อกตัวมันเองอยู่แล้ว ซอฟต์แวร์ไม่ต้องมาห้ามซ้ำ
+    // และการขึ้นว่า "คนอื่นยังไม่คืน" ทั้งที่เครื่องอยู่ในมือเขา มีแต่ทำให้งง
     b.addEventListener('click', function () {
       S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
       S.qty = totalQty();
@@ -1430,9 +1423,6 @@ function renderForm() {
   if (!list.length) {
     cw.appendChild(el('div', { style: 'font-size:12px;opacity:.7' },
       ['ไม่มีเครื่องสถานะ "พร้อมใช้" ในทะเบียนสำหรับหัวข้อนี้']));
-  } else if (nBusy) {
-    cw.appendChild(el('div', { style: 'width:100%;font-size:11.5px;opacity:.7;margin-top:2px' },
-      ['ตัวที่จาง ๆ ขีดฆ่า = คนอื่นเบิกไปแล้วยังไม่คืน ' + nBusy + ' เครื่อง (กดดูว่าใครเบิก)']));
   }
   $('#codes-count').textContent = S.picked.length + ' เครื่อง';
 
@@ -1453,19 +1443,7 @@ function renderForm() {
       var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code]);
       xw.appendChild(b);
 
-      // เลเซอร์ลบก็เป็นเครื่อง กันเบิกซ้ำเหมือนกัน
-      var busy = (S.action === 'เบิก' && !on) ? S.busyCodes[a.code] : null;
-      if (busy) {
-        b.className = 'chip';
-        b.style.opacity = '.4';
-        b.style.textDecoration = 'line-through';
-        b.title = busy.by + ' เบิกไปเมื่อ ' + busy.date + ' ' + busy.time + ' น. ยังไม่คืน';
-        b.addEventListener('click', function () {
-          toast(a.code + ' — ' + busy.by + ' เบิกไปเมื่อ ' + busy.date + ' ' + busy.time + ' น. ยังไม่คืน');
-        });
-        return;
-      }
-
+      // อุปกรณ์เสริมก็ติ๊กได้ทุกตัวเหมือนกัน ไม่มีการปิด
       b.addEventListener('click', function () {
         S.pickedExtra = on ? S.pickedExtra.filter(function (c) { return c !== a.code; })
                            : S.pickedExtra.concat([a.code]);
@@ -2452,9 +2430,6 @@ function applySession(r, fromCache) {
   S.user = r.user; S.isAdmin = r.isAdmin;
   S.topics = r.topics; S.assets = r.assets; S.shifts = r.shifts;
   S.issueTags = r.issueTags; S.openJobs = r.openJobs; S.today = r.today;
-  // เครื่องที่คนอื่นเบิกไปแล้วยังไม่คืน — ไม่เก็บลงเครื่อง เพราะของเก่าอาจคืนไปแล้ว
-  // ตอนเปิดจากแคชจึงว่างไว้ก่อน แล้ว refresh() จะเติมให้เอง (ฝั่งชีทกันซ้ำอีกชั้นอยู่แล้ว)
-  S.busyCodes = r.busyCodes || {};
   S.staffList = r.staffList || [];   // มีเฉพาะแอดมิน ไว้เลือกตอนบันทึกแทนคนอื่น
   if (!S.shift) S.shift = r.user.shift;
 
