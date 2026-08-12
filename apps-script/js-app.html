@@ -243,7 +243,9 @@ function render() {
     n.classList.toggle('hide', n.getAttribute('data-screen') !== S.screen);
   });
 
-  var t = TITLES[S.screen] || ['', ''];
+  // หน้าจบงานที่ยังไม่ถึงชีท ห้ามขึ้นหัวข้อว่า "ส่งแล้ว / SUBMITTED"
+  var t = (S.screen === 'done' && S.doneQueued) ? ['ยังไม่ถึงชีท', 'PENDING']
+        : (TITLES[S.screen] || ['', '']);
   $('#head-title').textContent = S.screen === 'shoot' ? shootTitle() : t[0];
   $('#head-sub').textContent = S.screen === 'shoot' ? (S.step + 1) + '/' + steps().length : t[1];
   $('#btn-back').classList.toggle('hide', S.screen === 'home' || S.screen === 'login');
@@ -1326,40 +1328,91 @@ function submit() {
 
   if (!navigator.onLine) { queueIt(); return; }
 
-  S.busy = true; renderFooter();
-  sendNow(payload).then(function (res) {
+  var done = function (res) {
     S.busy = false; clearProgress();
     // ลบรายการค้างคืนที่เพิ่งปิดออกจากหน้าจอทันที ไม่ต้องรอโหลดใหม่
     if (S.action === 'คืน') S.openJobs = S.openJobs.filter(function (j) { return j.id !== S.ref; });
     showDone(res);
     refresh();
-  }).catch(function (e) {
+  };
+
+  /**
+   * ส่งไม่ผ่านแบบชั่วคราว → ลองใหม่เองให้เห็นกับตา
+   *
+   * อาการที่เจอจริง: Apps Script ตอบ 404 ตอนคนส่งพร้อมกันเยอะ ซึ่งหายเองใน 2-3 วินาที
+   * ถ้าโยนเข้าคิวเลยพนักงานจะเห็นว่างานยังไม่เข้าและเดินจากไป ทั้งที่รออีก 3 วิก็จบ
+   *
+   * ลองใหม่ที่ 3 → 8 → 20 วิ ระหว่างนั้นหน้าจอบอกว่ากำลังลองอยู่
+   * สำเร็จเมื่อไหร่หน้าจอพลิกเป็น "เรียบร้อย" ให้เอง ไม่ต้องกดอะไร
+   * ลองครบแล้วยังไม่ได้ค่อยลงคิว
+   *
+   * ปลอดภัยเพราะฝั่งเซิร์ฟเวอร์จำรหัสงาน (clientId) — ส่งซ้ำได้แถวเดียวเสมอ
+   */
+  var RETRY_MS = [3000, 8000, 20000];
+  var attempt = function (i, lastErr) {
+    if (i >= RETRY_MS.length) { queueIt(lastErr); return; }
+    showDone({ retrying: i + 1, photoCount: payload.photos.length });
+    setTimeout(function () {
+      sendNow(payload).then(done).catch(function (e) {
+        if (transientErr(e)) attempt(i + 1, e.message);
+        else { clearProgress(); renderFooter(); go('review'); toast(e.message, true); }
+      });
+    }, RETRY_MS[i]);
+  };
+
+  S.busy = true; renderFooter();
+  sendNow(payload).then(done).catch(function (e) {
     S.busy = false;
-    // ส่งไม่ผ่านเพราะเน็ต → เก็บเข้าคิวส่งใหม่ทีหลัง; ผิดกติกา → บอกให้แก้
-    if (/เซิร์ฟเวอร์|network|timeout|failed to fetch/i.test(e.message)) queueIt(e.message);
+    // ส่งไม่ผ่านเพราะเน็ต/เซิร์ฟเวอร์ยุ่ง → ลองใหม่ให้เอง; ผิดกติกา → บอกให้แก้
+    if (transientErr(e)) attempt(0, e.message);
     else { clearProgress(); renderFooter(); toast(e.message, true); }
   });
 }
 
+/** ข้อผิดพลาดชั่วคราวที่ลองใหม่แล้วมีสิทธิ์ผ่าน (คนละเรื่องกับข้อมูลผิดกติกา) */
+function transientErr(e) {
+  return /เซิร์ฟเวอร์|network|timeout|failed to fetch/i.test((e && e.message) || '');
+}
+
+/**
+ * หน้าจบงาน — 3 สภาพ ต้องแยกให้ขาดจากกัน
+ *   สำเร็จ      ✓ แดง  · ถึงชีทแล้วจริง
+ *   กำลังลองใหม่ ⏳ เทา · ยังไม่ถึง ระบบกำลังลองให้ ห้ามขึ้นเครื่องหมายถูก
+ *   เข้าคิว     ⏳ เทา · ลองแล้วยังไม่ได้ รอสัญญาณ
+ *
+ * ของเดิมขึ้นเครื่องหมายถูกแดงตัวใหญ่ + หัวข้อ "ส่งแล้ว · SUBMITTED"
+ * ทั้งที่ยังไม่ถึงชีท — หน้างานเห็นแล้วเดินไปทำงานต่อ ไม่มีทางรู้ว่างานยังค้าง
+ */
 function showDone(res) {
   var n = nowParts();
-  // ยังไม่ถึงชีท ต้องพูดให้ชัดว่า "ยังไม่เสร็จ" ไม่ใช่ขึ้นว่าเรียบร้อยแล้วปล่อยเลยไป
-  // ของเดิมขึ้นว่า "บันทึกไว้ในเครื่องแล้ว" ซึ่งอ่านแล้วเข้าใจว่าจบงาน
-  $('#done-title').textContent = res.queued ? 'ยังไม่ถึงชีท · เก็บไว้ในเครื่องก่อน'
-    : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย');
-  $('#done-sub').textContent = res.queued
-    ? ((res.why ? res.why + ' · ' : '') +
-       'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
-       'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
-    : ((S.action === 'คืน'
-        ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
-        : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน') +
-       // รูปยังไม่ครบไม่ได้แปลว่างานไม่สำเร็จ — แถวลงชีทแล้ว เครื่องไม่ล็อกค้าง
-       // แต่ต้องบอกให้รู้ว่ายังมีรูปเดินทางอยู่ ไม่ใช่ปล่อยให้เข้าใจว่าจบสมบูรณ์
-       (res.pendingPhotos
-         ? '\n\nรูปอีก ' + res.pendingPhotos + ' ใบกำลังตามส่งเบื้องหลัง ระบบส่งเองให้ ' +
-           'ถ้ายังไม่หมดจะขึ้นเตือนที่หน้าหลัก — ไม่ต้องถ่ายใหม่'
-         : ''));
+  var pending = !!(res.queued || res.retrying);
+
+  S.doneQueued = pending;                        // ให้หัวข้อด้านบนเปลี่ยนตาม
+  var mark = $('#done-mark');
+  mark.textContent = pending ? '⏳' : '✓';
+  mark.style.background = pending ? 'var(--color-neutral-500)' : 'var(--color-accent)';
+  $('#head-title').textContent = pending ? 'ยังไม่ถึงชีท' : 'ส่งแล้ว';
+  $('#head-sub').textContent = pending ? 'PENDING' : 'SUBMITTED';
+
+  $('#done-title').textContent = res.retrying
+    ? 'กำลังส่ง… (ลองครั้งที่ ' + res.retrying + ')'
+    : (res.queued ? 'ยังไม่ถึงชีท · เก็บไว้ในเครื่องก่อน'
+                  : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย'));
+
+  $('#done-sub').textContent = res.retrying
+    ? 'ระบบกำลังลองส่งใหม่ให้เอง ยืนรอสักครู่ ไม่ต้องกดอะไร'
+    : (res.queued
+      ? ((res.why ? res.why + ' · ' : '') +
+         'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
+         'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
+      : (S.action === 'คืน'
+          ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
+          : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน'));
+
+  // บรรทัดเรื่องรูปต้องตรงความจริงด้วย ของเดิมบอกว่า "ส่งขึ้นระบบและลบออกจากเครื่องแล้ว" เสมอ
+  $('#done-photo-note').textContent = pending
+    ? 'รูปยังอยู่ในเครื่อง จะถูกส่งไปพร้อมกับงานนี้'
+    : 'รูปถูกส่งขึ้นระบบและลบออกจากเครื่องแล้ว ดูย้อนหลังได้ที่เว็บแอดมิน';
   // ── จำนวนตัวใหญ่ ให้เห็นชัดว่าเพิ่งเบิกหรือคืนไปกี่เครื่อง ──
   var back = S.action === 'คืน';
   var qty = totalQty(), xt = extraType(), nx = S.pickedExtra.length;

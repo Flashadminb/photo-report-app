@@ -300,21 +300,12 @@ function renderAll() {
 
   var v = $('#view'); v.innerHTML = '';
 
-  // แถบเตือน "รูปยังไม่ครบ" ต้องเห็นทุกแท็บ ไม่ใช่เฉพาะตอนเปิดแดชบอร์ด
-  // ไม่งั้นของค้างจะนอนอยู่เงียบ ๆ จนกว่าจะมีคนบังเอิญไปเปิดเจอ
-  var np = (A.pendingPhotos || []).length;
-  if (np && A.tab !== 'dash') {
-    var goDash = el('button', { class: 'btn btn-secondary', style: 'font-size:12px;padding:4px 10px' }, ['ดูรายการ']);
-    goDash.addEventListener('click', function () { A.tab = 'dash'; renderAll(); });
-    v.appendChild(h('div', {
-      style: 'display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:16px;' +
-             'background:var(--color-accent);color:var(--color-bg);font-size:13px;font-weight:600'
-    }, [
-      h('span', { style: 'flex:1' },
-        ['🔴 มี ' + np + ' รายการที่บันทึกลงชีทแล้วแต่รูปยังส่งมาไม่ครบ']),
-      goDash
-    ]));
-  }
+  // เลิกขึ้นแถบเตือน "รูปยังไม่ครบ" ทุกแท็บแล้ว
+  //
+  // สถานะ "รอรูป" เกิดจากดีไซน์เก่าที่เขียนแถวก่อนแล้วให้รูปตามมาทีหลัง
+  // ตอนนี้กลับไปส่งทีเดียวจบแล้ว รายการใหม่จึงไม่มีทางค้างสถานะนี้อีก
+  // เหลือแต่ของเก่าไม่กี่รายการ ซึ่งดูได้ในแดชบอร์ดและกดซ่อมทีเดียวจบ
+  // ไม่ต้องเตือนคาหน้าจอให้รำคาญทุกแท็บ
 
   ({
     vault:  viewVault, data: viewData, dash: viewDash, topics: viewTopics,
@@ -1034,8 +1025,9 @@ function viewDash(v) {
     h('div', { class: 'bar', style: 'margin:0' }, [fixIn, fixGo])
   ]));
 
+  // มีของค้างจริงถึงจะขึ้นหัวข้อนี้ — ไม่มีก็ไม่ต้องรก
   var pend = A.pendingPhotos || [];
-  v.appendChild(section('รูปยังไม่ครบ (' + pend.length + ')', pend.length ? pend.map(function (r) {
+  if (pend.length) v.appendChild(section('รูปยังไม่ครบ (' + pend.length + ')', pend.map(function (r) {
     var hrs = hoursSince(r.ts);
     var late = hrs !== null && hrs >= 24;
     return h('div', {
@@ -1052,7 +1044,7 @@ function viewDash(v) {
       }, [hrs === null ? 'รอรูป' : (hrs < 1 ? 'เพิ่งส่ง' : 'ค้าง ' + hrs + ' ชม.')]),
       fixBtn(r.id)
     ]);
-  }) : [h('p', { class: 'muted' }, ['รูปครบทุกรายการ'])]));
+  })));
 
   var open = P.filter(function (p) { return !p.back; });
   v.appendChild(section('ยังไม่คืน', open.length ? open.map(function (p) {

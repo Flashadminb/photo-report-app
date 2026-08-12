@@ -419,6 +419,17 @@ function apiUploadPhoto(empId, recordId, folderId, slot, dataUrl, time, gps, seq
 function apiCommitSubmit(payload, photoRows, recordId, folderUrl, pendingSlots) {
   return wrap_(function () {
     var p = payload || {};
+
+    // ส่งซ้ำแล้วต้องได้แถวเดียวเสมอ
+    //
+    // จำเป็นเพราะหน้าบ้านลองส่งใหม่เองเมื่อเจอข้อผิดพลาดชั่วคราว (เช่น Apps Script
+    // ตอบ 404 ตอนคนส่งพร้อมกันเยอะ) ซึ่งมีกรณีที่เขียนแถวสำเร็จแล้วแต่คำตอบหายกลางทาง
+    // ถ้าไม่จำรหัสงานไว้ การลองใหม่จะได้แถวซ้ำสองแถว
+    if (p.clientId) {
+      var dup = alreadySubmitted_(p.clientId);
+      if (dup) return ok_({ recordId: dup, duplicate: true });
+    }
+
     var rows = (photoRows || []).filter(function (x) { return x && x.url; });
     var pending = (pendingSlots || []).map(s_).filter(Boolean);
 
