@@ -251,6 +251,7 @@ function render() {
 
   $('#bar-l').textContent = navigator.onLine ? '5G' : 'ไม่มีสัญญาณ';
   $('#bar-r').textContent = geo.text() ? 'GPS ' + geo.text() : 'ยังไม่มีพิกัด';
+  $('#app-ver').textContent = appVersion();
 
   if (S.screen === 'login')  renderLogin();
   if (S.screen === 'home')   renderHome();
@@ -1478,6 +1479,15 @@ function refreshQueueCount() {
 }
 
 /**
+ * เวอร์ชันของหน้าจอที่เครื่องนี้กำลังรันอยู่
+ *
+ * ค่าถูกฝังตอน build จากเลขเดียวกับ Service Worker (build-web.ps1 อ่านมาจาก sw.js)
+ * จึงตอบได้ตรง ๆ ว่า "เครื่องนี้อัปแล้วหรือยัง" ไม่ใช่เลขที่ตั้งมือแล้วลืมขยับ
+ * เสิร์ฟจาก Apps Script จะไม่มีค่านี้ (ไม่ได้ผ่าน build) จึงขึ้นว่า dev
+ */
+function appVersion() { return window.APP_VERSION || 'dev'; }
+
+/**
  * ตื๊อส่งของค้างเองระหว่างที่แอพยังเปิดอยู่
  *
  * ของเดิมลองใหม่แค่ตอน "สัญญาณกลับมา" กับตอนเปิดแอพ
@@ -1569,6 +1579,23 @@ function bind() {
     resetJob(); dropPhotos(); go('login');
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
+
+  // แตะเลขเวอร์ชัน = เช็คของใหม่ + ส่งของค้างเดี๋ยวนี้
+  // มีไว้ให้บอกหน้างานทางโทรศัพท์ได้ว่า "แตะเลขมุมขวาบนให้พี่หน่อย"
+  $('#app-ver').addEventListener('click', function () {
+    var msg = 'เวอร์ชัน ' + appVersion() + (window.APP_BUILT ? ' · อัปเดต ' + window.APP_BUILT : '');
+    var n = S.queueCount + S.photoCount;
+    if (n) msg += ' · ยังค้าง ' + n + ' รายการ';
+    toast(msg, false, 7000);
+
+    if (!navigator.onLine) { toast('ยังไม่มีสัญญาณ — เช็คของใหม่ไม่ได้', true); return; }
+    if (n) flushPending(true);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration()
+        .then(function (reg) { if (reg) reg.update(); })
+        .catch(function () {});
+    }
+  });
   $('#btn-home').addEventListener('click', function () { clearDraft(); resetJob(); refresh(); go('home'); });
 
   $('#btn-shoot').addEventListener('click', function () {

@@ -887,7 +887,8 @@ function rangeBar() {
 
 function renderAll() {
   $('#who').innerHTML = esc(A.user.name) + '<br><span class="muted">' +
-    esc(A.user.id + ' · ' + A.user.role) + (A.canEdit ? '' : ' · ดูอย่างเดียว') + '</span>';
+    esc(A.user.id + ' · ' + A.user.role) + (A.canEdit ? '' : ' · ดูอย่างเดียว') +
+    ' · ' + esc(window.APP_VERSION || 'dev') + '</span>';
 
   var tb = $('#tabs');
   if (!tb.childNodes.length) {

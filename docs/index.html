@@ -218,6 +218,9 @@ textarea.input{min-height:90px;resize:vertical}
     <button class="iconbtn hide" id="btn-back" aria-label="ย้อนกลับ">←</button>
     <div class="t" id="head-title">ระบบถ่ายรูปอัพเดทงาน</div>
     <div style="font-size:11px;opacity:.6" id="head-sub"></div>
+    <!-- เวอร์ชันตัวเล็ก ๆ ไว้ถามหน้างานได้ว่าเครื่องเขาอัปแล้วหรือยัง · แตะเพื่อเช็คของใหม่ -->
+    <button id="app-ver" style="font-size:10px;opacity:.4;background:transparent;border:0;padding:2px 0;
+            font-family:var(--font-body);color:var(--color-text);cursor:pointer;white-space:nowrap"></button>
   </div>
 
   <div id="body">
@@ -528,9 +531,11 @@ textarea.input{min-height:90px;resize:vertical}
 <input type="file" accept="image/*" multiple id="file-up" style="display:none">
 
 <script>
-window.API_URL   = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
-window.ADMIN_URL = './admin.html';
-var WEBAPP_URL   = './';
+window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
+window.ADMIN_URL   = './admin.html';
+window.APP_VERSION = 'v39';
+window.APP_BUILT   = '12/8/2026 20:51';
+var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
 <script>
@@ -1165,6 +1170,7 @@ function render() {
 
   $('#bar-l').textContent = navigator.onLine ? '5G' : 'ไม่มีสัญญาณ';
   $('#bar-r').textContent = geo.text() ? 'GPS ' + geo.text() : 'ยังไม่มีพิกัด';
+  $('#app-ver').textContent = appVersion();
 
   if (S.screen === 'login')  renderLogin();
   if (S.screen === 'home')   renderHome();
@@ -2392,6 +2398,15 @@ function refreshQueueCount() {
 }
 
 /**
+ * เวอร์ชันของหน้าจอที่เครื่องนี้กำลังรันอยู่
+ *
+ * ค่าถูกฝังตอน build จากเลขเดียวกับ Service Worker (build-web.ps1 อ่านมาจาก sw.js)
+ * จึงตอบได้ตรง ๆ ว่า "เครื่องนี้อัปแล้วหรือยัง" ไม่ใช่เลขที่ตั้งมือแล้วลืมขยับ
+ * เสิร์ฟจาก Apps Script จะไม่มีค่านี้ (ไม่ได้ผ่าน build) จึงขึ้นว่า dev
+ */
+function appVersion() { return window.APP_VERSION || 'dev'; }
+
+/**
  * ตื๊อส่งของค้างเองระหว่างที่แอพยังเปิดอยู่
  *
  * ของเดิมลองใหม่แค่ตอน "สัญญาณกลับมา" กับตอนเปิดแอพ
@@ -2483,6 +2498,23 @@ function bind() {
     resetJob(); dropPhotos(); go('login');
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
+
+  // แตะเลขเวอร์ชัน = เช็คของใหม่ + ส่งของค้างเดี๋ยวนี้
+  // มีไว้ให้บอกหน้างานทางโทรศัพท์ได้ว่า "แตะเลขมุมขวาบนให้พี่หน่อย"
+  $('#app-ver').addEventListener('click', function () {
+    var msg = 'เวอร์ชัน ' + appVersion() + (window.APP_BUILT ? ' · อัปเดต ' + window.APP_BUILT : '');
+    var n = S.queueCount + S.photoCount;
+    if (n) msg += ' · ยังค้าง ' + n + ' รายการ';
+    toast(msg, false, 7000);
+
+    if (!navigator.onLine) { toast('ยังไม่มีสัญญาณ — เช็คของใหม่ไม่ได้', true); return; }
+    if (n) flushPending(true);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration()
+        .then(function (reg) { if (reg) reg.update(); })
+        .catch(function () {});
+    }
+  });
   $('#btn-home').addEventListener('click', function () { clearDraft(); resetJob(); refresh(); go('home'); });
 
   $('#btn-shoot').addEventListener('click', function () {

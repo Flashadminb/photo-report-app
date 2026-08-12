@@ -64,6 +64,17 @@ if ('serviceWorker' in navigator) {
 </script>
 '@
 
+# เลขเวอร์ชันที่โชว์ในแอพ — อ่านจาก sw.js ที่เดียว ไม่ต้องตั้งเลขซ้ำสองที่แล้วลืมขยับ
+# ตัวเลขนี้คือตัวเดียวกับที่ควบคุมแคชของ Service Worker จึงตอบได้ตรงว่าเครื่องอัปแล้วหรือยัง
+$ver = 'dev'
+$swFile = Join-Path $out 'sw.js'
+if (Test-Path $swFile) {
+  $m = [regex]::Match([IO.File]::ReadAllText($swFile), "VERSION\s*=\s*'([^']+)'")
+  if ($m.Success) { $ver = $m.Groups[1].Value }
+}
+$built = Get-Date -Format 'd/M/yyyy HH:mm'
+Write-Host ("เวอร์ชันที่ฝังลงหน้าเว็บ: {0} ({1})" -f $ver, $built)
+
 $pages = @{ 'app' = 'index.html'; 'admin' = 'admin.html' }
 
 foreach ($page in $pages.Keys) {
@@ -79,7 +90,7 @@ foreach ($page in $pages.Keys) {
   # 2) เปลี่ยนตัวแปรฝั่ง Apps Script เป็นค่าคงที่ของเว็บ
   $t = $t.Replace(
     '<script>var WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;</script>',
-    "<script>`r`nwindow.API_URL   = '$API_URL';`r`nwindow.ADMIN_URL = './admin.html';`r`nvar WEBAPP_URL   = './';`r`n</script>")
+    "<script>`r`nwindow.API_URL     = '$API_URL';`r`nwindow.ADMIN_URL   = './admin.html';`r`nwindow.APP_VERSION = '$ver';`r`nwindow.APP_BUILT   = '$built';`r`nvar WEBAPP_URL     = './';`r`n</script>")
 
   # 3) ผูก manifest / ไอคอน / theme-color เข้ากับ <head>
   $t = $t.Replace('<base target="_top">', "<base target=`"_top`">`r`n$headExtra")

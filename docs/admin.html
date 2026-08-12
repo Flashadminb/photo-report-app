@@ -229,9 +229,11 @@ textarea.input{min-height:90px;resize:vertical}
 </div>
 
 <script>
-window.API_URL   = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
-window.ADMIN_URL = './admin.html';
-var WEBAPP_URL   = './';
+window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
+window.ADMIN_URL   = './admin.html';
+window.APP_VERSION = 'v39';
+window.APP_BUILT   = '12/8/2026 20:51';
+var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
 <script>
@@ -898,7 +900,8 @@ function rangeBar() {
 
 function renderAll() {
   $('#who').innerHTML = esc(A.user.name) + '<br><span class="muted">' +
-    esc(A.user.id + ' · ' + A.user.role) + (A.canEdit ? '' : ' · ดูอย่างเดียว') + '</span>';
+    esc(A.user.id + ' · ' + A.user.role) + (A.canEdit ? '' : ' · ดูอย่างเดียว') +
+    ' · ' + esc(window.APP_VERSION || 'dev') + '</span>';
 
   var tb = $('#tabs');
   if (!tb.childNodes.length) {
