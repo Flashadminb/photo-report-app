@@ -10,6 +10,7 @@ var S = {
   pin2Id: '', pin2Name: '',
   user: null, isAdmin: false,
   topics: [], assets: [], shifts: [], issueTags: [], openJobs: [], today: '',
+  crossUse: [],           // คนแผนกอื่นถือเครื่องของแผนกเราอยู่ — แจ้งทราบเฉย ๆ
 
   topic: null,            // หัวข้อที่กำลังทำ
   action: 'เบิก',
@@ -174,6 +175,7 @@ function resetJob() {
   S.topic = null; S.action = 'เบิก'; S.ref = ''; S.borrowedQty = 0;
   S.forEmp = null; S.forPick = false;
   S.picked = []; S.pickedExtra = []; S.issueCodes = []; S.qty = 1;
+  S.othersOpen = false;   // กล่องเครื่องแผนกอื่นเริ่มจากปิดเสมอ
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
   S.job = null; S.jobWait = null; S.up = {}; S.upBusy = {}; S.upSeq = 0;
@@ -522,6 +524,9 @@ function renderForm() {
   }
   $('#codes-count').textContent = S.picked.length + ' เครื่อง';
 
+  renderCrossUse(t);
+  renderOthers(t, pool, list);
+
   // ── อุปกรณ์เสริม (เช่น เลเซอร์ลบ) — ขึ้นให้ทุกแผนก ไม่บังคับเบิก ──
   var xt = extraType();
   // หัวข้อไหนไม่มีอุปกรณ์เสริม ตัวเลขในกล่องนี้คือยอดรวมอยู่แล้ว เลยโชว์ตัวใหญ่เลย
@@ -558,6 +563,89 @@ function renderForm() {
   $('#total-wrap').classList.toggle('hide', !xt);
   $('#total-label').textContent = S.action === 'คืน' ? 'จำนวนเครื่องที่คืน' : 'จำนวนเครื่องที่เบิก';
   $('#total-count').textContent = totalQty() + ' เครื่อง';
+}
+
+/**
+ * ป้ายแจ้งทราบ — คนแผนกอื่นถือเครื่องของแผนกเราอยู่
+ *
+ * แจ้งอย่างเดียว ไม่มีปุ่ม ไม่ขวางการเบิก หายเองเมื่ออีกฝ่ายกดคืน
+ * ของหายก็ตามกันเองในไลน์ ระบบแค่บอกว่าตอนนี้ใครถืออยู่
+ */
+function renderCrossUse(t) {
+  var wrap = $('#crossuse-wrap');
+  var rows = (S.crossUse || []).filter(function (x) {
+    return x.type === t.assetType || x.type === t.name;
+  });
+  wrap.classList.toggle('hide', !rows.length);
+  if (!rows.length) return;
+
+  wrap.innerHTML = '';
+  wrap.appendChild(el('div', { style: 'font-size:11.5px;color:var(--color-accent-800);margin-bottom:4px' },
+    ['ตอนนี้มีคนแผนกอื่นใช้เครื่องของ ' + owner().dept + ' อยู่ ' + rows.length + ' เครื่อง']));
+  rows.forEach(function (x) {
+    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--color-accent-900);display:flex;gap:8px' }, [
+      el('strong', { style: 'font-weight:500;min-width:56px' }, [x.code]),
+      el('span', {}, [x.name + ' · ' + x.dept]),
+      el('span', { style: 'margin-left:auto;font-size:11px;opacity:.8' },
+        [x.date === S.today ? x.time : (x.date + ' ' + x.time)])
+    ]));
+  });
+}
+
+/**
+ * กล่องพับ "เครื่องแผนกอื่น" — เห็นรถที่ปกติไม่เคยเห็น
+ *
+ * เปิดให้เฉพาะรหัสพนักงานที่ใส่ไว้ในเงื่อนไข seeall ของหัวข้อนั้น (แอดมิน/หัวหน้างานเห็นเสมอ)
+ * ข้างในเป็นชิปเหมือนของแผนกตัวเองทุกอย่าง ติ๊กเบิกได้ปกติ มี ⚠ เฉพาะเครื่องที่ค้างอาการ
+ * ไม่บอกว่าเครื่องไหนมีคนถืออยู่ — หน้างานหยิบของจริงมาแล้ว ระบบนี้แค่รับหลักฐาน
+ */
+function renderOthers(t, pool, shown) {
+  var wrap = $('#others-wrap');
+  var ids = t.seeIds || [];
+  var may = S.isAdmin
+    || S.user.role === 'หัวหน้างาน'
+    || ids.indexOf('ทุกคน') >= 0
+    || ids.indexOf(S.user.id) >= 0;
+
+  var have = {};
+  shown.forEach(function (a) { have[a.code] = true; });
+  var rest = pool.filter(function (a) { return !have[a.code]; });
+
+  // ตอนคืนไม่ต้องมีกล่องนี้ — คืนได้เฉพาะที่ตัวเองเบิกไป ซึ่งติ๊กมาให้ครบแล้ว
+  var off = !may || S.action === 'คืน' || !rest.length;
+  wrap.classList.toggle('hide', off);
+  if (off) return;
+
+  // ติ๊กเครื่องในกล่องนี้ไว้แล้วห้ามพับซ่อน ไม่งั้นจำนวนจะเกินจากเครื่องที่มองไม่เห็น
+  var pickedHere = rest.filter(function (a) { return S.picked.indexOf(a.code) >= 0; });
+  if (pickedHere.length) S.othersOpen = true;
+
+  $('#others-count').textContent = rest.length + ' เครื่อง'
+    + (pickedHere.length ? ' · ติ๊กแล้ว ' + pickedHere.length : '');
+  $('#others-arrow').textContent = S.othersOpen ? '⌄' : '›';
+  var body = $('#others-body');
+  body.classList.toggle('hide', !S.othersOpen);
+  if (!S.othersOpen) return;
+
+  body.innerHTML = '';
+  var seen = [];
+  rest.forEach(function (a) { if (seen.indexOf(a.dept) < 0) seen.push(a.dept); });
+  seen.forEach(function (d) {
+    body.appendChild(el('div', { class: 'label', style: 'margin:10px 0 6px' }, [d]));
+    var box = el('div', { style: 'display:flex;flex-wrap:wrap;gap:6px' });
+    rest.filter(function (a) { return a.dept === d; }).forEach(function (a) {
+      var on = S.picked.indexOf(a.code) >= 0;
+      var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code + (a.defect ? ' ⚠' : '')]);
+      if (a.defect) b.title = a.defect;
+      b.addEventListener('click', function () {
+        S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
+        S.qty = totalQty();
+        render();
+      });
+      box.appendChild(b);
+    });
+    body.appendChild(box);
+  });
 }
 
 // ── หน้าถ่ายรูป ───────────────────────────────────────────────────────
@@ -1591,6 +1679,9 @@ function applySession(r, fromCache) {
   S.topics = r.topics; S.assets = r.assets; S.shifts = r.shifts;
   S.issueTags = r.issueTags; S.openJobs = r.openJobs; S.today = r.today;
   S.staffList = r.staffList || [];   // มีเฉพาะแอดมิน ไว้เลือกตอนบันทึกแทนคนอื่น
+  // ใครถือเครื่องของแผนกเราอยู่ — ไม่เก็บลงเครื่อง เพราะของเก่าค้างวันจะแจ้งผิดคน
+  // เปิดแอพจากแคชจึงยังไม่มีป้าย รอเซิร์ฟเวอร์ตอบแล้วค่อยขึ้น
+  S.crossUse = fromCache ? [] : (r.crossUse || []);
   if (!S.shift) S.shift = r.user.shift;
 
   // จำข้อมูลตั้งค่าไว้ในเครื่อง เพื่อให้เปิดแอพครั้งหน้าขึ้นหน้าหลักทันทีโดยไม่ต้องรอเซิร์ฟเวอร์
@@ -1620,6 +1711,11 @@ function bind() {
     resetJob(); dropPhotos(); go('login');
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
+
+  // กล่องพับ "เครื่องแผนกอื่น" — จำสถานะไว้ในหน้าเดียว ปิดใหม่ทุกครั้งที่เริ่มรายการใหม่
+  $('#others-head').addEventListener('click', function () {
+    S.othersOpen = !S.othersOpen; render();
+  });
 
   // แตะเลขเวอร์ชัน = เช็คของใหม่ + ส่งของค้างเดี๋ยวนี้
   // มีไว้ให้บอกหน้างานทางโทรศัพท์ได้ว่า "แตะเลขมุมขวาบนให้พี่หน่อย"

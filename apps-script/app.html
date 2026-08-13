@@ -173,6 +173,23 @@
       <div id="codes-wrap">
         <span class="label" id="codes-label">รหัสเครื่อง</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="code-chips"></div>
+
+        <!-- ป้ายแจ้งทราบ: คนแผนกอื่นถือเครื่องของแผนกเราอยู่ — บอกเฉย ๆ ไม่มีปุ่ม ไม่ขวางการเบิก -->
+        <div id="crossuse-wrap" class="hide" style="margin-top:10px;padding:9px 11px;
+             border-left:3px solid var(--color-accent);background:var(--color-accent-100)"></div>
+
+        <!-- กล่องพับ: เครื่องแผนกอื่น — เปิดให้เฉพาะรหัสพนักงานที่ใส่ไว้ในเงื่อนไข seeall -->
+        <div id="others-wrap" class="hide" style="margin-top:10px;border:1px solid var(--color-divider)">
+          <button id="others-head" type="button"
+                  style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 11px;
+                         font-size:12px;background:var(--color-surface);border:0;cursor:pointer;
+                         color:var(--color-text);font-family:var(--font-body);text-align:left">
+            <span id="others-arrow">›</span><span>เครื่องแผนกอื่น</span>
+            <span id="others-count" class="muted" style="margin-left:auto;font-size:11px"></span>
+          </button>
+          <div id="others-body" class="hide" style="padding:0 11px 11px"></div>
+        </div>
+
         <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;
              border-top:2px solid var(--color-text);padding-top:8px">
           <span style="font-size:12px">จำนวนเครื่อง</span>

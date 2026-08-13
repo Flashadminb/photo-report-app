@@ -15,7 +15,8 @@ var SLOTS_PP = [
 var TOPIC_PP = {
   id: 'PP', name: 'Power Pallet', desc: 'ตรวจเครื่อง + กุญแจ + รอบคัน', on: true, order: 1,
   abbr: 'PP', assetType: 'Power Pallet', slots: SLOTS_PP,
-  rules: { live: true, gps: true, stamp: true, shift: true, issue: true, draft: true }, countMode: false
+  rules: { live: true, gps: true, stamp: true, shift: true, issue: true, draft: true }, countMode: false,
+  seeIds: ['730075']
 };
 var TOPIC_ID = {
   id: 'IDATA', name: 'IDATA / ไอดาต้า', desc: 'เบิก–คืนเครื่องยิงบาร์โค้ด', on: true, order: 2,
@@ -37,6 +38,11 @@ var STAFF = [
 var ASSETS = [
   { code: 'PP-INLHBG-01', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
   { code: 'PP-INLHBG-02', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
+  { code: 'PP-OUT4W-01', type: 'Power Pallet', dept: 'OUT 4W', status: 'พร้อมใช้', note: '' },
+  { code: 'PP-OUT4W-02', type: 'Power Pallet', dept: 'OUT 4W', status: 'พร้อมใช้', note: '',
+    defect: 'ที่เหยียบชำรุด · แจ้ง 5/8/2026 ตอนคืน โดย ฟาริ เจะเลาะ' },
+  { code: 'PP-BULKY-01', type: 'Power Pallet', dept: 'BULKY', status: 'พร้อมใช้', note: '' },
+  { code: 'PP-BULKY-02', type: 'Power Pallet', dept: 'BULKY', status: 'พร้อมใช้', note: '' },
   { code: 'REPACK 01', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '',
     defect: 'หน้าจอแตก · แจ้ง 9/8/2026 ตอนคืน โดย สุนิสา ประยงค์กลิ่น' },
   { code: 'REPACK 02', type: 'ไอดาต้า', dept: 'REPACK', status: 'พร้อมใช้', note: '' },
@@ -55,6 +61,11 @@ function session(u) {
     assets: ASSETS, shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.', 'กะ 15:00 - 00:00 น.'],
     issueTags: ['แบตไม่เก็บไฟ', 'ยกไม่ขึ้น', 'ล้อชำรุด'],
     openJobs: OPEN, today: '6/8/2026', serverTime: '6/8/2026, 16:12:04',
+    // คนแผนกอื่นถือเครื่องของแผนกเราอยู่ — เซิร์ฟเวอร์ตัดชื่อออกแล้วถ้าไม่ใช่แผนกเจ้าของ
+    crossUse: u.dept === 'IN LH+BG' ? [
+      { code: 'PP-INLHBG-01', type: 'Power Pallet', name: 'ฟาริ เจะเลาะ', dept: 'OUT 4W', date: '6/8/2026', time: '06:02' },
+      { code: 'PP-INLHBG-02', type: 'Power Pallet', name: 'สุนิสา ประยงค์กลิ่น', dept: 'BULKY', date: '5/8/2026', time: '22:15' }
+    ] : [],
     staffList: u.role === 'แอดมิน'
       ? STAFF.map(function (p) { return { id: p.id, name: p.name, dept: p.dept, shift: p.shift }; }) : [],
     // จำลองว่ามีคนอื่นเบิกไปแล้วยังไม่คืน

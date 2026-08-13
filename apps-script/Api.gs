@@ -264,6 +264,39 @@ function apiRefresh(empId, pin2, ticket) {
   });
 }
 
+/**
+ * "คนแผนกอื่นถือเครื่องของแผนกเราอยู่" — ป้ายแจ้งทราบเฉย ๆ ไม่ขวางการเบิก
+ *
+ * ไม่อ่านชีทเพิ่มแม้แถวเดียว — open มาจาก openJobsCached_() ที่ sessionPayload_ เรียกอยู่แล้ว
+ * ของเดิมกรองส่วนนี้ทิ้งก่อนส่ง ตรงนี้แค่หยิบส่วนที่ถูกทิ้งกลับมาใช้
+ *
+ * ชื่อคนถูกตัดทิ้งตั้งแต่ฝั่งเซิร์ฟเวอร์ — ส่งเฉพาะแถวที่เป็นเครื่องของแผนกผู้ใช้เท่านั้น
+ * คนแผนกอื่นเปิด DevTools ดูยังไงก็ไม่เจอชื่อ เพราะมันไม่เคยถูกส่งออกไป
+ *
+ * เพื่อนในแผนกเดียวกันถือ ไม่ต้องแจ้ง — เขาเดินไปคุยกันเองได้อยู่แล้ว
+ */
+function crossDeptUse_(m, u, open) {
+  var dept = s_(u.dept);
+  if (!dept || dept === 'ทุกแผนก') return [];
+
+  var own = {};
+  m.assets.forEach(function (a) { if (a.dept === dept) own[a.code] = a.type; });
+
+  var out = [];
+  (open || []).forEach(function (j) {
+    if (s_(j.dept) === dept) return;
+    s_(j.codes).split(/\s*,\s*/).forEach(function (c) {
+      if (!c || !own[c]) return;
+      out.push({
+        code: c, type: own[c],
+        name: s_(j.empName), dept: s_(j.dept),
+        date: s_(j.date), time: s_(j.time)
+      });
+    });
+  });
+  return out;
+}
+
 function sessionPayload_(m, u) {
   var isAdmin = (u.role === CFG.V.ROLE_ADMIN);
 
@@ -288,6 +321,7 @@ function sessionPayload_(m, u) {
     shifts: m.shifts,
     issueTags: m.issueTags,
     openJobs: mine,
+    crossUse: crossDeptUse_(m, u, open),
     // รายชื่อไว้ให้แอดมินเลือกตอนบันทึกแทนคนอื่น — ส่งเฉพาะแอดมิน และเฉพาะช่องที่ต้องใช้
     staffList: isAdmin ? m.staff.filter(function (x) { return x.status === CFG.V.ACTIVE; })
       .map(function (x) { return { id: x.id, name: x.name, dept: x.dept, shift: x.shift }; }) : [],

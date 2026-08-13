@@ -138,6 +138,14 @@ function buildMaster_() {
         if (!v || v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') return [];
         return v.split(/\s*,\s*/).map(s_).filter(Boolean);
       })(),
+      // เงื่อนไข seeall เก็บ "รหัสพนักงาน" ที่ให้เห็นเครื่องของแผนกอื่นในกล่องพับ คั่นด้วยจุลภาค
+      // แยกรายคน ไม่ใช่รายแผนก — เพิ่มลดคนได้เองในชีทโดยไม่ต้องแก้โค้ด
+      // ใส่คำว่า "ทุกคน" = เปิดให้ทุกคน · เว้นว่าง = ปิด (แอดมิน/หัวหน้างานเห็นเสมอ)
+      seeIds: (function () {
+        var v = tRuleText.seeall || '';
+        if (!v || v.toUpperCase() === 'TRUE' || v.toUpperCase() === 'FALSE') return [];
+        return v.split(/\s*,\s*/).map(s_).filter(Boolean);
+      })(),
       // หัวข้อที่นับจำนวนเครื่องเอง (ไม่ได้เลือกทีละรหัส) เช่น IDATA
       countMode: !!tRules.count
     };
