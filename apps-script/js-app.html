@@ -1406,7 +1406,7 @@ function submit() {
     payload: payload
   };
   var queueIt = function (why) {
-    clearProgress();
+    S.busy = false; clearProgress();
     if (why) { meta.err = why; meta.tries = 1; meta.errAt = Date.now(); }
     Q.put(meta).then(function () {
       refreshQueueCount();
@@ -1425,12 +1425,14 @@ function submit() {
    * ถึงแล้ว → พลิกเป็นจอเขียวจบ · ยังไม่ถึง หรือถามไม่ได้ → ค่อยลงคิวตามเดิม
    * เหลือ 2 หน้าจอเท่านั้น ไม่มีหน้าที่บอกว่าพังทั้งที่ไม่พัง
    */
-  var confirmThenQueue = function (why) {
-    if (!navigator.onLine) { queueIt(why); return; }
-    rpc('apiCheckSubmit', payload.clientId).then(function (r) {
-      if (r && r.found) { done({ recordId: r.recordId, recovered: true, photoCount: payload.photos.length }); return; }
-      queueIt(why);
-    }).catch(function () { queueIt(why); });   // ถามไม่ได้ก็ถือว่ายังไม่ถึง ปลอดภัยกว่า
+  var askServer = function () {
+    if (!navigator.onLine) return Promise.resolve(false);
+    S.sendMsg = 'กำลังเช็กว่างานถึงชีทหรือยัง…'; renderFooter();
+    return rpc('apiCheckSubmit', payload.clientId).then(function (r) {
+      if (!(r && r.found)) return false;
+      done({ recordId: r.recordId, recovered: true, photoCount: payload.photos.length });
+      return true;
+    }).catch(function () { return false; });   // ถามไม่ได้ก็ถือว่ายังไม่ถึง ปลอดภัยกว่า
   };
 
   if (!navigator.onLine) { queueIt(); return; }
@@ -1459,24 +1461,39 @@ function submit() {
   // ถ้าวันไหนต้องถอยหลังบ้านกลับไปก่อนหน้านั้น ต้องปิดตัวนี้ด้วย ไม่งั้นเสี่ยงแถวซ้ำ
   var RETRY_ON = true;
 
-  var RETRY_MS = [3000, 8000, 20000];
+  /**
+   * ส่งไม่ผ่าน → ถามก่อนเสมอ แล้วค่อยลองใหม่
+   *
+   * ของเดิมล้มปุ๊บลองใหม่ทันที รอ 3 + 8 + 20 = 31 วินาที บวกเวลาที่แต่ละครั้ง
+   * ใช้ยิงจริงอีกครั้งละไม่เกิน 25 วินาที รวมแล้วหน้างานยืนรอได้เป็นนาที
+   * ทั้งที่ครั้งแรกอาจเขียนแถวลงชีทสำเร็จไปแล้ว แค่ใบตอบกลับหาย
+   *
+   * ตอนนี้ถามก่อนทุกครั้ง (คำถามเบา ๆ 2-4 วินาที ไม่มีรูปติดไป)
+   * ถึงแล้วจบทันที ยังไม่ถึงค่อยลองใหม่ รอสั้นลงเหลือ 2 + 5 + 10
+   */
+  var RETRY_MS = [2000, 5000, 10000];
   var attempt = function (i, lastErr) {
-    if (!RETRY_ON || i >= RETRY_MS.length) { confirmThenQueue(lastErr); return; }
-    showDone({ retrying: i + 1, photoCount: payload.photos.length });
-    setTimeout(function () {
-      sendNow(payload).then(done).catch(function (e) {
-        if (transientErr(e)) attempt(i + 1, e.message);
-        else { clearProgress(); renderFooter(); go('review'); toast(e.message, true); }
-      });
-    }, RETRY_MS[i]);
+    askServer().then(function (landed) {
+      if (landed) return;
+      if (!RETRY_ON || i >= RETRY_MS.length) { queueIt(lastErr); return; }
+      // อยู่หน้าตรวจทานต่อไป ห้ามเด้งไปหน้าจบทั้งที่ยังไม่จบ
+      // หน้าจบมีความหมายเดียวคือ "เสร็จแล้ว" จะได้ไม่ต้องอ่านตัวหนังสือว่าเสร็จจริงไหม
+      S.sendMsg = 'ส่งไม่ผ่าน กำลังลองใหม่ (ครั้งที่ ' + (i + 1) + ')'; renderFooter();
+      setTimeout(function () {
+        S.sendMsg = 'กำลังส่ง…'; renderFooter();
+        sendNow(payload).then(done).catch(function (e) {
+          if (transientErr(e)) attempt(i + 1, e.message);
+          else { S.busy = false; clearProgress(); renderFooter(); toast(e.message, true); }
+        });
+      }, RETRY_MS[i]);
+    });
   };
 
   S.busy = true; renderFooter();
   sendNow(payload).then(done).catch(function (e) {
-    S.busy = false;
-    // ส่งไม่ผ่านเพราะเน็ต/เซิร์ฟเวอร์ยุ่ง → ลองใหม่ให้เอง; ผิดกติกา → บอกให้แก้
+    // ส่งไม่ผ่านเพราะเน็ต/เซิร์ฟเวอร์ยุ่ง → ถามแล้วลองใหม่ให้เอง; ผิดกติกา → บอกให้แก้
     if (transientErr(e)) attempt(0, e.message);
-    else { clearProgress(); renderFooter(); toast(e.message, true); }
+    else { S.busy = false; clearProgress(); renderFooter(); toast(e.message, true); }
   });
 }
 
@@ -1486,17 +1503,17 @@ function transientErr(e) {
 }
 
 /**
- * หน้าจบงาน — 3 สภาพ ต้องแยกให้ขาดจากกัน
- *   สำเร็จ      ✓ แดง  · ถึงชีทแล้วจริง
- *   กำลังลองใหม่ ⏳ เทา · ยังไม่ถึง ระบบกำลังลองให้ ห้ามขึ้นเครื่องหมายถูก
- *   เข้าคิว     ⏳ เทา · ลองแล้วยังไม่ได้ รอสัญญาณ
+ * หน้าจบงาน — มาถึงหน้านี้ได้ 2 สภาพเท่านั้น
+ *   สำเร็จ  ✓ แดง  · ถึงชีทแล้วจริง (รวมกรณีถึงตั้งแต่ครั้งแรกแต่ใบตอบกลับหาย)
+ *   เข้าคิว ⏳ เทา · ลองแล้วถามแล้วยังไม่ถึงจริง ๆ รอสัญญาณ
  *
- * ของเดิมขึ้นเครื่องหมายถูกแดงตัวใหญ่ + หัวข้อ "ส่งแล้ว · SUBMITTED"
- * ทั้งที่ยังไม่ถึงชีท — หน้างานเห็นแล้วเดินไปทำงานต่อ ไม่มีทางรู้ว่างานยังค้าง
+ * ระหว่างกำลังส่ง/กำลังลองใหม่ ต้องอยู่หน้าตรวจทาน ห้ามเด้งมาหน้านี้
+ * เพราะหน้างานจำสีกับตำแหน่งปุ่ม ไม่ได้อ่านตัวหนังสือ
+ * เด้งมาหน้านี้เมื่อไหร่ต้องแปลว่าจบงานแล้ว จะรอหรือจะเดินไปทำอย่างอื่นก็ได้
  */
 function showDone(res) {
   var n = nowParts();
-  var pending = !!(res.queued || res.retrying);
+  var pending = !!res.queued;
 
   S.doneQueued = pending;                        // ให้หัวข้อด้านบนเปลี่ยนตาม
   var mark = $('#done-mark');
@@ -1505,14 +1522,11 @@ function showDone(res) {
   $('#head-title').textContent = pending ? 'ยังไม่ถึงชีท' : 'ส่งแล้ว';
   $('#head-sub').textContent = pending ? 'PENDING' : 'SUBMITTED';
 
-  $('#done-title').textContent = res.retrying
-    ? 'กำลังส่ง… (ลองครั้งที่ ' + res.retrying + ')'
-    : (res.queued ? 'ยังไม่ถึงชีท · เก็บไว้ในเครื่องก่อน'
-                  : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย'));
+  $('#done-title').textContent = res.queued
+    ? 'ยังไม่ถึงชีท · เก็บไว้ในเครื่องก่อน'
+    : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย');
 
-  $('#done-sub').textContent = res.retrying
-    ? 'ระบบกำลังลองส่งใหม่ให้เอง ยืนรอสักครู่ ไม่ต้องกดอะไร'
-    : (res.queued
+  $('#done-sub').textContent = (res.queued
       ? ((res.why ? res.why + ' · ' : '') +
          'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
          'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
