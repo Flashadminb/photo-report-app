@@ -108,6 +108,13 @@ var API = {
     return { ok: true, recordId: 'PP-20260806-1275', folderUrl: 'https://drive.google.com/drive/folders/yyy',
       photoCount: (p.photos || []).length, ts: '6/8/2026, 16:12:04' };
   },
+  // จำลอง "งานถึงชีทแล้วหรือยัง" — ตั้ง window.MOCK_FOUND = true เพื่อทดสอบเคสใบตอบกลับหาย
+  apiCheckSubmit: function (clientId) {
+    MOCK_CALLS.push('check:' + clientId);
+    return window.MOCK_FOUND
+      ? { ok: true, found: true, recordId: 'PP-20260806-1275' }
+      : { ok: true, found: false, recordId: '' };
+  },
   apiAdminLoad: function (id, range) {
     var u = STAFF.filter(function (p) { return p.id === String(id); })[0];
     if (!u || u.role !== 'แอดมิน') return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าเว็บแอดมิน' };

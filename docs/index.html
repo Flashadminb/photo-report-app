@@ -551,8 +551,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v46';
-window.APP_BUILT   = '13/8/2026 11:15';
+window.APP_VERSION = 'v47';
+window.APP_BUILT   = '13/8/2026 12:30';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -2354,6 +2354,25 @@ function submit() {
     });
   };
 
+  /**
+   * ถามให้รู้ก่อนค่อยพูด — ห้ามประกาศว่า "ยังไม่ถึงชีท" ทั้งที่ยังไม่ได้ตรวจ
+   *
+   * Apps Script คืน 404 เป็นช่วง ๆ ทั้งที่งานเข้าชีทไปแล้ว ใบตอบกลับหายเฉย ๆ
+   * แอพรู้แค่ "ไม่มีคำตอบ" ซึ่งไม่เท่ากับ "ไม่สำเร็จ" ของเดิมเหมาว่าไม่สำเร็จ
+   * หน้างานเลยเห็นจอแดงทั้งที่รูปกับแถวไปครบแล้ว แล้วตกใจว่าตัวเองทำพลาด
+   *
+   * ก่อนลงคิวจึงยิงถามสั้น ๆ ว่างานรหัสนี้ถึงมือเซิร์ฟเวอร์หรือยัง (ไม่มีรูปติดไป)
+   * ถึงแล้ว → พลิกเป็นจอเขียวจบ · ยังไม่ถึง หรือถามไม่ได้ → ค่อยลงคิวตามเดิม
+   * เหลือ 2 หน้าจอเท่านั้น ไม่มีหน้าที่บอกว่าพังทั้งที่ไม่พัง
+   */
+  var confirmThenQueue = function (why) {
+    if (!navigator.onLine) { queueIt(why); return; }
+    rpc('apiCheckSubmit', payload.clientId).then(function (r) {
+      if (r && r.found) { done({ recordId: r.recordId, recovered: true, photoCount: payload.photos.length }); return; }
+      queueIt(why);
+    }).catch(function () { queueIt(why); });   // ถามไม่ได้ก็ถือว่ายังไม่ถึง ปลอดภัยกว่า
+  };
+
   if (!navigator.onLine) { queueIt(); return; }
 
   var done = function (res) {
@@ -2382,7 +2401,7 @@ function submit() {
 
   var RETRY_MS = [3000, 8000, 20000];
   var attempt = function (i, lastErr) {
-    if (!RETRY_ON || i >= RETRY_MS.length) { queueIt(lastErr); return; }
+    if (!RETRY_ON || i >= RETRY_MS.length) { confirmThenQueue(lastErr); return; }
     showDone({ retrying: i + 1, photoCount: payload.photos.length });
     setTimeout(function () {
       sendNow(payload).then(done).catch(function (e) {
@@ -2437,9 +2456,10 @@ function showDone(res) {
       ? ((res.why ? res.why + ' · ' : '') +
          'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
          'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
-      : (S.action === 'คืน'
+      : ((res.recovered ? 'ส่งถึงตั้งแต่ครั้งแรกแล้ว สัญญาณตอบกลับช้าเฉย ๆ · ' : '') +
+         (S.action === 'คืน'
           ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
-          : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน'));
+          : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน')));
 
   // บรรทัดเรื่องรูปต้องตรงความจริงด้วย ของเดิมบอกว่า "ส่งขึ้นระบบและลบออกจากเครื่องแล้ว" เสมอ
   $('#done-photo-note').textContent = pending
@@ -2596,8 +2616,19 @@ function flushPending(loud) {
   });
 }
 
-function refresh() {
+/**
+ * ดึงข้อมูลใหม่ — พลาดครั้งเดียวยังไม่ต้องขึ้นแถบแดง
+ *
+ * Apps Script คืน 404 เป็นช่วง ๆ แล้วหายเองใน 2-3 วินาที ของเดิมพลาดครั้งเดียว
+ * ก็ขึ้นแถบแดง "ข้อมูลเป็นของเก่า" ทันที ทั้งที่ลองอีกทีก็ได้แล้ว
+ * หน้างานเห็นสีแดงบ่อย ๆ จนชิน สุดท้ายวันที่ข้อมูลเก่าจริงก็จะไม่มีใครสนใจ
+ *
+ * ลองเงียบ ๆ 3 ครั้ง (2 → 5 วิ) ไม่ผ่านจริงค่อยขึ้นแถบ
+ */
+function refresh(tries) {
   if (!S.user) return Promise.resolve();
+  var n = tries || 0;
+  var WAIT = [2000, 5000];
   return rpc('apiRefresh', S.user.id, '', store.get('ticket', '')).then(function (r) {
     // ตั๋วหมดอายุระหว่างใช้งาน — ไม่เด้งออกกลางคัน ปล่อยให้ทำงานที่ค้างอยู่ต่อจนจบ
     // ต้องใส่รหัสลับใหม่ตอนเปิดแอพครั้งหน้า
@@ -2607,7 +2638,13 @@ function refresh() {
     applySession(r);
     if (S.screen === 'home') renderHome();
   }).catch(function () {
-    // ดึงของใหม่ไม่ได้ — ใช้ข้อมูลเดิมไปก่อนได้ แต่ต้องบอกให้รู้ว่าเป็นของเก่า
+    // ยังลองได้อีก — เงียบไว้ก่อน อย่าเพิ่งทำให้หน้างานตกใจ
+    if (n < WAIT.length) {
+      return new Promise(function (res) {
+        setTimeout(function () { res(refresh(n + 1)); }, WAIT[n]);
+      });
+    }
+    // ลองครบแล้วยังไม่ได้ — ใช้ข้อมูลเดิมไปก่อนได้ แต่ต้องบอกให้รู้ว่าเป็นของเก่า
     // ไม่งั้นจะเห็นรายการค้างคืนที่คนอื่นคืนไปแล้วค้างอยู่บนจอโดยไม่รู้ตัว
     S.stale = true;
     if (S.screen === 'home') renderHomeWarn();

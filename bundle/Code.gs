@@ -1226,6 +1226,7 @@ function apiDispatch_(name) {
     apiReserve: apiReserve,
     apiUploadPhoto: apiUploadPhoto,
     apiCommitSubmit: apiCommitSubmit,
+    apiCheckSubmit: apiCheckSubmit,
     apiAddPhotos: apiAddPhotos,
     apiSyncPhotos: apiSyncPhotos,
     apiAdminLoad: apiAdminLoad,
@@ -1870,6 +1871,25 @@ function inShift_(shiftText, when) {
   var a = Number(m[1]) * 60 + Number(m[2]);
   var b = Number(m[3]) * 60 + Number(m[4]);
   return a <= b ? (mins >= a && mins <= b) : (mins >= a || mins <= b);
+}
+
+/**
+ * "งานรหัสนี้ถึงชีทหรือยัง" — ถามเบา ๆ ไม่ต้องแบกรูปไปด้วย
+ *
+ * Apps Script คืน 404 เป็นช่วง ๆ โดยที่สคริปต์ทำงานจบไปแล้ว เขียนชีทแล้ว อัปรูปแล้ว
+ * แต่ใบตอบกลับหายระหว่างทาง มือถือจึงรู้แค่ "ไม่มีคำตอบ" ไม่ได้รู้ว่า "ไม่สำเร็จ"
+ * ถ้าเชื่อ 404 ตรง ๆ หน้าจอจะขึ้นแดงว่างานไม่เข้า ทั้งที่เข้าไปเรียบร้อยแล้ว
+ *
+ * ตอบ found:false ได้ 2 กรณี — ยังไม่เข้าจริง หรือแคชหมดอายุไปแล้ว (เกิน 6 ชม.)
+ * ทั้งสองกรณีปลอดภัย เพราะฝั่งแอพจะลงคิวแล้วส่งใหม่ ซึ่งตัวกันซ้ำรับไว้อยู่แล้ว
+ */
+function apiCheckSubmit(clientId) {
+  return wrap_(function () {
+    var id = s_(clientId);
+    if (!id) return ok_({ found: false });
+    var rec = alreadySubmitted_(id);
+    return ok_({ found: !!rec, recordId: rec || '' });
+  });
 }
 
 // กันส่งซ้ำ: จำ clientId ที่ส่งสำเร็จแล้ว 6 ชั่วโมง
