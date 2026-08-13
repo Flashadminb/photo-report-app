@@ -1485,8 +1485,9 @@ function sessionPayload_(m, u) {
   return {
     user: u,
     isAdmin: isAdmin,
+    // เคยส่ง allTopics (สำเนาของ topics ทั้งชุด) ไปด้วย แต่ไม่มีที่ไหนในแอพหรือเว็บแอดมินเรียกใช้
+    // กินไป 3.3 KB จากก้อน 21 KB คือ 16% ที่ส่งไปทิ้งเปล่า ๆ ให้ทุกคนทุกครั้งที่เปิดแอพ
     topics: m.topics.filter(function (t) { return t.on; }),
-    allTopics: m.topics,
     assets: m.assets,
     shifts: m.shifts,
     issueTags: m.issueTags,

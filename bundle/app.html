@@ -2819,12 +2819,26 @@ function nextStep() {
   S.step++; render(); saveDraft();
 }
 
-function doLogin() {
+/**
+ * เข้าระบบ — สัญญาณสะดุดต้องลองใหม่ให้เอง และห้ามล้างรหัสที่พิมพ์ไว้
+ *
+ * ตอนส่งงานกับตอนรีเฟรชมีตัวลองใหม่หมดแล้ว เหลือตรงนี้ที่ยังไม่มี
+ * ทั้งที่เป็นสิ่งแรกที่ทุกคนต้องทำ พอ Apps Script คืน 404 เป็นระลอก
+ * หน้างานต้องยืนรอจนหมดเวลาแล้วขึ้น error แล้วพิมพ์รหัส 6 หลักใหม่ทั้งที่ไม่ได้ทำอะไรผิด
+ *
+ * ลองเงียบ ๆ 3 ครั้ง (1.5 → 4 วิ) ระหว่างนั้นบอกว่ากำลังลองอยู่
+ * รหัสผิดจริงค่อยล้างช่องให้พิมพ์ใหม่ เรื่องสัญญาณเก็บรหัสไว้เสมอ
+ */
+function doLogin(tries) {
   var p2 = pin2Stage();
   var id = p2 ? S.pin2Id : S.pin;
   var pin2 = p2 ? S.pin : '';
+  var n = Number(tries) || 0;
+  var WAIT = [1500, 4000];
 
-  S.busy = true; renderFooter();
+  S.busy = true;
+  S.pinErr = n ? 'สัญญาณไม่ดี กำลังลองใหม่ให้ (ครั้งที่ ' + (n + 1) + ')' : '';
+  renderFooter();
   rpc('apiLogin', id, pin2, store.get('ticket', '')).then(function (r) {
     S.busy = false;
 
@@ -2845,7 +2859,17 @@ function doLogin() {
     startAutoRetry();
     if (navigator.onLine) flushPending();
   }).catch(function (e) {
-    S.busy = false; S.pin = ''; S.pinErr = e.message; render();
+    // สัญญาณ/เซิร์ฟเวอร์งอแง → ลองใหม่ให้เอง ยังไม่ต้องบอกว่าเข้าไม่ได้
+    if (transientErr(e) && n < WAIT.length) {
+      S.pinErr = 'สัญญาณไม่ดี กำลังลองใหม่ให้…'; render();
+      setTimeout(function () { doLogin(n + 1); }, WAIT[n]);
+      return;
+    }
+    S.busy = false;
+    // รหัสผิดจริงถึงล้างช่อง ถ้าเป็นเรื่องสัญญาณเก็บไว้ให้กดส่งซ้ำได้ทันที
+    if (!transientErr(e)) S.pin = '';
+    S.pinErr = e.message;
+    render();
   });
 }
 
