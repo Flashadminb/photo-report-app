@@ -10,10 +10,45 @@ function fmtDate_(d)  { return Utilities.formatDate(d, CFG.TZ, 'd/M/yyyy'); }
 function fmtTime_(d)  { return Utilities.formatDate(d, CFG.TZ, 'HH:mm:ss'); }
 function fmtStamp_(d) { return Utilities.formatDate(d, CFG.TZ, 'd/M/yyyy, HH:mm:ss'); }
 
+/**
+ * เขตเวลาของ "ตัวชีท" ไม่ใช่ของโค้ด
+ *
+ * ชีทเก็บวันเวลาเป็นเลขหน้าปัด (11/8 18:07) ไม่ได้เก็บว่าเป็นเวลาที่ไหน
+ * พอ getValues() แปลงกลับเป็น Date มันอ่านเลขนั้นด้วยเขตเวลาของชีท
+ * ถ้าเราเอาไปจัดรูปแบบด้วย Asia/Bangkok ทั้งที่ชีทตั้งเป็นเขตอื่น เวลาจะเพี้ยน
+ *
+ * ของจริงที่เจอ: ชีทโชว์ 11/8/2026 18:07:53 แต่แอพอ่านได้ 12/8/2026 08:07:53
+ * เพี้ยนไป 14 ชั่วโมงพอดี เพราะชีทตั้งเขตเวลาเป็นอเมริกา (UTC-7) ส่วนโค้ดอ่านเป็นไทย (UTC+7)
+ *
+ * แก้ด้วยการอ่านกลับด้วยเขตเวลาของชีทเอง เลขที่ได้จึงตรงกับที่ตาเห็นในชีทเสมอ
+ * ไม่ว่าใครจะไปตั้งเขตเวลาของชีทเป็นอะไรก็ไม่พังอีก
+ */
+function sheetTZ_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('sheettz');
+  if (hit) return hit;
+  var tz = CFG.TZ;
+  try { tz = dataSS_().getSpreadsheetTimeZone() || CFG.TZ; } catch (e) {}
+  try { cache.put('sheettz', tz, 21600); } catch (e) {}
+  return tz;
+}
+
 /** แปลงค่าจากชีทเป็นข้อความวันที่ ไม่ว่าจะเก็บมาเป็น Date หรือ string */
 function cellDate_(v, withTime) {
-  if (v instanceof Date) return withTime ? fmtStamp_(v) : fmtDate_(v);
-  return s_(v);
+  if (!(v instanceof Date)) return s_(v);
+  return Utilities.formatDate(v, sheetTZ_(), withTime ? 'd/M/yyyy, HH:mm:ss' : 'd/M/yyyy');
+}
+
+/**
+ * คอลัมน์ "เวลา" ของชีทรูปภาพ — ต้องอ่านเป็นเวลา ไม่ใช่วันที่
+ *
+ * เราเขียนลงไปเป็นข้อความ "09:12:31" แต่ชีทแปลงให้เป็นเซลล์เวลาเอง
+ * ซึ่งข้างในคือวันที่ 30/12/1899 บวกเวลานั้น พออ่านกลับด้วย cellDate_
+ * ที่จัดรูปแบบเป็น d/M/yyyy จึงได้ "31/12/1899" โผล่มาแทนเวลาจริงในคลังรูป
+ */
+function cellTime_(v) {
+  if (!(v instanceof Date)) return s_(v);
+  return Utilities.formatDate(v, sheetTZ_(), 'HH:mm:ss');
 }
 
 // ── เลขรันของรหัสรายการ ───────────────────────────────────────────────────
@@ -355,7 +390,7 @@ function photosForRecords_(keep) {
       rec:  rec,
       slot: s_(row[C.SLOT - 1]),
       url:  s_(row[C.URL - 1]),
-      time: cellDate_(row[C.TIME - 1], false),
+      time: cellTime_(row[C.TIME - 1]),
       gps:  s_(row[C.GPS - 1])
     });
   }

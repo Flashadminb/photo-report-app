@@ -329,6 +329,29 @@ function renderLogin() {
 
 // ── หน้าหลัก ──────────────────────────────────────────────────────────
 
+/**
+ * "เบิกเมื่อไหร่" ของรายการค้างคืน
+ *
+ * เบิกวันนี้ขึ้นแค่เวลา · ข้ามวันแล้วขึ้นวันที่นำหน้าด้วย
+ * ค้างเกิน 1 วันติดป้ายบอกจำนวนวัน หน้างานจะได้เห็นว่าของค้างมานานแค่ไหน
+ */
+function openWhen(j) {
+  var t = j.time ? j.time + ' น.' : '—';
+  if (!j.date || j.date === S.today) return t;
+
+  var d = String(j.date).split('/');       // d/M/yyyy
+  var days = 0;
+  if (d.length === 3 && S.today) {
+    var n = S.today.split('/');
+    if (n.length === 3) {
+      var a = new Date(+d[2], +d[1] - 1, +d[0]);
+      var b = new Date(+n[2], +n[1] - 1, +n[0]);
+      days = Math.round((b - a) / 86400000);
+    }
+  }
+  return j.date + ' ' + t + (days > 0 ? ' · ค้าง ' + days + ' วัน' : '');
+}
+
 function renderHome() {
   var u = S.user;
   $('#u-init').textContent = u.name.slice(0, 2);
@@ -352,8 +375,10 @@ function renderHome() {
     }, [
       el('div', { style: 'flex:1;line-height:1.35' }, [
         el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' }, [j.codes || j.id]),
+        // เบิกวันไหนต้องเห็นด้วย ไม่ใช่แค่กี่โมง — ของค้างข้ามกะข้ามวันจะได้รู้ว่าค้างมานานแค่ไหน
+        // วันนี้ไม่ต้องขึ้นวันที่ให้รก ข้ามวันเมื่อไหร่ค่อยขึ้นวันที่นำหน้า
         el('div', { style: 'font-size:11px;opacity:.65' }, [
-          'เบิกเมื่อ ' + (j.time || '—') + ' น. · ' + j.topic + (j.empName !== S.user.name ? ' · ' + j.empName : '')
+          'เบิกเมื่อ ' + openWhen(j) + ' · ' + j.topic + (j.empName !== S.user.name ? ' · ' + j.empName : '')
         ])
       ]), b
     ]));
