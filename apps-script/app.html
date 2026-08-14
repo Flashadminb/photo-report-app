@@ -116,8 +116,13 @@
       </div>
 
       <!-- งานที่ยังไม่ถึงชีท / ข้อมูลบนจอไม่ใช่ล่าสุด — ต้องเห็นก่อนเริ่มงานใหม่ -->
-      <div id="home-warn" class="hide" style="padding:9px 10px;background:var(--color-accent);
-           color:var(--color-bg);font-size:12px;line-height:1.5;font-weight:600"></div>
+      <div id="home-warn" class="hide" style="padding:11px 12px;background:var(--color-accent);
+           color:var(--color-bg);font-size:12px;line-height:1.5;font-weight:600">
+        <div id="home-warn-msg"></div>
+        <button id="btn-flush-now" class="hide" style="margin-top:9px;background:var(--color-bg);
+                border:0;color:var(--color-accent);font-family:var(--font-heading);font-weight:800;
+                font-size:14px;padding:9px 16px;cursor:pointer;width:100%">ส่งเดี๋ยวนี้</button>
+      </div>
 
       <div id="open-wrap">
         <div class="kicker" style="margin-bottom:8px">ค้างคืน / TO RETURN</div>
@@ -318,6 +323,16 @@
 
     <!-- ══ ตรวจทาน ══ -->
     <section class="pane hide" data-screen="review">
+      <!-- ส่งไม่ผ่าน — ต้องอยู่หน้านี้ ห้ามเด้งไปหน้าจบ หน้าจบแปลว่าเสร็จเท่านั้น
+           ปุ่มแดงใหญ่ด้านล่างเปลี่ยนเป็น "ส่งอีกครั้ง" ทางออกเป็นตัวหนังสือเล็กที่ต้องตั้งใจกด -->
+      <div id="send-fail" class="hide" style="background:var(--color-accent);color:var(--color-bg);padding:11px 12px">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">ยังส่งไม่ได้ · งานยังไม่เข้าระบบ</div>
+        <div id="send-fail-why" style="font-size:12px;line-height:1.5;margin-top:3px;opacity:.95"></div>
+        <button id="btn-later" style="margin-top:9px;background:transparent;border:1px solid var(--color-bg);
+                color:var(--color-bg);font-family:var(--font-body);font-size:12px;padding:6px 12px;cursor:pointer">
+          เก็บไว้ส่งทีหลัง (งานยังไม่เข้าระบบ)
+        </button>
+      </div>
       <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">ตรวจทานก่อนส่ง</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap" id="review-thumbs"></div>
       <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody id="review-rows"></tbody></table>

@@ -273,8 +273,13 @@ textarea.input{min-height:90px;resize:vertical}
       </div>
 
       <!-- งานที่ยังไม่ถึงชีท / ข้อมูลบนจอไม่ใช่ล่าสุด — ต้องเห็นก่อนเริ่มงานใหม่ -->
-      <div id="home-warn" class="hide" style="padding:9px 10px;background:var(--color-accent);
-           color:var(--color-bg);font-size:12px;line-height:1.5;font-weight:600"></div>
+      <div id="home-warn" class="hide" style="padding:11px 12px;background:var(--color-accent);
+           color:var(--color-bg);font-size:12px;line-height:1.5;font-weight:600">
+        <div id="home-warn-msg"></div>
+        <button id="btn-flush-now" class="hide" style="margin-top:9px;background:var(--color-bg);
+                border:0;color:var(--color-accent);font-family:var(--font-heading);font-weight:800;
+                font-size:14px;padding:9px 16px;cursor:pointer;width:100%">ส่งเดี๋ยวนี้</button>
+      </div>
 
       <div id="open-wrap">
         <div class="kicker" style="margin-bottom:8px">ค้างคืน / TO RETURN</div>
@@ -475,6 +480,16 @@ textarea.input{min-height:90px;resize:vertical}
 
     <!-- ══ ตรวจทาน ══ -->
     <section class="pane hide" data-screen="review">
+      <!-- ส่งไม่ผ่าน — ต้องอยู่หน้านี้ ห้ามเด้งไปหน้าจบ หน้าจบแปลว่าเสร็จเท่านั้น
+           ปุ่มแดงใหญ่ด้านล่างเปลี่ยนเป็น "ส่งอีกครั้ง" ทางออกเป็นตัวหนังสือเล็กที่ต้องตั้งใจกด -->
+      <div id="send-fail" class="hide" style="background:var(--color-accent);color:var(--color-bg);padding:11px 12px">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">ยังส่งไม่ได้ · งานยังไม่เข้าระบบ</div>
+        <div id="send-fail-why" style="font-size:12px;line-height:1.5;margin-top:3px;opacity:.95"></div>
+        <button id="btn-later" style="margin-top:9px;background:transparent;border:1px solid var(--color-bg);
+                color:var(--color-bg);font-family:var(--font-body);font-size:12px;padding:6px 12px;cursor:pointer">
+          เก็บไว้ส่งทีหลัง (งานยังไม่เข้าระบบ)
+        </button>
+      </div>
       <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">ตรวจทานก่อนส่ง</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap" id="review-thumbs"></div>
       <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody id="review-rows"></tbody></table>
@@ -551,8 +566,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v50';
-window.APP_BUILT   = '14/8/2026 09:41';
+window.APP_VERSION = 'v51';
+window.APP_BUILT   = '14/8/2026 11:03';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -840,6 +855,9 @@ var QUEUE_STUCK = /ถูกคืนไปแล้ว|ปิดใช้งา
  * งานหนึ่งพังไม่ทำให้งานที่เหลือหยุดตาม (ของเดิม throw ทิ้งทั้งชุด)
  */
 function flushQueue(onProgress) {
+  // จดไว้ว่ารอบนี้ส่งงานไหนสำเร็จบ้าง เผื่อมีหน้าจอค้างรออยู่ว่างานตัวเองไปหรือยัง
+  // (หน้าตรวจทานที่ขึ้นว่า "ยังส่งไม่ได้" ต้องพลิกเป็นจอเขียวเองเมื่อเบื้องหลังส่งไปได้)
+  flushQueue.lastSent = {};
   return Q.all().then(function (jobs) {
     var live = jobs.filter(function (j) { return !j.stuck; });
     var sent = 0;
@@ -847,7 +865,7 @@ function flushQueue(onProgress) {
       return chain.then(function () {
         if (onProgress) onProgress(job, sent, live.length);
         return rpc('apiSubmit', job.payload)
-          .then(function () { sent++; return Q.del(job.clientId); })
+          .then(function (r) { sent++; flushQueue.lastSent[job.clientId] = r || {}; return Q.del(job.clientId); })
           .catch(function (e) {
             var msg = (e && e.message) ? e.message : 'ส่งไม่สำเร็จ';
             job.tries = (job.tries || 0) + 1;
@@ -951,6 +969,8 @@ var S = {
   user: null, isAdmin: false,
   topics: [], assets: [], shifts: [], issueTags: [], openJobs: [], today: '',
   crossUse: [],           // คนแผนกอื่นถือเครื่องของแผนกเราอยู่ — แจ้งทราบเฉย ๆ
+  sendFail: '',           // ส่งไม่ผ่านจริง ๆ — ค้างอยู่หน้าตรวจทาน ห้ามเด้งไปหน้าจบ
+  failClientId: '',
 
   topic: null,            // หัวข้อที่กำลังทำ
   action: 'เบิก',
@@ -1116,6 +1136,7 @@ function resetJob() {
   S.forEmp = null; S.forPick = false;
   S.picked = []; S.pickedExtra = []; S.issueCodes = []; S.qty = 1;
   S.othersOpen = false;   // กล่องเครื่องแผนกอื่นเริ่มจากปิดเสมอ
+  S.sendFail = ''; S.failClientId = '';
   S.step = 0; S.shots = {}; S.extra = []; S.issueShots = [];
   S.result = ''; S.issueText = ''; S.note = '';
   S.job = null; S.jobWait = null; S.up = {}; S.upBusy = {}; S.upSeq = 0;
@@ -1185,8 +1206,8 @@ function render() {
     n.classList.toggle('hide', n.getAttribute('data-screen') !== S.screen);
   });
 
-  // หน้าจบงานที่ยังไม่ถึงชีท ห้ามขึ้นหัวข้อว่า "ส่งแล้ว / SUBMITTED"
-  var t = (S.screen === 'done' && S.doneQueued) ? ['ยังไม่ถึงชีท', 'PENDING']
+  // หน้าตรวจทานที่ส่งไม่ผ่าน ต้องขึ้นหัวข้อว่ายังไม่เข้าระบบ ไม่ใช่ "ตรวจทานก่อนส่ง" เฉย ๆ
+  var t = (S.screen === 'review' && S.sendFail) ? ['ยังไม่เข้าระบบ', 'NOT SENT']
         : (TITLES[S.screen] || ['', '']);
   $('#head-title').textContent = S.screen === 'shoot' ? shootTitle() : t[0];
   $('#head-sub').textContent = S.screen === 'shoot' ? (S.step + 1) + '/' + steps().length : t[1];
@@ -1369,17 +1390,19 @@ function renderHomeWarn() {
   if (!box) return;
   var msg = [];
   if (S.queueCount) {
-    msg.push('⚠ ยังมี ' + S.queueCount + ' รายการที่ยังไม่ถึงชีท — กด "คิวรอส่ง" ด้านล่างเพื่อส่งให้จบ');
+    msg.push('⚠ มีงาน ' + S.queueCount + ' รายการยังไม่เข้าระบบ — แอดมินยังมองไม่เห็น กดปุ่มข้างล่างส่งให้จบ');
   }
   if (S.photoCount) {
     // รายการปิดไปแล้ว งานไม่ติด แต่หลักฐานยังขาด — ต้องทวงให้เห็นชัด
-    msg.push('🔴 คุณมีรูปค้างส่ง ' + S.photoCount + ' ใบ (ถ่ายไว้แล้ว ไม่ต้องถ่ายใหม่) — กด "คิวรอส่ง" แล้วกดส่งให้จบ');
+    msg.push('🔴 มีรูปค้างส่ง ' + S.photoCount + ' ใบ (ถ่ายไว้แล้ว ไม่ต้องถ่ายใหม่) — กดปุ่มข้างล่างส่งให้จบ');
   }
   if (S.stale) {
     msg.push('⚠ ข้อมูลบนหน้านี้เป็นของเก่า (ดึงข้อมูลใหม่ไม่สำเร็จ) รายการค้างคืนอาจไม่ตรงกับความจริง');
   }
-  box.innerHTML = msg.map(esc).join('<br>');
+  $('#home-warn-msg').innerHTML = msg.map(esc).join('<br>');
   box.classList.toggle('hide', !msg.length);
+  // มีของค้างจริงถึงจะมีปุ่มส่ง — แค่ข้อมูลเก่าไม่ต้องมี เพราะกดไปก็ไม่มีอะไรให้ส่ง
+  $('#btn-flush-now').classList.toggle('hide', !(S.queueCount || S.photoCount));
 }
 
 // ── หน้าข้อมูลงาน ─────────────────────────────────────────────────────
@@ -1827,6 +1850,13 @@ function row2(k, v) {
 // ── หน้าตรวจทาน ───────────────────────────────────────────────────────
 
 function renderReview() {
+  // แถบแดง "ยังส่งไม่ได้" — ขึ้นเฉพาะตอนส่งไม่ผ่านจริง ๆ หลังลองใหม่และถามเซิร์ฟเวอร์แล้ว
+  $('#send-fail').classList.toggle('hide', !S.sendFail);
+  if (S.sendFail) {
+    $('#send-fail-why').textContent = S.sendFail +
+      ' · งานเก็บไว้ในเครื่องแล้ว รูปไม่หาย กด "ส่งอีกครั้ง" ด้านล่างจนกว่าจะขึ้นหน้าเขียว';
+  }
+
   var th = $('#review-thumbs'); th.innerHTML = '';
   allPhotoList().forEach(function (p) {
     th.appendChild(el('div', { style: 'width:84px' }, [
@@ -1999,11 +2029,17 @@ function renderFooter() {
     else if (st.type === 'status')  { okState = !!S.result && issueOk(); hintText = okState ? 'เลือกแล้ว' : 'เลือกสถานะเครื่องก่อน'; }
     else                            { okState = readyToSend(); hintText = readyToSend() ? 'ครบแล้ว ไปตรวจทานได้' : missingText(); }
   } else if (S.screen === 'review') {
-    label = navigator.onLine ? 'ส่งเข้าชีท' : 'บันทึกเข้าคิว';
     var all = allPhotoList(), n = upDone(all);
-    hintText = !navigator.onLine ? 'สัญญาณไม่ดี จะส่งให้อัตโนมัติเมื่อกลับมา'
-      : (all.length && n === all.length ? 'รูปขึ้นครบแล้ว กดส่งได้เลย'
-         : (all.length ? 'อัปโหลดไปแล้ว ' + n + '/' + all.length + ' รูป' : 'เขียนลงชีทอัตโนมัติ'));
+    if (S.sendFail) {
+      // ปุ่มแดงใหญ่ต้องเป็นทางที่ถูก เพราะหน้างานกดปุ่มแดงตามความเคยชินโดยไม่อ่าน
+      label = 'ส่งอีกครั้ง';
+      hintText = 'งานยังไม่เข้าระบบ · กดจนกว่าจะขึ้นหน้าเขียว';
+    } else {
+      label = navigator.onLine ? 'ส่งเข้าชีท' : 'บันทึกเข้าคิว';
+      hintText = !navigator.onLine ? 'สัญญาณไม่ดี จะส่งให้อัตโนมัติเมื่อกลับมา'
+        : (all.length && n === all.length ? 'รูปขึ้นครบแล้ว กดส่งได้เลย'
+           : (all.length ? 'อัปโหลดไปแล้ว ' + n + '/' + all.length + ' รูป' : 'เขียนลงชีทอัตโนมัติ'));
+    }
     okState = readyToSend();
   } else {
     show = false;
@@ -2370,12 +2406,24 @@ function submit() {
     meta: n.date + ' ' + n.hhmm + ' · ' + payload.photos.length + ' รูป',
     payload: payload
   };
+  /**
+   * ส่งไม่ผ่านจริง — เก็บงานไว้ในเครื่องทันที แต่ห้ามเด้งไปหน้าจบ
+   *
+   * เก็บเข้าคิวก่อนเสมอ ไม่ได้รอให้หน้างานกดอะไร เพราะถ้าเขารูดแอพทิ้งตอนนี้
+   * แล้วงานยังอยู่แค่ในหน่วยความจำ งานจะหายจริง ๆ เก็บไว้ก่อนคือปลอดภัยที่สุด
+   *
+   * แต่ไม่พาไปหน้าจบ เพราะหน้าจบหน้าตาเหมือนงานสำเร็จ หน้างานเห็นเลขใหญ่กับปุ่มแดง
+   * ก็กดแล้วเดินไปทำงานต่อ ทั้งที่งานยังไม่เข้าระบบ — อยู่หน้าตรวจทานนี่แหละ
+   * ปุ่มแดงใหญ่จะกลายเป็น "ส่งอีกครั้ง" กดมั่วตามความเคยชินก็ยังได้ผลดี
+   */
   var queueIt = function (why) {
     S.busy = false; clearProgress();
     if (why) { meta.err = why; meta.tries = 1; meta.errAt = Date.now(); }
     Q.put(meta).then(function () {
       refreshQueueCount();
-      showDone({ queued: true, photoCount: payload.photos.length, why: why });
+      S.sendFail = why || 'ติดต่อเซิร์ฟเวอร์ไม่ได้';
+      S.failClientId = payload.clientId;
+      if (S.screen !== 'review') go('review'); else render();
     });
   };
 
@@ -2404,6 +2452,10 @@ function submit() {
 
   var done = function (res) {
     S.busy = false; clearProgress();
+    S.sendFail = ''; S.failClientId = '';
+    // เคยเก็บเข้าคิวไว้ตอนส่งไม่ผ่าน พอส่งได้แล้วต้องเอาออก ไม่งั้นค้างเป็นเลขบนหน้าหลัก
+    // (ต่อให้ลบไม่ทันก็ไม่เกิดแถวซ้ำ เพราะฝั่งเซิร์ฟเวอร์จำ clientId อยู่แล้ว)
+    Q.del(payload.clientId).then(refreshQueueCount).catch(function () {});
     // ลบรายการค้างคืนที่เพิ่งปิดออกจากหน้าจอทันที ไม่ต้องรอโหลดใหม่
     if (S.action === 'คืน') S.openJobs = S.openJobs.filter(function (j) { return j.id !== S.ref; });
     showDone(res);
@@ -2468,42 +2520,34 @@ function transientErr(e) {
 }
 
 /**
- * หน้าจบงาน — มาถึงหน้านี้ได้ 2 สภาพเท่านั้น
- *   สำเร็จ  ✓ แดง  · ถึงชีทแล้วจริง (รวมกรณีถึงตั้งแต่ครั้งแรกแต่ใบตอบกลับหาย)
- *   เข้าคิว ⏳ เทา · ลองแล้วถามแล้วยังไม่ถึงจริง ๆ รอสัญญาณ
+ * หน้าจบงาน — มาถึงหน้านี้ได้สภาพเดียวคือ "ถึงชีทแล้วจริง"
  *
- * ระหว่างกำลังส่ง/กำลังลองใหม่ ต้องอยู่หน้าตรวจทาน ห้ามเด้งมาหน้านี้
- * เพราะหน้างานจำสีกับตำแหน่งปุ่ม ไม่ได้อ่านตัวหนังสือ
- * เด้งมาหน้านี้เมื่อไหร่ต้องแปลว่าจบงานแล้ว จะรอหรือจะเดินไปทำอย่างอื่นก็ได้
+ * ห้ามพามาหน้านี้ตอนกำลังส่ง กำลังลองใหม่ หรือส่งไม่ผ่าน ให้อยู่หน้าตรวจทานแทน
+ * หน้างานจำสีกับตำแหน่งปุ่ม ไม่ได้อ่านตัวหนังสือ — ของเดิมพามาหน้านี้ทั้งที่งานยังไม่เข้า
+ * เขาเห็นเลขใหญ่กับปุ่มแดงก็กดแล้วรูดแอพทิ้ง งานเลยค้างอยู่ในเครื่องโดยไม่มีใครรู้
+ *
+ * เห็นหน้านี้เมื่อไหร่ = จบงาน เดินไปทำอย่างอื่นได้เลย ไม่ต้องอ่านอะไรทั้งนั้น
  */
 function showDone(res) {
   var n = nowParts();
-  var pending = !!res.queued;
 
-  S.doneQueued = pending;                        // ให้หัวข้อด้านบนเปลี่ยนตาม
+  S.doneQueued = false;
   var mark = $('#done-mark');
-  mark.textContent = pending ? '⏳' : '✓';
-  mark.style.background = pending ? 'var(--color-neutral-500)' : 'var(--color-accent)';
-  $('#head-title').textContent = pending ? 'ยังไม่ถึงชีท' : 'ส่งแล้ว';
-  $('#head-sub').textContent = pending ? 'PENDING' : 'SUBMITTED';
+  mark.textContent = '✓';
+  mark.style.background = 'var(--color-accent)';
+  $('#head-title').textContent = 'ส่งแล้ว';
+  $('#head-sub').textContent = 'SUBMITTED';
 
-  $('#done-title').textContent = res.queued
-    ? 'ยังไม่ถึงชีท · เก็บไว้ในเครื่องก่อน'
-    : (S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย');
+  $('#done-title').textContent = S.action === 'คืน' ? 'คืนเครื่องเรียบร้อย' : 'เบิกเครื่องเรียบร้อย';
 
-  $('#done-sub').textContent = (res.queued
-      ? ((res.why ? res.why + ' · ' : '') +
-         'งานนี้ยังไม่เข้าระบบ อยู่ในคิวรอส่ง จะส่งเองเมื่อสัญญาณกลับมา ' +
-         'ถ้ายังไม่หายให้เข้าเมนู "คิวรอส่ง" แล้วกดส่งเอง — อย่าเพิ่งปิดแอพทิ้ง')
-      : ((res.recovered ? 'ส่งถึงตั้งแต่ครั้งแรกแล้ว สัญญาณตอบกลับช้าเฉย ๆ · ' : '') +
-         (S.action === 'คืน'
-          ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
-          : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน')));
+  $('#done-sub').textContent =
+    (res.recovered ? 'ส่งถึงตั้งแต่ครั้งแรกแล้ว สัญญาณตอบกลับช้าเฉย ๆ · ' : '') +
+    (S.action === 'คืน'
+      ? 'ปิดรายการค้างคืนแล้ว · บันทึกลงชีทเป็นรหัส ' + res.recordId
+      : 'บันทึกลงชีทเป็นรหัส ' + res.recordId + ' · จะขึ้นในตารางค้างคืนจนกว่าจะกดคืน');
 
-  // บรรทัดเรื่องรูปต้องตรงความจริงด้วย ของเดิมบอกว่า "ส่งขึ้นระบบและลบออกจากเครื่องแล้ว" เสมอ
-  $('#done-photo-note').textContent = pending
-    ? 'รูปยังอยู่ในเครื่อง จะถูกส่งไปพร้อมกับงานนี้'
-    : 'รูปถูกส่งขึ้นระบบและลบออกจากเครื่องแล้ว ดูย้อนหลังได้ที่เว็บแอดมิน';
+  $('#done-photo-note').textContent =
+    'รูปถูกส่งขึ้นระบบและลบออกจากเครื่องแล้ว ดูย้อนหลังได้ที่เว็บแอดมิน';
   // ── จำนวนตัวใหญ่ ให้เห็นชัดว่าเพิ่งเบิกหรือคืนไปกี่เครื่อง ──
   var back = S.action === 'คืน';
   var qty = totalQty(), xt = extraType(), nx = S.pickedExtra.length;
@@ -2643,6 +2687,14 @@ function flushPending(loud) {
   return flushQueue().then(function (n) {
     return flushPhotos().then(function (k) {
       return refreshQueueCount().then(function () {
+        // ค้างอยู่หน้าตรวจทานเพราะส่งไม่ผ่าน แล้วเบื้องหลังส่งไปได้เอง → พลิกเป็นจอเขียวให้เลย
+        // ไม่งั้นเขาจะยืนกดปุ่ม "ส่งอีกครั้ง" ทั้งที่งานเข้าระบบไปเรียบร้อยแล้ว
+        var mine = S.failClientId && (flushQueue.lastSent || {})[S.failClientId];
+        if (mine && S.screen === 'review') {
+          S.sendFail = ''; S.failClientId = '';
+          if (S.action === 'คืน') S.openJobs = S.openJobs.filter(function (j) { return j.id !== S.ref; });
+          showDone({ recordId: mine.recordId || '—', photoCount: allPhotoList().length });
+        }
         if (S.screen === 'queue') renderQueue();
         if (n) refresh();
         if (loud && (n || k)) {
@@ -2731,6 +2783,22 @@ function bind() {
   // กล่องพับ "เครื่องแผนกอื่น" — จำสถานะไว้ในหน้าเดียว ปิดใหม่ทุกครั้งที่เริ่มรายการใหม่
   $('#others-head').addEventListener('click', function () {
     S.othersOpen = !S.othersOpen; render();
+  });
+
+  // ทางออกตอนส่งไม่ผ่าน — ตัวหนังสือเล็ก ต้องตั้งใจกด และถามซ้ำก่อนปล่อยไป
+  $('#btn-later').addEventListener('click', function () {
+    if (!confirm('งานนี้ยังไม่เข้าระบบ\n\nเก็บไว้ในเครื่องก่อน แล้วแอพจะส่งให้เองเมื่อสัญญาณกลับมา\n' +
+                 'ห้ามลบแอพทิ้ง ไม่งั้นงานหาย\n\nออกจากหน้านี้เลยไหม')) return;
+    S.sendFail = ''; S.failClientId = '';
+    clearDraft(); resetJob(); dropPhotos();
+    go('home');
+  });
+
+  // ส่งของค้างจากหน้าหลักได้เลย ไม่ต้องเข้าเมนูคิวก่อน
+  $('#btn-flush-now').addEventListener('click', function () {
+    if (!navigator.onLine) { toast('ยังไม่มีสัญญาณ เดินไปที่ที่สัญญาณดีแล้วกดใหม่', true); return; }
+    toast('กำลังส่งของค้าง…');
+    flushPending(true).then(function () { renderHome(); });
   });
 
   // แตะเลขเวอร์ชัน = เช็คของใหม่ + ส่งของค้างเดี๋ยวนี้

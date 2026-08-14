@@ -507,6 +507,9 @@ var QUEUE_STUCK = /ถูกคืนไปแล้ว|ปิดใช้งา
  * งานหนึ่งพังไม่ทำให้งานที่เหลือหยุดตาม (ของเดิม throw ทิ้งทั้งชุด)
  */
 function flushQueue(onProgress) {
+  // จดไว้ว่ารอบนี้ส่งงานไหนสำเร็จบ้าง เผื่อมีหน้าจอค้างรออยู่ว่างานตัวเองไปหรือยัง
+  // (หน้าตรวจทานที่ขึ้นว่า "ยังส่งไม่ได้" ต้องพลิกเป็นจอเขียวเองเมื่อเบื้องหลังส่งไปได้)
+  flushQueue.lastSent = {};
   return Q.all().then(function (jobs) {
     var live = jobs.filter(function (j) { return !j.stuck; });
     var sent = 0;
@@ -514,7 +517,7 @@ function flushQueue(onProgress) {
       return chain.then(function () {
         if (onProgress) onProgress(job, sent, live.length);
         return rpc('apiSubmit', job.payload)
-          .then(function () { sent++; return Q.del(job.clientId); })
+          .then(function (r) { sent++; flushQueue.lastSent[job.clientId] = r || {}; return Q.del(job.clientId); })
           .catch(function (e) {
             var msg = (e && e.message) ? e.message : 'ส่งไม่สำเร็จ';
             job.tries = (job.tries || 0) + 1;
