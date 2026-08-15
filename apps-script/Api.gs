@@ -60,6 +60,7 @@ function apiDispatch_(name) {
     apiCheckSubmit: apiCheckSubmit,
     apiAddPhotos: apiAddPhotos,
     apiSyncPhotos: apiSyncPhotos,
+    apiAdminBoot: apiAdminBoot,
     apiAdminLoad: apiAdminLoad,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
@@ -766,7 +767,8 @@ function apiAdminLoad(empId, range) {
       periods: sel.periods,
       totalRecords: sel.total,
       pairs: buildPairs_(picked, photos, hiddenIds_()),
-      records: picked,
+      // เคยส่ง records (แถวดิบทั้งชุด) มาด้วย แต่หน้าเว็บรับใส่ตัวแปรแล้วไม่เคยอ่านอีกเลย
+      // เป็นข้อมูลชุดเดียวกับ pairs ที่ส่งซ้ำในอีกรูปแบบ กิน 141 KB จาก 430 KB คือ 33%
       openJobs: openJobsCached_(),
       // รายการที่ปิดไปแล้วแต่รูปยังตามมาไม่ครบ — ดูจากทั้งชีทเสมอ ไม่ผูกกับช่วงที่เลือก
       // เพราะของค้างจากเมื่อวานต้องเห็นแม้จะเลือกดูเฉพาะวันนี้
@@ -776,7 +778,29 @@ function apiAdminLoad(empId, range) {
   });
 }
 
-/** ช่วงเวลาที่หน้าแอดมินขอมา — ไม่ส่งอะไรมาถือว่า 7 วันล่าสุด */
+/**
+ * เข้าหน้าแอดมิน — ตรวจสิทธิ์กับส่งของที่จำเป็นต่อการวาดหน้าจอเท่านั้น
+ *
+ * ของเดิมการล็อกอินคือ apiAdminLoad ซึ่งลากรูปทั้งช่วงมาด้วย วัดได้ 41 วินาที
+ * แอดมินต้องนั่งมองจอเปล่าจนกว่าจะครบ ทั้งที่แค่อยากเห็นเมนูก่อน
+ *
+ * ตัวนี้ไม่แตะชีทรูปภาพและไม่จับคู่เบิก-คืน จึงจบในไม่กี่วินาที
+ * หน้าเว็บเข้าไปได้ก่อน แล้วค่อยยิง apiAdminLoad ตามมาเติมข้อมูลทีหลัง
+ */
+function apiAdminBoot(empId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    return ok_({
+      user: u,
+      canEdit: canWriteMaster_(u),
+      master: m,
+      today: fmtDate_(new Date())
+    });
+  });
+}
+
+/** ช่วงเวลาที่หน้าแอดมินขอมา — ไม่ส่งอะไรมาถือว่า 2 วันล่าสุด */
 function normRange_(range) {
   var r = range || {};
   var mode = s_(r.mode) || 'days';
@@ -784,7 +808,7 @@ function normRange_(range) {
   if (mode === 'month') return { mode: 'month', y: Number(r.y), m: Number(r.m) };
   if (mode === 'year')  return { mode: 'year',  y: Number(r.y) };
   if (mode === 'all')   return { mode: 'all' };
-  return { mode: 'days', n: Number(r.n) || 7 };
+  return { mode: 'days', n: Number(r.n) || 2 };
 }
 
 /**
@@ -812,8 +836,11 @@ function buildPairs_(recs, photos, hidden) {
       // ของเดิมรวมกันแล้วฝั่งเบิกโดนฝั่งคืนทับจนหายไป
       empName: r.empName, dept: r.dept, by: r.by,
       result: r.result, issue: r.issue, note: r.note,
+      // ส่งเฉพาะรหัสไฟล์ ไม่ส่งลิงก์เต็ม — หน้าเว็บประกอบลิงก์เอง รูปที่เห็นเหมือนเดิมทุกใบ
+      // ลิงก์ 785 อันมีคำว่า https://drive.google.com/open?id= นำหน้าเหมือนกันหมด
+      // ซ้ำอันละ 33 ตัวอักษร รวม 26 KB ที่ส่งข้ามเน็ตทุกครั้งที่เปิดหน้าแอดมิน
       photos: hide ? [] : (byRec[r.id] || []).map(function (ph) {
-        return { slot: ph.slot, url: ph.url, time: ph.time, gps: ph.gps };
+        return { slot: ph.slot, fid: fileIdFromUrl_(ph.url), time: ph.time, gps: ph.gps };
       })
     };
   };

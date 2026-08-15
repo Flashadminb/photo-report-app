@@ -80,7 +80,7 @@ function session(u) {
 var SIDE = function (t, n, id, extra) {
   return Object.assign({ recordId: id || 'PP-20260806-1250', time: t, ts: '6/8/2026, ' + t, qty: 1, photoN: n,
     folder: 'https://drive.google.com/drive/folders/xxx', deleted: false, gps: '13.6812, 100.6109',
-    photos: SLOTS_PP.slice(0, n).map(function (s) { return { slot: s.th, url: 'https://drive.google.com/open?id=x', time: t, gps: '' }; }) },
+    photos: SLOTS_PP.slice(0, n).map(function (s) { return { slot: s.th, fid: '1AbCdEfGhIjKlMnOpQrStUvWxYz012345', time: t, gps: '' }; }) },
     extra || {});
 };
 
@@ -114,6 +114,17 @@ var API = {
     return window.MOCK_FOUND
       ? { ok: true, found: true, recordId: 'PP-20260806-1275' }
       : { ok: true, found: false, recordId: '' };
+  },
+  // เข้าระบบแบบเบา — ตั้ง window.MOCK_NO_BOOT = true เพื่อจำลองเซิร์ฟเวอร์เก่าที่ยังไม่รู้จักคำสั่งนี้
+  apiAdminBoot: function (id) {
+    if (window.MOCK_NO_BOOT) return { ok: false, error: 'ไม่รู้จักคำสั่ง apiAdminBoot' };
+    var u = STAFF.filter(function (p) { return p.id === String(id); })[0];
+    if (!u || u.role !== 'แอดมิน') return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าเว็บแอดมิน' };
+    MOCK_CALLS.push('adminBoot');
+    return { ok: true, user: u, canEdit: true, today: '6/8/2026',
+      master: { staff: STAFF, assets: ASSETS, topics: [TOPIC_PP, TOPIC_ID], slots: SLOTS_PP, rules: [],
+        depts: ['IN LH+BG', 'REPACK', 'ทุกแผนก'], shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.'],
+        issueTags: ['แบตไม่เก็บไฟ'] } };
   },
   apiAdminLoad: function (id, range) {
     var u = STAFF.filter(function (p) { return p.id === String(id); })[0];

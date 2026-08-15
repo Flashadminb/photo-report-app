@@ -12,7 +12,10 @@ var A = {
   sel: {},          // ชุดรูปที่ติ๊กไว้เพื่อลบพร้อมกัน { รหัสรายการ: true }
   // ช่วงเวลาที่ดึงจากชีท — เริ่มที่ 7 วันล่าสุด ย้อนหลังกว่านั้นเลือกเดือน/ปีเอา
   // ถ้าดึงทั้งหมดทุกครั้ง ข้อมูลจะโตขึ้นทุกวันจนเปิดหน้าไม่ไหว
-  range: { mode: 'days', n: 7 },
+  // เปิดหน้ามาเอาแค่ 2 วันพอ — 7 วันคือ 430 KB ใช้เวลา 41 วินาที ส่วน 2 วันเบากว่ามาก
+  // อยากดูย้อนหลังกว่านี้กดปุ่มช่วงเวลาเอา จะได้ไม่ต้องรอทุกครั้งที่เปิดหน้า
+  range: { mode: 'days', n: 2 },
+  loading: false,         // เข้าหน้าได้แล้วแต่ข้อมูลหนักยังตามมาไม่ถึง
   periods: { months: [], years: [] },
   totalRecords: 0,
   fTopic: 'ทั้งหมด', fDate: 'ทั้งหมด', fSearch: '',
@@ -81,7 +84,8 @@ function enterApp() {
   $('#gate').classList.add('hide');
   $('#app').classList.remove('hide');
   renderAll();
-  stampFresh();
+  // ข้อมูลยังตามมาไม่ถึง ยังไม่ต้องปั๊มเวลา ไม่งั้นป้ายจะบอกว่าข้อมูลสดทั้งที่ยังว่างอยู่
+  if (A.loading) paintFresh(); else stampFresh();
 }
 
 /** ยอมแพ้แล้ว ให้ใส่รหัสเอง */
@@ -127,7 +131,12 @@ function bootAuto(tries) {
     ? 'เชื่อมต่อไม่ได้ กำลังลองใหม่ ' + tries + '/3…'
     : 'กำลังเข้าระบบ…';
 
-  load(A.empId).then(enterApp).catch(function (e) {
+  // เข้าให้ได้ก่อนด้วยคำสั่งเบา แล้วค่อยดึงข้อมูลตามมา
+  // ถ้าคำสั่งเบายังไม่มีบนเซิร์ฟเวอร์ (ยังไม่ได้ดีพลอย) ถอยไปใช้วิธีเดิม
+  quickIn(A.empId).then(function (fast) {
+    if (fast) { enterApp(); loadLater(); return; }
+    return load(A.empId).then(enterApp);
+  }).catch(function (e) {
     var temporary = /เซิร์ฟเวอร์|ติดต่อ|timeout|network|failed to fetch/i.test(e.message);
     if (temporary && tries < 3) {
       setTimeout(function () { bootAuto(tries + 1); }, 1500 * (tries + 1));
@@ -138,10 +147,37 @@ function bootAuto(tries) {
   });
 }
 
+/**
+ * เข้าระบบแบบเบา — ได้ชื่อ สิทธิ์ และทะเบียน พอวาดหน้าจอได้ทันที
+ * คืน true = เข้าได้แล้ว · false = เซิร์ฟเวอร์ยังไม่รู้จักคำสั่งนี้ ให้ถอยไปวิธีเดิม
+ */
+function quickIn(empId) {
+  return rpc('apiAdminBoot', empId).then(function (r) {
+    A.empId = empId; A.user = r.user; A.canEdit = r.canEdit;
+    A.master = r.master; A.today = r.today;
+    A.pairs = A.pairs || []; A.openJobs = A.openJobs || []; A.pendingPhotos = A.pendingPhotos || [];
+    A.loading = true;
+    return true;
+  }).catch(function (e) {
+    if (/ไม่รู้จักคำสั่ง/.test(e.message)) return false;
+    throw e;
+  });
+}
+
+/** ดึงข้อมูลหนักตามมาทีหลัง — ระหว่างนี้หน้าจอใช้งานได้แล้ว */
+function loadLater() {
+  return load(A.empId).then(function () {
+    A.loading = false; renderAll(); stampFresh();
+  }).catch(function (e) {
+    A.loading = false; renderAll();
+    toast('ดึงข้อมูลไม่สำเร็จ · ' + e.message + ' — กด "โหลดงานใหม่" ลองอีกครั้ง', true);
+  });
+}
+
 function load(empId) {
   return rpc('apiAdminLoad', empId, A.range).then(function (r) {
     A.empId = empId; A.user = r.user; A.canEdit = r.canEdit;
-    A.master = r.master; A.pairs = r.pairs; A.records = r.records;
+    A.master = r.master; A.pairs = r.pairs;
     A.openJobs = r.openJobs; A.today = r.today;
     A.pendingPhotos = r.pendingPhotos || [];
     A.range = r.range; A.periods = r.periods; A.totalRecords = r.totalRecords;
@@ -169,7 +205,15 @@ function stampFresh() {
 
 function paintFresh() {
   var f = $('#fresh');
-  if (!f || !FRESH.at) return;
+  if (!f) return;
+  // เข้ามาแล้วแต่ข้อมูลยังตามมาไม่ถึง ต้องบอกให้รู้ ไม่ใช่ปล่อยให้เห็นตารางว่างแล้วเข้าใจว่าไม่มีงาน
+  if (A.loading) {
+    f.textContent = 'กำลังดึงข้อมูล…\nรอสักครู่';
+    f.style.color = 'var(--color-accent)';
+    f.style.opacity = '1';
+    return;
+  }
+  if (!FRESH.at) return;
   var d = new Date(FRESH.at);
   var p = function (v) { return (v < 10 ? '0' : '') + v; };
   var mins = Math.floor((Date.now() - FRESH.at) / 60000);
@@ -218,7 +262,7 @@ function isoDay(offset) {
 
 /** แถบเลือกช่วงเวลา — ใช้ร่วมกันทั้งหน้าคลังรูปและหน้าข้อมูล */
 function rangeBar() {
-  var r = A.range || { mode: 'days', n: 7 };
+  var r = A.range || { mode: 'days', n: 2 };
   var p = A.periods || { months: [], years: [] };
   var TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
@@ -241,7 +285,13 @@ function rangeBar() {
     if (e.target.value) setRange({ mode: 'day', d: e.target.value });
   });
 
-  var d7 = h('button', { class: 'btn ' + (r.mode === 'days' ? 'btn-primary' : 'btn-secondary') }, ['7 วันล่าสุด']);
+  // 2 วันคือค่าตั้งต้นตอนเปิดหน้า · 7 วันยังกดได้ แต่ต้องตั้งใจกดเพราะโหลดนานกว่ามาก
+  var dOn = function (n) { return r.mode === 'days' && (Number(r.n) || 2) === n; };
+
+  var d2 = h('button', { class: 'btn ' + (dOn(2) ? 'btn-primary' : 'btn-secondary') }, ['2 วันล่าสุด']);
+  d2.addEventListener('click', function () { setRange({ mode: 'days', n: 2 }); });
+
+  var d7 = h('button', { class: 'btn ' + (dOn(7) ? 'btn-primary' : 'btn-secondary') }, ['7 วันล่าสุด']);
   d7.addEventListener('click', function () { setRange({ mode: 'days', n: 7 }); });
 
   var selM = h('select', { class: 'input', style: 'width:auto' },
@@ -273,7 +323,7 @@ function rangeBar() {
     h('span', { class: 'label' }, ['ช่วงเวลา']),
     bYest, bToday,
     h('div', {}, [h('span', { class: 'label' }, ['จิ้มเลือกวัน']), pick]),
-    d7, selM, selY, all,
+    d2, d7, selM, selY, all,
     h('div', { style: 'margin-left:auto;font-size:12px;opacity:.7' },
       ['กำลังดู ' + rangeText(r) + ' · ในชีทมีทั้งหมด ' + (A.totalRecords || 0) + ' แถว'])
   ]);
@@ -780,8 +830,8 @@ function pairCard(p) {
     else {
       box.appendChild(h('div', { class: 'shots' }, shots.map(function (ph) {
         return h('figure', {}, [
-          h('a', { href: ph.url, target: '_blank', rel: 'noopener' }, [
-            h('img', { src: driveThumb(ph.url), loading: 'lazy', alt: ph.slot })
+          h('a', { href: driveOpen(ph.fid || ph.url), target: '_blank', rel: 'noopener' }, [
+            h('img', { src: driveThumb(ph.fid || ph.url), loading: 'lazy', alt: ph.slot })
           ]),
           h('figcaption', { style: 'font-size:11px;margin-top:4px' }, [ph.slot + ' · ' + ph.time])
         ]);
@@ -793,11 +843,16 @@ function pairCard(p) {
   return h('div', { class: 'group' }, [head, inner]);
 }
 
-/** ลิงก์รูปย่อของ Drive — เร็วกว่าโหลดไฟล์เต็ม */
-function driveThumb(url) {
-  var m = /[-\w]{25,}/.exec(url || '');
-  return m ? 'https://drive.google.com/thumbnail?id=' + m[0] + '&sz=w400' : '';
+/**
+ * เซิร์ฟเวอร์ส่งมาแค่รหัสไฟล์ (ph.fid) หน้าเว็บประกอบลิงก์เอง
+ * รับลิงก์เต็มได้ด้วยเผื่อข้อมูลเก่าที่ยังค้างในหน้าจอตอนสลับเวอร์ชัน
+ */
+function driveId(v) {
+  var m = /[-\w]{25,}/.exec(v || '');
+  return m ? m[0] : '';
 }
+function driveOpen(v)  { var id = driveId(v); return id ? 'https://drive.google.com/open?id=' + id : ''; }
+function driveThumb(v) { var id = driveId(v); return id ? 'https://drive.google.com/thumbnail?id=' + id + '&sz=w400' : ''; }
 
 // ══ ตารางข้อมูล ═══════════════════════════════════════════════════════
 

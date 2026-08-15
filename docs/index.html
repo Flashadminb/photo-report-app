@@ -566,8 +566,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v51';
-window.APP_BUILT   = '14/8/2026 11:03';
+window.APP_VERSION = 'v52';
+window.APP_BUILT   = '15/8/2026 11:05';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -614,10 +614,15 @@ function rpcNative(name, args) {
  * ครบเวลาแล้วตัดเลย ให้ชั้นบนเก็บงานเข้าคิวไปส่งใหม่ทีหลัง
  */
 var RPC_TIMEOUT_MS = 25000;
-var RPC_TIMEOUT_UPLOAD_MS = 60000;   // รูป 1 ใบราว 150 KB เน็ตหน้างานช้าต้องให้เวลามากกว่า
+var RPC_TIMEOUT_UPLOAD_MS = 90000;   // รูป 1 ใบราว 150 KB เน็ตหน้างานช้าต้องให้เวลามากกว่า
+                                     // และหน้าแอดมินช่วงกว้าง ๆ ก็อยู่ในหลักหลายสิบวินาที
 
 // คำสั่งที่ต้องคุยกับ Drive ทีละไฟล์ ใช้เวลานานกว่าคำสั่งที่อ่านแต่ชีท
-var RPC_SLOW = { apiUploadPhoto: 1, apiSyncPhotos: 1, apiAdminDeletePhotosBulk: 1 };
+//
+// apiAdminLoad อยู่ในนี้ด้วยเพราะวัดจริงแล้วใช้ 41 วินาที (ช่วง 7 วัน · 430 KB)
+// ซึ่งนานกว่าเวลาที่ตั้งไว้ 25 วินาที = ถูกตัดสายทิ้งทุกครั้ง ไม่มีวันสำเร็จ
+// แล้ว bootAuto ก็ลองใหม่อีก 3 รอบ รวมเกือบ 2 นาทีกว่าแอดมินจะเข้าได้
+var RPC_SLOW = { apiUploadPhoto: 1, apiSyncPhotos: 1, apiAdminDeletePhotosBulk: 1, apiAdminLoad: 1 };
 
 function rpcTimeout(name) {
   return RPC_SLOW[name] ? RPC_TIMEOUT_UPLOAD_MS : RPC_TIMEOUT_MS;
