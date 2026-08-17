@@ -224,6 +224,18 @@ textarea.input{min-height:90px;resize:vertical}
     <div style="font-size:11px;line-height:1.4;min-width:104px;opacity:.6" id="fresh"></div>
     <button class="btn btn-secondary" id="btn-out">ออกระบบ</button>
   </div>
+  <!-- ข้อมูลบนจอเก่าแล้ว — ต้องเห็นเต็มความกว้าง ป้ายเล็กมุมขวาบนคนไม่ทันสังเกต
+       แล้วเข้าใจผิดว่าระบบผิด ทั้งที่แค่ยังไม่ได้กดโหลดใหม่ -->
+  <div id="stale" class="hide"
+       style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+              background:var(--color-accent);color:var(--color-bg);padding:11px 14px">
+    <span id="stale-msg" style="font-size:14px;font-weight:600;line-height:1.4;flex:1"></span>
+    <button class="btn" id="stale-go"
+            style="background:var(--color-bg);color:var(--color-accent);border:0;
+                   font-family:var(--font-heading);font-weight:800;font-size:14px;padding:9px 18px">
+      โหลดงานใหม่
+    </button>
+  </div>
   <div id="tabs"></div>
   <div id="view"></div>
 </div>
@@ -231,8 +243,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v52';
-window.APP_BUILT   = '15/8/2026 11:05';
+window.APP_VERSION = 'v53';
+window.APP_BUILT   = '17/8/2026 15:23';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -839,6 +851,7 @@ function paintFresh() {
     f.textContent = 'กำลังดึงข้อมูล…\nรอสักครู่';
     f.style.color = 'var(--color-accent)';
     f.style.opacity = '1';
+    if ($('#stale')) $('#stale').classList.add('hide');   // กำลังดึงอยู่ ไม่ต้องทวงซ้ำ
     return;
   }
   if (!FRESH.at) return;
@@ -847,11 +860,36 @@ function paintFresh() {
   var mins = Math.floor((Date.now() - FRESH.at) / 60000);
   var ago = mins < 1 ? 'เมื่อครู่นี้' : (mins < 60 ? mins + ' นาทีที่แล้ว'
     : Math.floor(mins / 60) + ' ชม.ที่แล้ว');
+  var clock = p(d.getHours()) + ':' + p(d.getMinutes());
 
-  f.textContent = 'ข้อมูล ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' น.\n' + ago;
-  // เกิน 10 นาทีเริ่มเตือนด้วยสี จะได้นึกออกว่าควรกดโหลดใหม่
-  f.style.color = mins >= 10 ? 'var(--color-accent)' : '';
-  f.style.opacity = mins >= 10 ? '1' : '.6';
+  f.textContent = 'ข้อมูล ' + clock + ' น.\n' + ago;
+  f.style.color = mins >= STALE_MIN ? 'var(--color-accent)' : '';
+  f.style.opacity = mins >= STALE_MIN ? '1' : '.6';
+
+  paintStale(mins, clock, ago);
+}
+
+// เกินเท่านี้ถือว่าเก่าพอที่จะเข้าใจผิดได้ — กะหนึ่งเปลี่ยนมือกันเร็วกว่านี้อีก
+var STALE_MIN = 10;
+
+/**
+ * แถบแดงเต็มความกว้าง "ข้อมูลบนจอเป็นของเก่า"
+ *
+ * ป้ายเล็กมุมขวาบนไม่พอ — เคยเกิดขึ้นจริงว่าหน้างานกดคืนตอน 11:59 แต่จอแอดมิน
+ * ที่เปิดค้างไว้ก่อนหน้ายังขึ้นว่า "ยังไม่คืน" แล้วเข้าใจว่าระบบจับคู่ผิด
+ * ทั้งที่ข้อมูลฝั่งเซิร์ฟเวอร์ถูกต้องมาตลอด แค่จอไม่ได้ดึงใหม่
+ *
+ * ยังไม่ดึงให้เองอัตโนมัติด้วยเหตุผลเรื่องโควตาข้างบน แต่ต้องทวงให้เห็น
+ */
+function paintStale(mins, clock, ago) {
+  var box = $('#stale');
+  if (!box) return;
+  var old = mins >= STALE_MIN && !A.loading;
+  box.classList.toggle('hide', !old);
+  if (!old) return;
+  $('#stale-msg').textContent =
+    'ข้อมูลบนจอนี้เป็นของเวลา ' + clock + ' น. (' + ago + ') — ' +
+    'งานที่หน้างานส่งมาหลังจากนั้นยังไม่ขึ้น กดโหลดงานใหม่ก่อนตัดสินใจอะไร';
 }
 
 /** เปลี่ยนช่วงเวลาแล้วดึงข้อมูลใหม่จากชีท (ไม่ได้กรองในเครื่อง เพราะไม่ได้โหลดมาทั้งหมด) */
@@ -2076,6 +2114,7 @@ function viewAssets(v) {
 $('#gate-go').addEventListener('click', gateGo);
 $('#gate-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') gateGo(); });
 $('#btn-reload').addEventListener('click', reloadHere);
+$('#stale-go').addEventListener('click', reloadHere);   // ปุ่มในแถบแดง ทำงานเหมือนกันทุกอย่าง
 $('#btn-out').addEventListener('click', function () {
   store.del('adminId'); location.reload();
 });

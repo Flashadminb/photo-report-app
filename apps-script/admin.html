@@ -67,6 +67,18 @@
     <div style="font-size:11px;line-height:1.4;min-width:104px;opacity:.6" id="fresh"></div>
     <button class="btn btn-secondary" id="btn-out">ออกระบบ</button>
   </div>
+  <!-- ข้อมูลบนจอเก่าแล้ว — ต้องเห็นเต็มความกว้าง ป้ายเล็กมุมขวาบนคนไม่ทันสังเกต
+       แล้วเข้าใจผิดว่าระบบผิด ทั้งที่แค่ยังไม่ได้กดโหลดใหม่ -->
+  <div id="stale" class="hide"
+       style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+              background:var(--color-accent);color:var(--color-bg);padding:11px 14px">
+    <span id="stale-msg" style="font-size:14px;font-weight:600;line-height:1.4;flex:1"></span>
+    <button class="btn" id="stale-go"
+            style="background:var(--color-bg);color:var(--color-accent);border:0;
+                   font-family:var(--font-heading);font-weight:800;font-size:14px;padding:9px 18px">
+      โหลดงานใหม่
+    </button>
+  </div>
   <div id="tabs"></div>
   <div id="view"></div>
 </div>
