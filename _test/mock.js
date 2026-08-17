@@ -126,6 +126,20 @@ var API = {
         depts: ['IN LH+BG', 'REPACK', 'ทุกแผนก'], shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.'],
         issueTags: ['แบตไม่เก็บไฟ'] } };
   },
+  apiAssetHistory: function (id, code) {
+    MOCK_CALLS.push('history:' + code);
+    return { ok: true, code: code, rows: [
+      { id:'IDATA-20260816-1888', ts:'16/8/2026, 18:04:11', date:'16/8/2026', action:'คืน',
+        empName:'นางสาว พีรยา บุญอยู่', dept:'OUT 4W', by:'', issue:'หน้าจอแตก · Errors', note:'',
+        folder:'https://drive.google.com/drive/folders/xxx' },
+      { id:'IDATA-20260814-1770', ts:'14/8/2026, 09:12:03', date:'14/8/2026', action:'คืน',
+        empName:'นาย ฟาริ เจะเลาะ', dept:'OUT 4W', by:'', issue:'หน้าจอแตกกดไม่ได้', note:'[นอกกะ]',
+        folder:'' },
+      { id:'IDATA-20260812-1501', ts:'12/8/2026, 20:41:55', date:'12/8/2026', action:'เบิก',
+        empName:'นาย อับดุลลาฟิก อาแว', dept:'OUT 4W', by:'อนุชา นิสสัยกล้า (713570)',
+        issue:'หน้าจอแตกเบอร์ 11/05', note:'', folder:'https://drive.google.com/drive/folders/yyy' }
+    ] };
+  },
   apiAdminLoad: function (id, range) {
     var u = STAFF.filter(function (p) { return p.id === String(id); })[0];
     if (!u || u.role !== 'แอดมิน') return { ok: false, error: 'บัญชีนี้ไม่มีสิทธิ์เข้าเว็บแอดมิน' };

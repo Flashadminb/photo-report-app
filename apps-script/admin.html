@@ -83,6 +83,19 @@
   <div id="view"></div>
 </div>
 
+<!-- ประวัติการแจ้งอาการของเครื่อง — เปิดจากปุ่ม "ประวัติ" ในทะเบียนอุปกรณ์ เฉพาะแอดมิน -->
+<div id="hist" class="hide"
+     style="position:fixed;inset:0;z-index:300;background:rgba(32,30,29,.55);
+            display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto">
+  <div style="background:var(--color-bg);max-width:640px;width:100%;padding:18px 20px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;flex:1" id="hist-title"></div>
+      <button class="btn btn-secondary" id="hist-close" style="font-size:13px;padding:5px 12px">ปิด</button>
+    </div>
+    <div id="hist-body"></div>
+  </div>
+</div>
+
 <script>var WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;</script>
 <?!= include('js-common'); ?>
 <?!= include('js-admin'); ?>

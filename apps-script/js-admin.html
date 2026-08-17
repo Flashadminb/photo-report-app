@@ -466,6 +466,71 @@ function seePhotosOf(code) {
   window.scrollTo(0, 0);
 }
 
+/**
+ * ประวัติการแจ้งอาการของเครื่องตัวหนึ่ง — ของแอดมินล้วน ๆ
+ *
+ * ช่องอาการค้างในทะเบียนเก็บได้แค่ครั้งล่าสุด เพราะเขียนทับทุกครั้งที่มีคนแจ้งใหม่
+ * ชื่อคนแจ้งคนแรกจึงหายไปจากตาราง แต่แถวในชีทบันทึกยังอยู่ครบทุกครั้ง
+ * ตรงนี้ไปดึงมาแสดงตอนกดเท่านั้น ไม่ได้พ่วงไปกับการโหลดหน้าปกติ
+ *
+ * จงใจไม่แตะฝั่งหน้างาน หน้าแอพยังเห็นบรรทัดเดียวสั้น ๆ เหมือนเดิม
+ */
+function showHistory(code) {
+  var box = $('#hist');
+  var body = $('#hist-body');
+  $('#hist-title').textContent = 'ประวัติการแจ้งอาการ · ' + code;
+  body.innerHTML = '';
+  body.appendChild(h('p', { class: 'muted', style: 'font-size:13px' }, ['กำลังดึงประวัติ…']));
+  box.classList.remove('hide');
+
+  rpc('apiAssetHistory', A.empId, code).then(function (r) {
+    body.innerHTML = '';
+    var rows = r.rows || [];
+    if (!rows.length) {
+      body.appendChild(h('p', { class: 'muted', style: 'font-size:13px' },
+        ['ไม่พบรายการที่แจ้งว่ามีปัญหาสำหรับเครื่องนี้']));
+      return;
+    }
+
+    body.appendChild(h('p', { style: 'font-size:13px;margin:0 0 10px' }, [
+      h('strong', {}, ['แจ้งมาแล้ว ' + rows.length + ' ครั้ง']),
+      ' · ครั้งแรก ' + rows[rows.length - 1].date + ' โดย ' + rows[rows.length - 1].empName
+    ]));
+
+    rows.forEach(function (x, i) {
+      var first = (i === rows.length - 1);
+      var head = h('div', { style: 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap' }, [
+        h('strong', { style: 'font-size:13px' }, [x.empName]),
+        h('span', { class: 'muted', style: 'font-size:12px' },
+          [x.dept + ' · ' + x.ts + ' · ตอน' + x.action]),
+        first ? h('span', {
+          style: 'font-size:11px;background:var(--color-accent);color:var(--color-bg);padding:1px 7px'
+        }, ['แจ้งคนแรก']) : null
+      ].filter(Boolean));
+
+      var lines = [head, h('div', { style: 'font-size:13px;margin-top:3px' }, [x.issue || '(ไม่ได้พิมพ์อาการ)'])];
+      if (x.note) lines.push(h('div', { class: 'muted', style: 'font-size:12px' }, [x.note]));
+      if (x.by)   lines.push(h('div', { class: 'muted', style: 'font-size:12px' }, ['บันทึกโดย ' + x.by]));
+
+      var foot = h('div', { style: 'display:flex;gap:10px;margin-top:5px;font-size:12px' }, [
+        h('span', { class: 'muted' }, [x.id]),
+        x.folder && x.folder.indexOf('http') === 0
+          ? h('a', { href: x.folder, target: '_blank', rel: 'noopener' }, ['เปิดโฟลเดอร์รูป'])
+          : null
+      ].filter(Boolean));
+      lines.push(foot);
+
+      body.appendChild(h('div', {
+        style: 'padding:10px 0;border-top:1px solid var(--color-divider)'
+      }, lines));
+    });
+  }).catch(function (e) {
+    body.innerHTML = '';
+    body.appendChild(h('p', { style: 'font-size:13px;color:var(--color-accent)' },
+      ['ดึงประวัติไม่สำเร็จ · ' + e.message]));
+  });
+}
+
 function viewVault(v) {
   var topics = A.master.topics;
   var dates = ['ทั้งหมด'].concat(A.pairs.map(function (p) { return p.date; })
@@ -1414,8 +1479,13 @@ function viewAssets(v) {
         ['ดูรูป']);
       see.addEventListener('click', function () { seePhotosOf(a.code); });
 
+      // ช่องอาการเก็บได้แค่ครั้งล่าสุด คนแจ้งคนก่อนถูกเขียนทับ — ประวัติเต็มดูตรงนี้
+      var hist = h('button', { class: 'btn btn-secondary', style: 'font-size:11px;padding:3px 8px;margin-left:6px' },
+        ['ประวัติ']);
+      hist.addEventListener('click', function () { showHistory(a.code); });
+
       defCell = h('td', { style: 'font-size:12px;max-width:280px;color:var(--color-accent);font-weight:600' },
-        [a.defect, see, clr]);
+        [a.defect, see, hist, clr]);
     } else {
       defCell = h('td', { class: 'muted', style: 'font-size:12px' }, ['—']);
     }
@@ -1475,6 +1545,10 @@ $('#gate-go').addEventListener('click', gateGo);
 $('#gate-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') gateGo(); });
 $('#btn-reload').addEventListener('click', reloadHere);
 $('#stale-go').addEventListener('click', reloadHere);   // ปุ่มในแถบแดง ทำงานเหมือนกันทุกอย่าง
+$('#hist-close').addEventListener('click', function () { $('#hist').classList.add('hide'); });
+$('#hist').addEventListener('click', function (e) {     // คลิกพื้นที่มืดรอบ ๆ ก็ปิดได้
+  if (e.target === this) this.classList.add('hide');
+});
 $('#btn-out').addEventListener('click', function () {
   store.del('adminId'); location.reload();
 });

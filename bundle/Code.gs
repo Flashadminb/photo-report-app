@@ -1266,6 +1266,7 @@ function apiDispatch_(name) {
     apiSyncPhotos: apiSyncPhotos,
     apiAdminBoot: apiAdminBoot,
     apiAdminLoad: apiAdminLoad,
+    apiAssetHistory: apiAssetHistory,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
     apiAdminDeletePhotosBulk: apiAdminDeletePhotosBulk,
@@ -2001,6 +2002,54 @@ function apiAdminBoot(empId) {
       master: m,
       today: fmtDate_(new Date())
     });
+  });
+}
+
+/**
+ * ประวัติการแจ้งอาการของเครื่องตัวหนึ่ง — สำหรับแอดมินดูอย่างเดียว
+ *
+ * ช่องอาการค้างในทะเบียนถูกเขียนทับทุกครั้งที่มีคนแจ้งใหม่ ชื่อคนแจ้งคนก่อนจึงหายไป
+ * แต่ของจริงไม่ได้หาย ทุกครั้งที่แจ้งมีแถวของตัวเองในชีทบันทึกครบ พร้อมชื่อ เวลา รูป
+ * ตัวนี้แค่ไปรวบรวมมาให้ดู ไม่ได้เก็บข้อมูลเพิ่มและไม่แตะช่องในทะเบียน
+ *
+ * ตั้งใจให้เรียกตอนแอดมินกดดูเท่านั้น ไม่ได้พ่วงไปกับการโหลดหน้าปกติ
+ * หน้าแอพของหน้างานไม่เกี่ยวข้องเลย ยังเห็นบรรทัดเดียวสั้น ๆ เหมือนเดิม
+ */
+function apiAssetHistory(empId, code) {
+  return wrap_(function () {
+    var m = getMaster_();
+    requireAdmin_(m, empId);
+    var want = s_(code);
+    if (!want) return ok_({ code: '', rows: [] });
+
+    var C = CFG.COL.REC;
+    var sh = dataSS_().getSheetByName(CFG.D.RECORDS);
+    var last = sh.getLastRow();
+    if (last < 2) return ok_({ code: want, rows: [] });
+
+    var block = sh.getRange(2, 1, last - 1, C.BY).getValues();
+    var rows = [];
+    for (var i = 0; i < block.length; i++) {
+      var r = block[i];
+      if (s_(r[C.RESULT - 1]) !== CFG.V.ISSUE) continue;
+      // เทียบทีละรหัสเต็ม ๆ ไม่ใช้ indexOf เพราะ "OUT 4W 1" จะไปโดน "OUT 4W 10" ด้วย
+      var codes = s_(r[C.CODES - 1]).split(/\s*,\s*/);
+      if (codes.indexOf(want) < 0) continue;
+      rows.push({
+        id:      s_(r[C.ID - 1]),
+        ts:      cellDate_(r[C.TS - 1], true),
+        date:    cellDate_(r[C.DATE - 1], false),
+        action:  s_(r[C.ACTION - 1]),
+        empName: s_(r[C.EMP_NAME - 1]),
+        dept:    s_(r[C.DEPT - 1]),
+        by:      s_(r[C.BY - 1]),
+        issue:   s_(r[C.ISSUE - 1]),
+        note:    s_(r[C.NOTE - 1]),
+        folder:  s_(r[C.FOLDER - 1])
+      });
+    }
+    rows.reverse();   // ใหม่สุดอยู่บน
+    return ok_({ code: want, rows: rows });
   });
 }
 
