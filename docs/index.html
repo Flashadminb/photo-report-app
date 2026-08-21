@@ -566,8 +566,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v55';
-window.APP_BUILT   = '21/8/2026 17:54';
+window.APP_VERSION = 'v56';
+window.APP_BUILT   = '21/8/2026 18:40';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1160,6 +1160,13 @@ function startReturn(job) {
   S.topic = t;
   S.action = 'คืน';
   S.ref = job.id;
+
+  // แอดมินกดคืนแทนคนอื่น — รายการต้องยังเป็นชื่อเจ้าของเดิม ไม่ใช่ชื่อแอดมิน
+  // ส่งรหัสเจ้าของไปด้วย ฝั่งเซิร์ฟเวอร์จะเขียนแอดมินลงช่อง "ดำเนินการโดย" แทน
+  if (job.empId && job.empId !== S.user.id) {
+    S.forEmp = (S.staffList || []).filter(function (x) { return x.id === job.empId; })[0]
+      || { id: job.empId, name: job.empName, dept: job.dept, shift: S.user.shift };
+  }
   // รหัสที่เบิกไปเก็บรวมกันในชีทช่องเดียว ตอนคืนต้องแยกกลับมาว่าตัวไหนเป็นอุปกรณ์เสริม
   // จะได้ติ๊กค้างไว้ถูกกล่อง
   var all = job.codes ? job.codes.split(/\s*,\s*/).filter(Boolean) : [];
@@ -1334,14 +1341,16 @@ function renderHome() {
   var list = $('#open-list'); list.innerHTML = '';
   $('#open-wrap').classList.toggle('hide', !S.openJobs.length);
   S.openJobs.forEach(function (j) {
-    // กดคืนได้เฉพาะรายการของตัวเอง
+    // ของตัวเองคืนได้เสมอ · ของคนอื่นคืนแทนได้เฉพาะแอดมิน
     //
     // หัวหน้างานเห็นของทั้งแผนกไว้ "รู้ว่าใครยังไม่คืน" ไม่ใช่ไว้กดคืนแทน
-    // เพราะฝั่งเซิร์ฟเวอร์บันทึกผู้คืนเป็นคนที่กดเสมอ ถ้ากดแทนกันแถวจะบอกว่า
-    // หัวหน้าเป็นคนคืน ทั้งที่ของอยู่กับลูกน้อง ประวัติจะเพี้ยนตั้งแต่ต้นทาง
-    var b;
-    if (j.empId === S.user.id) {
-      b = el('button', { class: 'btn btn-primary', style: 'padding:9px 16px;font-size:13px' }, ['คืน']);
+    // ถ้าให้กดแทนได้ แถวจะบอกว่าหัวหน้าเป็นคนคืน ทั้งที่ของอยู่กับลูกน้อง
+    // ส่วนแอดมินต้องปิดรายการให้ใครก็ได้ (คนลาออก ลืมกดคืน คืนแล้วไม่ได้บันทึก)
+    // และตอนแอดมินกด รายการยังเป็นชื่อเจ้าของเดิม แอดมินไปอยู่ช่อง "ดำเนินการโดย"
+    var b, own = (j.empId === S.user.id);
+    if (own || S.isAdmin) {
+      b = el('button', { class: 'btn btn-primary', style: 'padding:9px 16px;font-size:13px' },
+        [own ? 'คืน' : 'คืนแทน']);
       b.addEventListener('click', function () { startReturn(j); });
     } else {
       b = el('div', { style: 'font-size:11px;opacity:.55;text-align:right;max-width:96px;line-height:1.3' },
@@ -1427,7 +1436,12 @@ function renderForm() {
   var t = S.topic, u = owner();
   $('#form-top').innerHTML = S.action === 'คืน'
     ? '<strong>คืน ' + esc(t.name) + '</strong> — เบิกไป ' + (S.borrowedQty || '?') +
-      ' เครื่อง (' + esc(S.ref) + ')<br>ถ้าคืนไม่ครบ แก้จำนวนด้านล่างให้ตรงกับที่คืนจริง'
+      ' เครื่อง (' + esc(S.ref) + ')' +
+      // แอดมินคืนแทนคนอื่น ต้องเห็นชัดว่ากำลังปิดรายการของใคร จะได้ไม่กดผิดคน
+      (S.forEmp
+        ? '<br><strong style="color:var(--color-accent)">คืนแทน ' + esc(S.forEmp.name) +
+          '</strong> — รายการยังเป็นของเขา ชื่อคุณจะขึ้นเป็นผู้ดำเนินการ'
+        : '<br>ถ้าคืนไม่ครบ แก้จำนวนด้านล่างให้ตรงกับที่คืนจริง')
     : (S.forEmp
         ? '<strong style="color:var(--color-accent)">กำลังเบิกให้ ' + esc(S.forEmp.name) + '</strong>' +
           '<br>รายการจะเป็นของเขา และเขาต้องเป็นคนกดคืนเอง'
@@ -2098,7 +2112,7 @@ function stampLines(slotName) {
     slotName + ' · ' + codesText(),
     // เบิกแทนคนอื่นให้ประทับ 2 ชื่อ จะได้รู้ว่ารูปนี้แอดมินเป็นคนบันทึกให้ ไม่ได้ถ่ายเอง
     S.forEmp
-      ? 'เบิกให้ ' + o.name + ' (' + o.id + ') · บันทึกโดย ' + S.user.name
+      ? S.action + 'ให้ ' + o.name + ' (' + o.id + ') · บันทึกโดย ' + S.user.name
       : o.name + ' (' + o.id + ') · ' + o.dept + ' · ' + S.action
   ];
 }
