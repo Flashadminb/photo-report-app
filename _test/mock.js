@@ -33,7 +33,9 @@ var TOPIC_ID = {
 
 var STAFF = [
   { id: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', shift: 'กะ 03:00 - 12:00 น.', role: 'พนักงานหน้างาน', status: 'ใช้งาน' },
-  { id: '600112', name: 'ธนกฤต ศรีสุข', dept: 'ทุกแผนก', shift: 'กะ 09:00 - 18:00 น.', role: 'แอดมิน', status: 'ใช้งาน' }
+  { id: '600112', name: 'ธนกฤต ศรีสุข', dept: 'ทุกแผนก', shift: 'กะ 09:00 - 18:00 น.', role: 'แอดมิน', status: 'ใช้งาน' },
+  { id: '710001', name: 'มานะ หัวหน้ากะ', dept: 'IN LH+BG', shift: 'กะ 03:00 - 12:00 น.', role: 'หัวหน้างาน', status: 'ใช้งาน' },
+  { id: '720002', name: 'สมศรี ลูกทีม', dept: 'IN LH+BG', shift: 'กะ 03:00 - 12:00 น.', role: 'พนักงานหน้างาน', status: 'ใช้งาน' }
 ];
 var ASSETS = [
   { code: 'PP-INLHBG-01', type: 'Power Pallet', dept: 'IN LH+BG', status: 'พร้อมใช้', note: '' },
@@ -51,8 +53,23 @@ var ASSETS = [
   { code: 'BPL 02', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' },
   { code: 'BPL 03', type: 'เลเซอร์ลบ', dept: 'ทุกแผนก', status: 'พร้อมใช้', note: '' }
 ];
-var OPEN = [{ id: 'PP-20260806-1250', codes: 'PP-INLHBG-02', qty: 1, topic: 'Power Pallet',
-  empId: '730075', empName: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', date: '6/8/2026', ts: '6/8/2026, 09:12:31', time: '09:12' }];
+var OPEN = [
+  { id: 'PP-20260806-1250', codes: 'PP-INLHBG-02', qty: 1, topic: 'Power Pallet',
+    empId: '730075', empName: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', date: '6/8/2026', ts: '6/8/2026, 09:12:31', time: '09:12' },
+  { id: 'PP-20260806-1251', codes: 'PP-INLHBG-01', qty: 1, topic: 'Power Pallet',
+    empId: '720002', empName: 'สมศรี ลูกทีม', dept: 'IN LH+BG', date: '6/8/2026', ts: '6/8/2026, 09:40:02', time: '09:40' },
+  { id: 'PP-20260806-1252', codes: 'PP-BULKY-01', qty: 1, topic: 'Power Pallet',
+    empId: '703481', empName: 'จงดี พ่วงแพ', dept: 'BULKY', date: '6/8/2026', ts: '6/8/2026, 10:05:19', time: '10:05' },
+  { id: 'PP-20260806-1253', codes: 'PP-OUT4W-01', qty: 1, topic: 'Power Pallet',
+    empId: '617613', empName: 'พีรยา บุญอยู่', dept: 'OUT 4W', date: '6/8/2026', ts: '6/8/2026, 10:22:47', time: '10:22' }
+];
+
+/** จำลองการกรองฝั่งเซิร์ฟเวอร์ตามบทบาท (ต้องตรงกับ sessionPayload_ ใน Api.gs) */
+function openFor(u) {
+  if (u.role === 'แอดมิน' || (u.role === 'หัวหน้างาน' && u.dept === 'ทุกแผนก')) return OPEN;
+  if (u.role === 'หัวหน้างาน') return OPEN.filter(function (j) { return j.dept === u.dept; });
+  return OPEN.filter(function (j) { return j.empId === u.id; });
+}
 
 function session(u) {
   return {
@@ -60,7 +77,7 @@ function session(u) {
     topics: [TOPIC_PP, TOPIC_ID], allTopics: [TOPIC_PP, TOPIC_ID],
     assets: ASSETS, shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.', 'กะ 15:00 - 00:00 น.'],
     issueTags: ['แบตไม่เก็บไฟ', 'ยกไม่ขึ้น', 'ล้อชำรุด'],
-    openJobs: OPEN, today: '6/8/2026', serverTime: '6/8/2026, 16:12:04',
+    openJobs: openFor(u), today: '6/8/2026', serverTime: '6/8/2026, 16:12:04',
     // คนแผนกอื่นถือเครื่องของแผนกเราอยู่ — เซิร์ฟเวอร์ตัดชื่อออกแล้วถ้าไม่ใช่แผนกเจ้าของ
     crossUse: u.dept === 'IN LH+BG' ? [
       { code: 'PP-INLHBG-01', type: 'Power Pallet', name: 'ฟาริ เจะเลาะ', dept: 'OUT 4W', date: '6/8/2026', time: '06:02' },
