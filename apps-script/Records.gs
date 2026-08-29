@@ -38,15 +38,6 @@ function splitCodes_(v) {
   return s_(v).split(/\s*,\s*/).map(s_).filter(Boolean);
 }
 
-/**
- * วันที่ของรายการในรูปเลข yyyymmdd อ่านจากรหัสรายการ (หัวข้อ-yyyyMMdd-เลขรัน)
- * ใช้เทียบกับวันตัดรอบ — อ่านจากรหัสเพราะแน่นอนกว่าช่องวันที่ที่อาจเป็นข้อความ
- */
-function recSeqDay_(id) {
-  var m = /-(\d{8})-/.exec(s_(id));
-  return m ? Number(m[1]) : 0;
-}
-
 /** แปลงค่าจากชีทเป็นข้อความวันที่ ไม่ว่าจะเก็บมาเป็น Date หรือ string */
 function cellDate_(v, withTime) {
   if (!(v instanceof Date)) return s_(v);
@@ -456,8 +447,8 @@ function openJobsFast_(empId) {
     var mine = splitCodes_(r[C.CODES - 1]);
     var left = mine;
     if (returned[id]) {
-      // ก่อนวันตัดรอบใช้กติกาเดิม เพื่อไม่ให้ของค้างเก่าเด้งกลับมาทั้งกอง
-      if (!mine.length || recSeqDay_(id) < CFG.PARTIAL_FROM) continue;
+      // ไม่รู้ว่าเบิกรหัสอะไรไว้ (ของเก่ามาก) หรือสั่งปิดใบไว้ = ปิดทั้งใบแบบเดิม
+      if (!mine.length || (CFG.PARTIAL_SKIP || []).indexOf(id) >= 0) continue;
       left = mine.filter(function (c) { return !returned[id][c]; });
       if (!left.length) continue;
     }
