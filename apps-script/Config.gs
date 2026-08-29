@@ -9,6 +9,10 @@ var CFG = {
   MASTER_ID: '1eyEdIkSMxZbfSuzQVdWYRgR2m0imOK6W_KMKjDUbOhE', // ตั้งค่าระบบถ่ายรูปอัพเดทงาน (MASTER)
   DATA_ID:   '1HHqiNiWoie026_szuxKdhzpp2w7Cx_uNV7f6ixRymVU', // บันทึกหน้างาน Power Pallet (DATA)
 
+  // บัตรชั่วคราวของ BPL HUB — คนละไฟล์กับระบบถ่ายรูป จงใจไม่รวมกัน
+  // เพราะเป็นทะเบียนตามสัญญาจ้างเหมา (แบบ B) ที่แอดมิน HUB ดูแลอยู่แล้ว
+  CARD_ID:   '1hIRF-XmjPaTMsFmcuZLCSy1SesBqdM4tnEsFRXbmT6I', // ทะเบียนผู้ได้รับอนุญาต_พาวเวอร์พาเลท_BPL
+
   // โฟลเดอร์ Drive ที่จะเก็บรูป (ค่าเริ่มต้น = โฟลเดอร์เดียวกับไฟล์ชีท)
   DRIVE_PARENT_ID: '1NSRtZvorT2LQjwDr6d0PtH-p3-oilfz5',
   PHOTO_ROOT_NAME: 'รูปถ่ายหน้างาน',
@@ -30,6 +34,16 @@ var CFG = {
     PHOTOS:  'รูปภาพ',
     OPEN:    'ค้างคืน'
   },
+
+  // ── ชื่อชีทในไฟล์บัตรชั่วคราว ────────────────────────────────────────
+  C: {
+    PEOPLE: 'ทะเบียนผู้ได้รับอนุญาต',
+    CARDS:  'ทะเบียนบัตร',
+    LOG:    'สมุดบัตรชั่วคราว'
+  },
+
+  // แถวหัวตารางของไฟล์บัตร — มีบรรทัดชื่อเรื่องคร่อมอยู่ด้านบน ข้อมูลจึงไม่ได้เริ่มแถว 2
+  CARD_HEAD: { PEOPLE: 4, CARDS: 4, LOG: 4 },
 
   // ── ลำดับคอลัมน์ (1-based) — ต้องตรงกับหัวตารางในชีทเป๊ะ ──────────────
   COL: {
@@ -57,7 +71,24 @@ var CFG = {
       BY: 20
     },
     // DATA!รูปภาพ
-    PHOTO: { REC: 1, SLOT: 2, URL: 3, TIME: 4, GPS: 5 }
+    PHOTO: { REC: 1, SLOT: 2, URL: 3, TIME: 4, GPS: 5 },
+
+    // บัตร!ทะเบียนผู้ได้รับอนุญาต
+    CPERSON: {
+      NO: 1, CARD: 2, NAME: 3, SUB: 4, DEPT: 5, TEL: 6, PHOTO: 7,
+      TRAIN: 8, REG_DATE: 9, B2_DATE: 10, STATUS: 11,
+      OUT_DATE: 12, OUT_WHY: 13, BY: 14, NOTE: 15
+    },
+    // บัตร!ทะเบียนบัตร
+    CCARD: {
+      CODE: 1, KIND: 2, HOLDER: 3, SUB: 4, DEPT: 5, KEEPER: 6,
+      ISSUED: 7, STATUS: 8, LOST: 9, NOTE: 10
+    },
+    // บัตร!สมุดบัตรชั่วคราว — 1 ใบบัตร = 1 แถว จะได้ตอบได้ว่าใบไหนอยู่กับใคร
+    CLOG: {
+      DATE: 1, DEPT: 2, CARD: 3, NAME: 4, REAL_CARD: 5, SUB: 6,
+      WHY: 7, OUT_T: 8, BACK_T: 9, GIVER: 10, TRAIN: 11, PROOF: 12
+    }
   },
 
   // ── คำที่ใช้ในชีท (ต้องสะกดตรงกับที่มีอยู่เดิม) ──────────────────────

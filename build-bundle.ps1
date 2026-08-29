@@ -13,7 +13,7 @@ $utf8   = New-Object System.Text.UTF8Encoding($false)
 New-Item -ItemType Directory -Force $out | Out-Null
 
 # ── Code.gs ────────────────────────────────────────────────────────────
-$order = @('Config', 'Master', 'Records', 'Photos', 'Api', 'Setup')
+$order = @('Config', 'Master', 'Records', 'Photos', 'Cards', 'Api', 'Setup')
 $parts = @(
   '/**',
   ' * Code.gs — รวมทุกไฟล์ .gs ไว้ที่เดียวเพื่อให้ก๊อปวางง่าย',

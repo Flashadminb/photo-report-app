@@ -63,6 +63,9 @@ function apiDispatch_(name) {
     apiAdminBoot: apiAdminBoot,
     apiAdminLoad: apiAdminLoad,
     apiAssetHistory: apiAssetHistory,
+    apiCardBoot: apiCardBoot,
+    apiCardIssue: apiCardIssue,
+    apiCardReturn: apiCardReturn,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
     apiAdminDeletePhotosBulk: apiAdminDeletePhotosBulk,
@@ -864,6 +867,90 @@ function apiAssetHistory(empId, code) {
     }
     rows.reverse();   // ใหม่สุดอยู่บน
     return ok_({ code: want, rows: rows });
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  บัตรชั่วคราว BPL — คนละไฟล์ชีทกับระบบถ่ายรูป
+// ══════════════════════════════════════════════════════════════════════════
+
+/** เปิดเมนูบัตรชั่วคราว — รายชื่อคนในทะเบียน · บัตรที่มี · บัตรที่ยังไม่คืน */
+function apiCardBoot(empId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireUser_(m, empId);
+    return ok_({
+      user:   { id: u.id, name: u.name, dept: u.dept },
+      people: cardPeople_(),
+      cards:  cardList_(),
+      out:    cardsOut_(),
+      today:  fmtDate_(new Date())
+    });
+  });
+}
+
+/**
+ * จ่ายบัตร — 1 ใบ = 1 แถว
+ * payload = { empId, why, trained, proof, items:[{card, name, realCard, sub, dept, train}] }
+ */
+function apiCardIssue(payload) {
+  return wrap_(function () {
+    var p = payload || {};
+
+    // ส่งซ้ำแล้วต้องได้ชุดเดียว เหมือนงานเบิกคืนปกติ
+    if (p.clientId) {
+      var dup = alreadySubmitted_(p.clientId);
+      if (dup) return ok_({ wrote: 0, duplicate: true });
+    }
+
+    var m = getMaster_();
+    var u = requireUser_(m, p.empId);
+
+    var items = (p.items || []).filter(function (x) { return x && s_(x.card) && s_(x.name); });
+    if (!items.length) throw new Error('ต้องจับคู่บัตรกับชื่อผู้รับอย่างน้อย 1 คู่');
+
+    // ใบเดียวจ่ายสองคนพร้อมกันไม่ได้ ต้องกันตั้งแต่ต้นทาง
+    var seen = {};
+    items.forEach(function (x) {
+      var c = s_(x.card);
+      if (seen[c]) throw new Error('บัตร ' + c + ' ถูกใส่ซ้ำในรายการเดียวกัน');
+      seen[c] = true;
+    });
+    var busy = {};
+    cardsOut_().forEach(function (o) { busy[o.card] = o; });
+    items.forEach(function (x) {
+      var o = busy[s_(x.card)];
+      if (o) throw new Error('บัตร ' + x.card + ' ยังไม่ได้คืน อยู่กับ ' + o.name + ' (' + o.date + ')');
+    });
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var n = writeCardIssue_(items, s_(p.why), u.name, !!p.trained, s_(p.proof));
+      if (p.clientId) rememberSubmitted_(p.clientId, 'CARD-' + n);
+      return ok_({ wrote: n });
+    } finally {
+      lock.releaseLock();
+    }
+  });
+}
+
+/** คืนบัตร — ติ๊กคืนทีละใบได้ ไม่ต้องคืนพร้อมกันทั้งชุด */
+function apiCardReturn(payload) {
+  return wrap_(function () {
+    var p = payload || {};
+    var m = getMaster_();
+    requireUser_(m, p.empId);
+    var rows = (p.rows || []).map(Number).filter(Boolean);
+    if (!rows.length) throw new Error('ยังไม่ได้ติ๊กใบที่คืน');
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      return ok_({ closed: writeCardReturn_(rows) });
+    } finally {
+      lock.releaseLock();
+    }
   });
 }
 
