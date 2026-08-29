@@ -143,6 +143,13 @@ var CFG = {
   // ทุกครั้งที่มีการเขียนแถวใหม่ แคชจะถูกล้างทันทีอยู่แล้ว
   OPEN_CACHE_SEC: 30,
 
+  // วันตัดรอบของกติกา "คืนไม่ครบ ให้ค้างเฉพาะตัวที่ยังไม่คืน" (yyyymmdd)
+  //
+  // รายการที่เบิกก่อนวันนี้ ใช้กติกาเดิม — มีแถวคืนอ้างอิงเมื่อไหร่ ถือว่าปิดทั้งใบ
+  // ตั้งไว้เพื่อไม่ให้ของค้างเก่า 7 รายการที่สะสมมาก่อนเปลี่ยนกติกา เด้งกลับขึ้นมาทั้งหมด
+  // อยากดูของเก่าจริง ๆ ก็เลื่อนเลขนี้ย้อนกลับได้ ไม่ได้ทำลายข้อมูลอะไร
+  PARTIAL_FROM: 20260830,
+
   // อายุแคชรหัสโฟลเดอร์รายวันใน Drive — ประหยัดการค้นหาโฟลเดอร์ซ้ำทุกครั้งที่จองงาน
   FOLDER_CACHE_SEC: 21600
 };
@@ -461,6 +468,20 @@ function sheetTZ_() {
   try { tz = dataSS_().getSpreadsheetTimeZone() || CFG.TZ; } catch (e) {}
   try { cache.put('sheettz', tz, 21600); } catch (e) {}
   return tz;
+}
+
+/** "PP-01, PP-02" -> ['PP-01','PP-02'] · ตัดช่องว่างและตัวว่างทิ้ง */
+function splitCodes_(v) {
+  return s_(v).split(/\s*,\s*/).map(s_).filter(Boolean);
+}
+
+/**
+ * วันที่ของรายการในรูปเลข yyyymmdd อ่านจากรหัสรายการ (หัวข้อ-yyyyMMdd-เลขรัน)
+ * ใช้เทียบกับวันตัดรอบ — อ่านจากรหัสเพราะแน่นอนกว่าช่องวันที่ที่อาจเป็นข้อความ
+ */
+function recSeqDay_(id) {
+  var m = /-(\d{8})-/.exec(s_(id));
+  return m ? Number(m[1]) : 0;
 }
 
 /** แปลงค่าจากชีทเป็นข้อความวันที่ ไม่ว่าจะเก็บมาเป็น Date หรือ string */
@@ -844,10 +865,21 @@ function openJobsFast_(empId) {
   var head = sh.getRange(2, 1, n, C.CODES).getValues();   // รหัสรายการ .. รหัสเครื่อง
   var refs = sh.getRange(2, C.REF, n, 1).getValues();     // อ้างอิงรายการเบิก
 
-  var referenced = {};
+  // เก็บ "รหัสที่คืนไปแล้ว" ของแต่ละรายการ แทนการจำแค่ว่ามีคนคืนหรือยัง
+  //
+  // ของเดิมพอมีแถวคืนอ้างอิงรายการไหน ก็ปิดทั้งใบทันทีไม่ว่าจะคืนกี่ตัว
+  // เบิก 5 คืน 1 = อีก 4 ตัวหายไปจากระบบเลย ไม่มีใครรู้ว่าใครถืออยู่
+  // ตอนนี้หักรหัสทีละตัว เหลือ 0 ถึงปิด ที่เหลือค้างอยู่กับคนเดิมตามความจริง
+  //
+  // แถวคืนที่ไม่ได้ระบุรหัสเครื่อง = ปิดทั้งใบแบบเดิม กันข้อมูลเก่าค้างตลอดกาล
+  var returned = {}, closeAll = {};
   for (var i = 0; i < n; i++) {
     var rf = s_(refs[i][0]);
-    if (rf) referenced[rf] = true;
+    if (!rf) continue;
+    var rc = splitCodes_(head[i][C.CODES - 1]);
+    if (!rc.length) { closeAll[rf] = true; continue; }
+    if (!returned[rf]) returned[rf] = {};
+    for (var k = 0; k < rc.length; k++) returned[rf][rc[k]] = true;
   }
 
   var out = [];
@@ -856,14 +888,25 @@ function openJobsFast_(empId) {
     var id = s_(r[C.ID - 1]);
     if (!id) continue;
     if (s_(r[C.ACTION - 1]) !== CFG.V.BORROW) continue;
-    if (referenced[id]) continue;
+    if (closeAll[id]) continue;
+
+    var mine = splitCodes_(r[C.CODES - 1]);
+    var left = mine;
+    if (returned[id]) {
+      // ก่อนวันตัดรอบใช้กติกาเดิม เพื่อไม่ให้ของค้างเก่าเด้งกลับมาทั้งกอง
+      if (!mine.length || recSeqDay_(id) < CFG.PARTIAL_FROM) continue;
+      left = mine.filter(function (c) { return !returned[id][c]; });
+      if (!left.length) continue;
+    }
     if (empId && s_(r[C.EMP_ID - 1]) !== empId) continue;
 
     var ts = cellDate_(r[C.TS - 1], true);
     out.push({
       id: id,
-      codes: s_(r[C.CODES - 1]),
-      qty: Number(r[C.QTY - 1]) || 0,
+      // ส่งเฉพาะรหัสที่ยังไม่ได้คืน หน้าคืนจะได้ติ๊กมาให้ถูกตัว และตัวกันเบิกซ้ำ
+      // จะปล่อยเครื่องที่คืนไปแล้วให้คนอื่นเบิกต่อได้ทันทีโดยไม่ต้องรอคืนครบทั้งชุด
+      codes: left.length ? left.join(', ') : s_(r[C.CODES - 1]),
+      qty: left.length ? left.length : (Number(r[C.QTY - 1]) || 0),
       topic: s_(r[C.TOPIC - 1]),
       empId: s_(r[C.EMP_ID - 1]),
       empName: s_(r[C.EMP_NAME - 1]),
@@ -2420,21 +2463,32 @@ function buildPairs_(recs, photos, hidden) {
     };
   };
 
+  // คืนได้หลายครั้งต่อการเบิกครั้งเดียว (เบิก 10 คืน 9 ตอนบ่าย อีก 1 ตอนเย็น)
+  // เก็บทุกครั้งไว้ในการ์ดเดียว ไม่ให้ครั้งหลังทับครั้งแรกจนประวัติหาย
   var returns = {};
-  recs.forEach(function (r) { if (r.ref) returns[r.ref] = r; });
+  recs.forEach(function (r) {
+    if (!r.ref) return;
+    (returns[r.ref] = returns[r.ref] || []).push(r);
+  });
 
   return recs.filter(function (r) { return r.action === CFG.V.BORROW; })
     .map(function (r) {
-      var back = returns[r.id] || null;
+      var list = returns[r.id] || [];
+      var back = list.length ? list[list.length - 1] : null;   // ครั้งล่าสุด ไว้สรุปสถานะ
+      var qtyBack = list.length
+        ? list.reduce(function (a, x) { return a + (Number(x.qty) || 0); }, 0)
+        : null;
       return {
         id: r.id, topic: r.topic, date: r.date, shift: r.shift,
         empId: r.empId, name: r.empName, dept: r.dept,
-        codes: (back && back.codes) || r.codes,
-        qty: r.qty, qtyBack: back ? back.qty : null,
-        status: (back && back.result === CFG.V.ISSUE) ? CFG.V.ISSUE : r.result,
-        issue: (back && back.issue) || r.issue,
-        note: [r.note, back && back.note].filter(Boolean).join(' · '),
-        out: side(r), back: side(back)
+        codes: r.codes,                       // รหัสที่เบิกไปทั้งชุด ไม่ใช่ที่คืนรอบสุดท้าย
+        qty: r.qty, qtyBack: qtyBack,
+        status: list.some(function (x) { return x.result === CFG.V.ISSUE; }) ? CFG.V.ISSUE : r.result,
+        issue: [r.issue].concat(list.map(function (x) { return x.issue; })).filter(Boolean).join(' · '),
+        note: [r.note].concat(list.map(function (x) { return x.note; })).filter(Boolean).join(' · '),
+        out: side(r),
+        back: side(back),                     // ของเดิมยังใช้ได้ = ครั้งล่าสุด
+        backs: list.map(side)                 // ครบทุกครั้ง เรียงตามเวลาที่คืน
       };
     }).reverse();
 }

@@ -175,6 +175,17 @@ var API = {
               { empName: 'สุพัตรา แก้วมณี', result: 'มีปัญหา', issue: 'ยกไม่ขึ้น', note: 'จอดช่อง B2' }),
         back: SIDE('16:12', 6, 'PP-20260806-1291',
               { empName: 'จิตตรา รัตนวรรณ์', result: 'มีปัญหา', issue: 'แบตไม่เก็บไฟ', note: 'ส่งซ่อมแล้ว' }) },
+        // เบิก 10 คืน 9 ตอนบ่าย อีก 1 ตอนเย็น — ต้องอยู่ในการ์ดเดียว เห็นสองท่อน
+        { id: 'PP-20260806-1300', topic: 'Power Pallet', date: '6/8/2026', shift: 'กะ 03:00 - 12:00 น.',
+          empId: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG',
+          codes: 'PP-01, PP-02, PP-03, PP-04, PP-05, PP-06, PP-07, PP-08, PP-09, PP-10',
+          qty: 10, qtyBack: 10, status: 'ปกติ', issue: '', note: '',
+          out:  SIDE('08:00', 2, 'PP-20260806-1300', { empName: 'สุพัตรา แก้วมณี', result: 'ปกติ' }),
+          back: SIDE('18:00', 1, 'PP-20260806-1322', { empName: 'สุพัตรา แก้วมณี', result: 'ปกติ', qty: 1 }),
+          backs: [
+            SIDE('15:00', 2, 'PP-20260806-1311', { empName: 'สุพัตรา แก้วมณี', result: 'ปกติ', qty: 9 }),
+            SIDE('18:00', 1, 'PP-20260806-1322', { empName: 'สุพัตรา แก้วมณี', result: 'ปกติ', qty: 1 })
+          ] },
         { id: 'PP-20260806-1268', topic: 'Power Pallet', date: '6/8/2026', shift: 'กะ 03:00 - 12:00 น.',
           empId: '730075', name: 'สุพัตรา แก้วมณี', dept: 'IN LH+BG', codes: 'PP-INLHBG-05',
           qty: 2, qtyBack: null, status: 'ปกติ', issue: '', note: '',

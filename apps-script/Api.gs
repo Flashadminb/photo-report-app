@@ -999,21 +999,32 @@ function buildPairs_(recs, photos, hidden) {
     };
   };
 
+  // คืนได้หลายครั้งต่อการเบิกครั้งเดียว (เบิก 10 คืน 9 ตอนบ่าย อีก 1 ตอนเย็น)
+  // เก็บทุกครั้งไว้ในการ์ดเดียว ไม่ให้ครั้งหลังทับครั้งแรกจนประวัติหาย
   var returns = {};
-  recs.forEach(function (r) { if (r.ref) returns[r.ref] = r; });
+  recs.forEach(function (r) {
+    if (!r.ref) return;
+    (returns[r.ref] = returns[r.ref] || []).push(r);
+  });
 
   return recs.filter(function (r) { return r.action === CFG.V.BORROW; })
     .map(function (r) {
-      var back = returns[r.id] || null;
+      var list = returns[r.id] || [];
+      var back = list.length ? list[list.length - 1] : null;   // ครั้งล่าสุด ไว้สรุปสถานะ
+      var qtyBack = list.length
+        ? list.reduce(function (a, x) { return a + (Number(x.qty) || 0); }, 0)
+        : null;
       return {
         id: r.id, topic: r.topic, date: r.date, shift: r.shift,
         empId: r.empId, name: r.empName, dept: r.dept,
-        codes: (back && back.codes) || r.codes,
-        qty: r.qty, qtyBack: back ? back.qty : null,
-        status: (back && back.result === CFG.V.ISSUE) ? CFG.V.ISSUE : r.result,
-        issue: (back && back.issue) || r.issue,
-        note: [r.note, back && back.note].filter(Boolean).join(' · '),
-        out: side(r), back: side(back)
+        codes: r.codes,                       // รหัสที่เบิกไปทั้งชุด ไม่ใช่ที่คืนรอบสุดท้าย
+        qty: r.qty, qtyBack: qtyBack,
+        status: list.some(function (x) { return x.result === CFG.V.ISSUE; }) ? CFG.V.ISSUE : r.result,
+        issue: [r.issue].concat(list.map(function (x) { return x.issue; })).filter(Boolean).join(' · '),
+        note: [r.note].concat(list.map(function (x) { return x.note; })).filter(Boolean).join(' · '),
+        out: side(r),
+        back: side(back),                     // ของเดิมยังใช้ได้ = ครั้งล่าสุด
+        backs: list.map(side)                 // ครบทุกครั้ง เรียงตามเวลาที่คืน
       };
     }).reverse();
 }

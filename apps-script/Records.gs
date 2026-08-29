@@ -33,6 +33,20 @@ function sheetTZ_() {
   return tz;
 }
 
+/** "PP-01, PP-02" -> ['PP-01','PP-02'] · ตัดช่องว่างและตัวว่างทิ้ง */
+function splitCodes_(v) {
+  return s_(v).split(/\s*,\s*/).map(s_).filter(Boolean);
+}
+
+/**
+ * วันที่ของรายการในรูปเลข yyyymmdd อ่านจากรหัสรายการ (หัวข้อ-yyyyMMdd-เลขรัน)
+ * ใช้เทียบกับวันตัดรอบ — อ่านจากรหัสเพราะแน่นอนกว่าช่องวันที่ที่อาจเป็นข้อความ
+ */
+function recSeqDay_(id) {
+  var m = /-(\d{8})-/.exec(s_(id));
+  return m ? Number(m[1]) : 0;
+}
+
 /** แปลงค่าจากชีทเป็นข้อความวันที่ ไม่ว่าจะเก็บมาเป็น Date หรือ string */
 function cellDate_(v, withTime) {
   if (!(v instanceof Date)) return s_(v);
@@ -414,10 +428,21 @@ function openJobsFast_(empId) {
   var head = sh.getRange(2, 1, n, C.CODES).getValues();   // รหัสรายการ .. รหัสเครื่อง
   var refs = sh.getRange(2, C.REF, n, 1).getValues();     // อ้างอิงรายการเบิก
 
-  var referenced = {};
+  // เก็บ "รหัสที่คืนไปแล้ว" ของแต่ละรายการ แทนการจำแค่ว่ามีคนคืนหรือยัง
+  //
+  // ของเดิมพอมีแถวคืนอ้างอิงรายการไหน ก็ปิดทั้งใบทันทีไม่ว่าจะคืนกี่ตัว
+  // เบิก 5 คืน 1 = อีก 4 ตัวหายไปจากระบบเลย ไม่มีใครรู้ว่าใครถืออยู่
+  // ตอนนี้หักรหัสทีละตัว เหลือ 0 ถึงปิด ที่เหลือค้างอยู่กับคนเดิมตามความจริง
+  //
+  // แถวคืนที่ไม่ได้ระบุรหัสเครื่อง = ปิดทั้งใบแบบเดิม กันข้อมูลเก่าค้างตลอดกาล
+  var returned = {}, closeAll = {};
   for (var i = 0; i < n; i++) {
     var rf = s_(refs[i][0]);
-    if (rf) referenced[rf] = true;
+    if (!rf) continue;
+    var rc = splitCodes_(head[i][C.CODES - 1]);
+    if (!rc.length) { closeAll[rf] = true; continue; }
+    if (!returned[rf]) returned[rf] = {};
+    for (var k = 0; k < rc.length; k++) returned[rf][rc[k]] = true;
   }
 
   var out = [];
@@ -426,14 +451,25 @@ function openJobsFast_(empId) {
     var id = s_(r[C.ID - 1]);
     if (!id) continue;
     if (s_(r[C.ACTION - 1]) !== CFG.V.BORROW) continue;
-    if (referenced[id]) continue;
+    if (closeAll[id]) continue;
+
+    var mine = splitCodes_(r[C.CODES - 1]);
+    var left = mine;
+    if (returned[id]) {
+      // ก่อนวันตัดรอบใช้กติกาเดิม เพื่อไม่ให้ของค้างเก่าเด้งกลับมาทั้งกอง
+      if (!mine.length || recSeqDay_(id) < CFG.PARTIAL_FROM) continue;
+      left = mine.filter(function (c) { return !returned[id][c]; });
+      if (!left.length) continue;
+    }
     if (empId && s_(r[C.EMP_ID - 1]) !== empId) continue;
 
     var ts = cellDate_(r[C.TS - 1], true);
     out.push({
       id: id,
-      codes: s_(r[C.CODES - 1]),
-      qty: Number(r[C.QTY - 1]) || 0,
+      // ส่งเฉพาะรหัสที่ยังไม่ได้คืน หน้าคืนจะได้ติ๊กมาให้ถูกตัว และตัวกันเบิกซ้ำ
+      // จะปล่อยเครื่องที่คืนไปแล้วให้คนอื่นเบิกต่อได้ทันทีโดยไม่ต้องรอคืนครบทั้งชุด
+      codes: left.length ? left.join(', ') : s_(r[C.CODES - 1]),
+      qty: left.length ? left.length : (Number(r[C.QTY - 1]) || 0),
       topic: s_(r[C.TOPIC - 1]),
       empId: s_(r[C.EMP_ID - 1]),
       empName: s_(r[C.EMP_NAME - 1]),

@@ -256,8 +256,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v56';
-window.APP_BUILT   = '21/8/2026 18:40';
+window.APP_VERSION = 'v57';
+window.APP_BUILT   = '29/8/2026 17:26';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1096,13 +1096,12 @@ function statCard(k, v, accent, jumpTo) {
 function pairMatch(p, q) {
   q = (q || '').trim().toLowerCase();
   if (!q) return true;
-  var hay = [
-    p.id, p.codes, p.name, p.dept, p.topic, p.date, p.issue, p.note,
-    p.out && p.out.recordId, p.back && p.back.recordId,
-    p.out && p.out.issue, p.back && p.back.issue,
-    p.out && p.out.note, p.back && p.back.note,
-    p.out && p.out.empName, p.back && p.back.empName
-  ].filter(Boolean).join(' ').toLowerCase();
+  // ค้นเจอจากทุกฝั่ง รวมการคืนรอบที่สองด้วย ไม่งั้นพิมพ์รหัสแถวคืนรอบหลังแล้วหาไม่เจอ
+  var hay = [p.id, p.codes, p.name, p.dept, p.topic, p.date, p.issue, p.note]
+    .concat(pairSides(p).map(function (sd) {
+      return [sd.recordId, sd.issue, sd.note, sd.empName].filter(Boolean).join(' ');
+    }))
+    .filter(Boolean).join(' ').toLowerCase();
   return hay.indexOf(q) >= 0;
 }
 
@@ -1293,7 +1292,7 @@ function fillVault() {
     statCard('ยังไม่คืน', list.filter(function (p) { return !p.back; }).length, true, 'ยังไม่คืน'),
     statCard('พบปัญหา', list.filter(function (p) { return p.status === 'มีปัญหา'; }).length, true, 'มีปัญหา'),
     statCard('รูปบนเว็บ', list.reduce(function (a, p) {
-      return a + sidePhotos(p.out).length + sidePhotos(p.back).length;
+      return a + pairPhotoN(p);
     }, 0))
   ]));
 
@@ -1318,7 +1317,7 @@ function sidePhotos(side) {
 
 /** ชุดนี้ถูกซ่อนไว้ไหม (ฝั่งไหนฝั่งหนึ่งก็นับ) */
 function pairHidden(p) {
-  return !!((p.out && p.out.hidden) || (p.back && p.back.hidden));
+  return pairSides(p).some(function (sd) { return sd.hidden; });
 }
 
 /** ที่ติ๊กไว้เป็น "ชุด" — แปลงกลับเป็นรหัสรายการจริง ทั้งฝั่งเบิกและฝั่งคืน */
@@ -1368,12 +1367,29 @@ function bulkHidePhotos(ids, show) {
   });
 }
 
+/**
+ * ฝั่งคืนทั้งหมดของรายการหนึ่ง — คืนได้หลายครั้งต่อการเบิกครั้งเดียว
+ * เซิร์ฟเวอร์รุ่นเก่าส่งมาแต่ back ตัวเดียว เลยรองรับทั้งสองแบบไว้
+ */
+function pairBacks(p) {
+  if (p.backs && p.backs.length) return p.backs.filter(Boolean);
+  return p.back ? [p.back] : [];
+}
+
+/** ทุกฝั่งของรายการ — เบิก 1 ครั้ง + คืนกี่ครั้งก็ได้ */
+function pairSides(p) { return [p.out].concat(pairBacks(p)).filter(Boolean); }
+
+/** จำนวนรูปที่ยังแสดงอยู่ของทั้งชุด */
+function pairPhotoN(p) {
+  return pairSides(p).reduce(function (a, sd) { return a + sidePhotos(sd).length; }, 0);
+}
+
 /** วนทุกฝั่ง (เบิก/คืน) ของรายการที่รหัสตรงกับที่ส่งมา */
 function eachSide(ids, fn) {
   var hit = {};
   ids.forEach(function (id) { hit[id] = true; });
   A.pairs.forEach(function (p) {
-    [p.out, p.back].forEach(function (sd) {
+    pairSides(p).forEach(function (sd) {
       if (sd && hit[sd.recordId]) fn(sd);
     });
   });
@@ -1409,7 +1425,7 @@ function unhideLocally(ids) {
 /** รหัสรายการทั้งชุด — เบิกกับคืนถือเป็นชุดเดียวกัน ลบทีเดียวไปพร้อมกัน */
 function pairIds(p) {
   var seen = {}, out = [];
-  [p.out, p.back].forEach(function (sd) {
+  pairSides(p).forEach(function (sd) {
     if (!sd || !sd.recordId || seen[sd.recordId]) return;
     seen[sd.recordId] = true;
     out.push(sd.recordId);
@@ -1417,9 +1433,9 @@ function pairIds(p) {
   return out;
 }
 
-/** ชุดนี้ยังมีรูปเหลือให้ลบไหม (ลบไปแล้วทั้งสองฝั่งก็ไม่ต้องโชว์ปุ่ม) */
+/** ชุดนี้ยังมีรูปเหลือให้ลบไหม (ลบไปแล้วทุกฝั่งก็ไม่ต้องโชว์ปุ่ม) */
 function pairHasPhotos(p) {
-  return sidePhotos(p.out).length > 0 || sidePhotos(p.back).length > 0;
+  return pairSides(p).some(function (sd) { return sidePhotos(sd).length > 0; });
 }
 
 /**
@@ -1449,7 +1465,7 @@ function recChip(id) {
  * แค่ไม่ต้องเปลืองพื้นที่กับกล่องรูปที่ไม่มีรูปให้ดูแล้ว
  */
 function pairCardHidden(p) {
-  var n = (p.out ? p.out.photoN || 0 : 0) + (p.back ? p.back.photoN || 0 : 0);
+  var n = pairSides(p).reduce(function (a, sd) { return a + (sd.photoN || 0); }, 0);
   var qty = 'เบิก ' + p.qty + ' → คืน ' + (p.back ? (p.qtyBack !== null ? p.qtyBack : p.qty) : '—');
 
   var row = h('div', {
@@ -1498,7 +1514,7 @@ function pairCard(p) {
   // ── ติ๊ก/ซ่อน อยู่ที่หัวการ์ด ทำทีเดียวได้ทั้งเบิกและคืน ──
   var ids = pairIds(p);
   if (A.canEdit && pairHasPhotos(p)) {
-    var nPhoto = sidePhotos(p.out).length + sidePhotos(p.back).length;
+    var nPhoto = pairPhotoN(p);
     var both = ids.length > 1 ? ' (เบิก+คืน)' : '';
 
     // ใช้ปุ่มแทน checkbox ใน <label> เพราะคลิกทีเดียวมันสลับสองรอบ กลายเป็นไม่ติ๊ก
@@ -1518,7 +1534,15 @@ function pairCard(p) {
 
   var inner = h('div', { class: 'in' }, []);
 
-  [['เบิก', p.out], ['คืน', p.back]].forEach(function (pair) {
+  // คืนหลายครั้งต่อการเบิกครั้งเดียวก็อยู่ในการ์ดเดียวกัน เรียงตามเวลาที่คืนจริง
+  // เบิก 10 คืน 9 ตอนบ่าย อีก 1 ตอนเย็น จะเห็นสองท่อนแยกกัน ไม่ใช่ท่อนหลังทับท่อนแรก
+  var sides = [['เบิก', p.out]];
+  pairBacks(p).forEach(function (b, i, all) {
+    sides.push([all.length > 1 ? 'คืน ครั้งที่ ' + (i + 1) : 'คืน', b]);
+  });
+  if (!pairBacks(p).length) sides.push(['คืน', null]);
+
+  sides.forEach(function (pair) {
     var label = pair[0], side = pair[1];
     var box = h('div', { style: 'margin-bottom:14px' }, []);
     var title = h('div', {
@@ -1732,7 +1756,7 @@ function viewDash(v) {
     statCard('รายการทั้งหมด', P.length),
     statCard('ยังไม่คืน', P.filter(function (p) { return !p.back; }).length, true),
     statCard('พบปัญหา', P.filter(function (p) { return p.status === 'มีปัญหา'; }).length, true),
-    statCard('รูปบนเว็บ', P.reduce(function (a, p) { return a + sidePhotos(p.out).length + sidePhotos(p.back).length; }, 0))
+    statCard('รูปบนเว็บ', P.reduce(function (a, p) { return a + pairPhotoN(p); }, 0))
   ]));
 
   v.appendChild(section('แยกตามหัวข้อ', [
@@ -1745,7 +1769,7 @@ function viewDash(v) {
           String(l.filter(function (p) { return p.back; }).length),
           String(l.filter(function (p) { return !p.back; }).length),
           String(l.filter(function (p) { return p.status === 'มีปัญหา'; }).length),
-          String(l.reduce(function (a, p) { return a + sidePhotos(p.out).length + sidePhotos(p.back).length; }, 0))
+          String(l.reduce(function (a, p) { return a + pairPhotoN(p); }, 0))
         ].map(function (c) { return h('td', {}, [c]); }));
       }))
     ])])
