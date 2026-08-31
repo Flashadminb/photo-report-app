@@ -127,6 +127,26 @@ function cardsOut_() {
 }
 
 /**
+ * เหมือน cardsOut_() แต่ผ่านแคชสั้น ๆ
+ *
+ * หน้าแรกของแอพต้องโชว์บัตรค้างด้วย ซึ่งหมายถึงทุกครั้งที่เปิดแอพ/กดกลับหน้าหลัก
+ * จะต้องเปิดไฟล์บัตร (คนละไฟล์กับชีทงาน) เพิ่มอีกไฟล์ — ตอนล็อกอินช้าอยู่แล้ว
+ * แคชไว้เท่ากับรายการค้างคืนของอุปกรณ์ และล้างทันทีที่มีการจ่าย/คืนบัตร
+ */
+function cardsOutCached_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('cardsout');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  var list = cardsOut_();
+  try { cache.put('cardsout', JSON.stringify(list), CFG.OPEN_CACHE_SEC); } catch (e) {}
+  return list;
+}
+
+function clearCardsOutCache_() {
+  try { CacheService.getScriptCache().remove('cardsout'); } catch (e) {}
+}
+
+/**
  * เขียนการจ่ายบัตรลงสมุด — 1 ใบ = 1 แถว
  * @param {Array} items [{card, name, realCard, sub, dept, train}]
  */
@@ -164,11 +184,13 @@ function writeCardIssue_(items, why, giver, trained, proof) {
 }
 
 /** เติมเวลาคืนกลับลงแถวเดิม — รับเลขแถวที่ได้จาก cardsOut_() */
-function writeCardReturn_(rowNos) {
+function writeCardReturn_(rowNos, proof) {
   var sh = cardSS_().getSheetByName(CFG.C.LOG);
   if (!sh) throw new Error('ไม่พบชีท "' + CFG.C.LOG + '"');
   var C = CFG.COL.CLOG;
   var tm = Utilities.formatDate(new Date(), CFG.TZ, 'HH:mm');
+  var link = s_(proof);
+  if (link) ensureBackProofCol_(sh);
   var n = 0;
   (rowNos || []).forEach(function (r) {
     var row = Number(r);
@@ -176,7 +198,23 @@ function writeCardReturn_(rowNos) {
     // กันเขียนทับแถวที่คืนไปแล้ว (เผื่อสองคนกดพร้อมกัน)
     if (s_(sh.getRange(row, C.BACK_T).getValue())) return;
     sh.getRange(row, C.BACK_T).setValue(tm);
+    if (link) sh.getRange(row, C.BACK_PROOF).setValue(link);
     n++;
   });
   return n;
+}
+
+/**
+ * ช่อง "หลักฐานการคืน" — เติมให้เองครั้งแรกที่มีคนคืนพร้อมรูป
+ *
+ * เพิ่มอย่างเดียว ไม่แตะของเดิม: ต่อคอลัมน์ท้ายตารางถ้าชีทแคบไป
+ * แล้วเขียนหัวตารางเฉพาะตอนที่ช่องนั้นยังว่างจริง ๆ
+ * ถ้ามีใครตั้งชื่อหัวไว้แล้ว ปล่อยไว้ตามนั้น ใช้ช่องเดิมต่อได้เลย
+ */
+function ensureBackProofCol_(sh) {
+  var col = CFG.COL.CLOG.BACK_PROOF;
+  if (sh.getMaxColumns() < col) sh.insertColumnsAfter(sh.getMaxColumns(), col - sh.getMaxColumns());
+  var head = CFG.CARD_HEAD.LOG;
+  var cell = sh.getRange(head, col);
+  if (!s_(cell.getValue())) cell.setValue('หลักฐานการคืน');
 }

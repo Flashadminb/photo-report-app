@@ -318,7 +318,7 @@ textarea.input{min-height:90px;resize:vertical}
         <button class="btn btn-primary btn-block" id="btn-card-return" style="margin-top:10px">คืนบัตรที่ติ๊กไว้</button>
       </div>
 
-      <div>
+      <div id="card-issue-wrap">
         <span class="label">จ่ายบัตร · จับคู่บัตรกับคนรับ</span>
         <div id="card-pairs"></div>
         <button id="btn-card-add" style="width:100%;margin-top:6px;padding:9px;background:transparent;cursor:pointer;
@@ -327,7 +327,7 @@ textarea.input{min-height:90px;resize:vertical}
         </button>
       </div>
 
-      <div>
+      <div id="card-why-wrap">
         <span class="label">เหตุผล</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-why"></div>
       </div>
@@ -343,12 +343,8 @@ textarea.input{min-height:90px;resize:vertical}
 
       <div>
         <span class="label">รูป · แนบกี่รูปก็ได้</span>
-        <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
-          ถ่าย <strong>2 อย่าง</strong> ในชุดเดียวกัน
-          <div style="margin-top:5px">① <strong>หน้าคนที่รับบัตร</strong> — ให้เห็นหน้าชัด ถือบัตรที่ได้รับให้เห็นเลขบัตรด้วย</div>
-          <div>② <strong>หลักฐานการอบรม</strong> — ใบเซ็นชื่อ หรือตอนกำลังอบรม</div>
-          <div class="muted" style="margin-top:5px">รับบัตรหลายคน ถ่ายให้ครบทุกคน · เก็บรวมไว้ที่เดียวกัน</div>
-        </div>
+        <div class="surface" id="card-shot-tip"
+             style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px"></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-shots"></div>
       </div>
     </section>
@@ -622,8 +618,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v59';
-window.APP_BUILT   = '31/8/2026 17:38';
+window.APP_VERSION = 'v60';
+window.APP_BUILT   = '31/8/2026 18:00';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1256,6 +1252,8 @@ function back() {
   if (S.screen === 'shoot') { go('form'); return; }
   if (S.screen === 'review') { S.step = steps().length - 1; go('shoot'); return; }
   if (S.screen === 'form') { go('home'); return; }
+  // ออกจากหน้าบัตรแล้วเลิกโหมดคืน ไม่งั้นครั้งหน้าเข้าจากเมนูจะยังเป็นหน้าคืนอยู่
+  if (S.screen === 'cards') { CARD.mode = 'issue'; CARD.back = {}; CARD.shots = []; }
   go('home');
 }
 
@@ -1427,7 +1425,33 @@ function renderHome() {
       ]), b
     ]));
   });
-  if (!S.openJobs.length) {
+  // บัตรชั่วคราวที่ยังไม่คืน — ต่อท้ายรายการค้างคืนในลิสต์เดียวกัน
+  //
+  // หน้างานไม่ได้แยกในหัวว่า "ของ" กับ "บัตร" คนละระบบ รู้แค่ว่ามีอะไรค้างต้องคืน
+  // แยกกล่องจะกลายเป็นของที่ต้องเลื่อนไปหา แล้วสุดท้ายไม่มีใครคืน
+  //
+  // ไม่กรองตามคนจ่าย เพราะบัตรอยู่กับคนขับไม่ได้อยู่กับคนจ่าย
+  // จ่ายกะเช้า คนขับมาคืนกะดึก คนกะดึกต้องเห็นและกดคืนให้ได้
+  (S.cardsOut || []).forEach(function (o) {
+    var b = el('button', { class: 'btn btn-primary', style: 'padding:9px 16px;font-size:13px' }, ['คืน']);
+    b.addEventListener('click', function () { startCardReturn(o); });
+    list.appendChild(el('div', {
+      style: 'display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--color-divider)'
+    }, [
+      el('div', { style: 'flex:1;line-height:1.35' }, [
+        el('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px' }, [o.card]),
+        el('div', { style: 'font-size:11px;opacity:.65' }, [
+          'จ่ายเมื่อ ' + (o.date === S.today ? o.out + ' น.' : o.date + ' ' + o.out) +
+          ' · บัตรชั่วคราว · ' + o.name
+        ])
+      ]), b
+    ]));
+  });
+
+  var nOpen = S.openJobs.length + (S.cardsOut || []).length;
+  $('#open-count').textContent = 'ค้างคืน ' + nOpen + ' รายการ';
+  $('#open-wrap').classList.toggle('hide', !nOpen);
+  if (!nOpen) {
     list.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่มีรายการค้างคืน']));
     $('#open-wrap').classList.remove('hide');
   }
@@ -1743,16 +1767,35 @@ var CARD = {
   trained: false,
   shots: [],
   back: {},                          // เลขแถวที่ติ๊กคืน
+  mode: 'issue',                     // 'issue' = จ่ายบัตร · 'back' = คืนอย่างเดียว
   loaded: false, busy: false
 };
 var CARD_WHY = ['ลืมบัตร', 'คนขับแทน', 'บัตรหาย', 'อื่น ๆ'];
 
-function openCards() {
+/**
+ * กด "คืน" จากหน้าแรก — เข้าหน้าบัตรแบบคืนอย่างเดียว
+ *
+ * ตั้งใจให้เหมือนคืนอุปกรณ์: ติ๊กใบที่คืน ถ่ายรูป กดส่ง จบ
+ * ส่วนจ่ายบัตร/เหตุผล/อบรม ซ่อนไว้หมด ตอนนี้ไม่ได้มาจ่าย มาคืน
+ */
+function startCardReturn(o) {
+  CARD.mode = 'back';
+  CARD.back = {};
+  if (o) CARD.back[o.row] = true;
+  CARD.shots = [];
+  openCards();
+}
+
+function openCards(mode) {
+  if (mode) CARD.mode = mode;
   go('cards');
   if (CARD.loaded) { renderCards(); return; }
   $('#cards-msg').textContent = 'กำลังโหลดทะเบียน…';
   rpc('apiCardBoot', S.user.id).then(function (r) {
-    CARD.people = r.people || []; CARD.cards = r.cards || []; CARD.out = r.out || [];
+    CARD.people = r.people || []; CARD.cards = r.cards || [];
+    // หน้าแรกกับหน้าบัตรต้องอ่านรายการเดียวกัน ไม่งั้นจ่ายบัตรเสร็จแล้ว
+    // กลับหน้าแรกจะไม่เห็นใบที่เพิ่งจ่าย เพราะหน้าแรกยังถือของเก่าอยู่
+    CARD.out = S.cardsOut = r.out || [];
     CARD.loaded = true;
     // แถวแรกสร้างไว้ตั้งแต่ยังไม่รู้ว่ามีบัตรอะไรบ้าง มาเติมให้ตอนนี้
     if (CARD.pairs.length === 1 && !CARD.pairs[0].card) CARD.pairs[0].card = freeCard();
@@ -1798,10 +1841,18 @@ function freeCard() {
 
 function renderCards() {
   var busy = cardBusy();
+  var back = (CARD.mode === 'back');
 
-  $('#cards-msg').textContent = CARD.loaded
-    ? 'บัตรทั้งหมด ' + CARD.cards.length + ' ใบ · จ่ายออกอยู่ ' + CARD.out.length + ' ใบ · ทะเบียน ' + CARD.people.length + ' คน'
-    : 'กำลังโหลด…';
+  // โหมดคืน ซ่อนทุกอย่างที่ไม่เกี่ยวกับการคืน เหลือแค่ติ๊กกับถ่ายรูป
+  ['card-issue-wrap', 'card-why-wrap', 'card-train'].forEach(function (id) {
+    var e = $('#' + id); if (e) e.classList.toggle('hide', back);
+  });
+  // ปุ่มคืนในหน้าใช้เฉพาะตอนเข้ามาเองแบบไม่ได้ตั้งใจมาคืน — โหมดคืนใช้ปุ่มแถบล่างแทน
+  $('#btn-card-return').classList.toggle('hide', back);
+
+  $('#cards-msg').textContent = !CARD.loaded ? 'กำลังโหลด…'
+    : back ? 'ติ๊กใบที่คืนแล้วถ่ายรูป · จ่ายออกอยู่ ' + CARD.out.length + ' ใบ'
+           : 'บัตรทั้งหมด ' + CARD.cards.length + ' ใบ · จ่ายออกอยู่ ' + CARD.out.length + ' ใบ · ทะเบียน ' + CARD.people.length + ' คน';
 
   // ── บัตรที่ยังไม่คืน ──
   $('#cards-out-wrap').classList.toggle('hide', !CARD.out.length);
@@ -1931,7 +1982,15 @@ function renderCards() {
   bx.style.color = CARD.trained ? 'var(--color-bg)' : '';
   bx.style.borderColor = CARD.trained ? 'var(--color-accent)' : 'var(--color-divider)';
 
-  // ── รูป ──
+  // ── รูป ── คำแนะนำต่างกันตามว่ามาจ่ายหรือมาคืน
+  $('#card-shot-tip').innerHTML = back
+    ? 'ถ่าย <strong>ตัวบัตรที่ได้คืนมา</strong> ให้เห็นเลขบัตรชัด<br>' +
+      '<span class="muted">คืนหลายใบ ถ่ายให้เห็นครบทุกใบ</span>'
+    : 'ถ่าย <strong>2 อย่าง</strong> ในชุดเดียวกัน' +
+      '<div style="margin-top:5px">① <strong>หน้าคนที่รับบัตร</strong> — ให้เห็นหน้าชัด ถือบัตรที่ได้รับให้เห็นเลขบัตรด้วย</div>' +
+      '<div>② <strong>หลักฐานการอบรม</strong> — ใบเซ็นชื่อ หรือตอนกำลังอบรม</div>' +
+      '<div class="muted" style="margin-top:5px">รับบัตรหลายคน ถ่ายให้ครบทุกคน · เก็บรวมไว้ที่เดียวกัน</div>';
+
   var sw = $('#card-shots'); sw.innerHTML = '';
   CARD.shots.forEach(function (p) {
     var im = el('img', { src: p.dataUrl, style: 'width:64px;height:64px;object-fit:cover;cursor:pointer' });
@@ -2011,15 +2070,20 @@ function cardPhotos() {
 
 function returnCards() {
   var rows = Object.keys(CARD.back).map(Number);
-  if (!rows.length) return;
-  S.busy = true; renderFooter();
-  rpc('apiCardReturn', { empId: S.user.id, rows: rows }).then(function (r) {
-    S.busy = false;
+  if (!rows.length) { toast('ติ๊กใบที่ได้คืนมาก่อน', true); return; }
+  CARD.busy = true; S.busy = true; renderFooter();
+  // อัปรูปก่อนเหมือนตอนจ่าย แล้วเอาลิงก์โฟลเดอร์ลงช่องหลักฐานการคืน
+  cardPhotos().then(function (folder) {
+    return rpc('apiCardReturn', { empId: S.user.id, rows: rows, proof: folder });
+  }).then(function (r) {
+    CARD.busy = false; S.busy = false;
     toast('คืนบัตรแล้ว ' + r.closed + ' ใบ');
-    CARD.back = {}; CARD.loaded = false;
+    CARD.back = {}; CARD.shots = []; CARD.loaded = false;
+    // คืนเสร็จกลับหน้าแรก เหมือนคืนอุปกรณ์ — จะได้เห็นว่ารายการหายไปจากค้างคืนจริง
+    if (CARD.mode === 'back') { CARD.mode = 'issue'; refresh(); go('home'); return; }
     openCards();
   }).catch(function (e) {
-    S.busy = false; toast(e.message, true); renderCards();
+    CARD.busy = false; S.busy = false; toast(e.message, true); renderCards();
   });
 }
 
@@ -2397,6 +2461,14 @@ function renderFooter() {
     hintText = S.pinErr || (S.pin.length < PIN_MIN
       ? 'ใส่รหัสพนักงาน ' + PIN_MIN + '–' + PIN_MAX + ' หลัก'
       : 'กดเข้าใช้งานได้เลย');
+  } else if (S.screen === 'cards' && CARD.mode === 'back') {
+    var nBack = Object.keys(CARD.back).length;
+    label = 'คืนบัตร' + (nBack ? ' ' + nBack + ' ใบ' : '');
+    okState = nBack > 0 && !CARD.busy;
+    hintText = !CARD.loaded ? 'กำลังโหลดทะเบียน…'
+      : (nBack ? (CARD.shots.length ? 'แนบรูปแล้ว ' + CARD.shots.length + ' รูป' : 'ยังไม่ได้ถ่ายรูป')
+                 + ' · ลงเวลาคืนในแถวเดิม'
+               : 'ติ๊กใบที่ได้คืนมาก่อน');
   } else if (S.screen === 'cards') {
     var ready = cardReady();
     label = 'จ่ายบัตร' + (ready.length ? ' ' + ready.length + ' ใบ' : '');
@@ -3151,6 +3223,11 @@ function applySession(r, fromCache) {
   // ใครถือเครื่องของแผนกเราอยู่ — ไม่เก็บลงเครื่อง เพราะของเก่าค้างวันจะแจ้งผิดคน
   // เปิดแอพจากแคชจึงยังไม่มีป้าย รอเซิร์ฟเวอร์ตอบแล้วค่อยขึ้น
   S.crossUse = fromCache ? [] : (r.crossUse || []);
+  // บัตรชั่วคราวที่ยังไม่คืน — เหมือน crossUse คือไม่เก็บลงเครื่อง
+  // ของเก่าค้างวันจะทำให้กดคืนใบที่คนอื่นคืนไปแล้ว รอเซิร์ฟเวอร์ตอบก่อนดีกว่า
+  S.cardsOut = fromCache ? [] : (r.cardsOut || []);
+  // รายการที่หน้าบัตรถืออยู่ต้องตรงกับที่เพิ่งได้มา ไม่งั้นกดคืนจากหน้าแรกแล้วเห็นของเก่า
+  if (!fromCache) CARD.out = S.cardsOut;
   if (!S.shift) S.shift = r.user.shift;
 
   // จำข้อมูลตั้งค่าไว้ในเครื่อง เพื่อให้เปิดแอพครั้งหน้าขึ้นหน้าหลักทันทีโดยไม่ต้องรอเซิร์ฟเวอร์
@@ -3182,7 +3259,7 @@ function bind() {
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
 
   // ── บัตรชั่วคราว ──
-  $('#btn-cards').addEventListener('click', openCards);
+  $('#btn-cards').addEventListener('click', function () { openCards('issue'); });
   $('#btn-card-add').addEventListener('click', function () {
     CARD.pairs.push({ card: freeCard(), name: '', sub: '' }); renderCards();
   });
@@ -3302,7 +3379,7 @@ function bind() {
     if (S.screen === 'form')   { S.step = 0; return go('shoot'); }
     if (S.screen === 'shoot')  return nextStep();
     if (S.screen === 'review') return submit();
-    if (S.screen === 'cards')  return sendCards();
+    if (S.screen === 'cards')  return CARD.mode === 'back' ? returnCards() : sendCards();
   });
 
   window.addEventListener('online', function () {

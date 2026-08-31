@@ -85,6 +85,8 @@ function session(u) {
     ] : [],
     staffList: u.role === 'แอดมิน'
       ? STAFF.map(function (p) { return { id: p.id, name: p.name, dept: p.dept, shift: p.shift }; }) : [],
+    // บัตรชั่วคราวที่ยังไม่คืน — ส่งเหมือนกันทุกคน โชว์ที่หน้าแรกรวมกับของค้างคืน
+    cardsOut: CARDS_OUT.slice(),
     // จำลองว่ามีคนอื่นเบิกไปแล้วยังไม่คืน
     busyCodes: {
       'PP-INLHBG-02': { by: 'สุพัตรา แก้วมณี', id: '730075', date: '6/8/2026', time: '09:12' },
@@ -187,7 +189,8 @@ var API = {
     return { ok: true, wrote: items.length };
   },
   apiCardReturn: function (p) {
-    MOCK_CALLS.push('cardReturn:' + (p.rows || []).join(','));
+    MOCK_CALLS.push('cardReturn:' + (p.rows || []).join(',') + (p.proof ? ' +รูป' : ' ไม่มีรูป'));
+    window.MOCK_LAST_RETURN = p;
     var rows = (p.rows || []).map(Number);
     var n = CARDS_OUT.length;
     CARDS_OUT = CARDS_OUT.filter(function (o) { return rows.indexOf(o.row) < 0; });

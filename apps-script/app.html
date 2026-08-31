@@ -161,7 +161,7 @@
         <button class="btn btn-primary btn-block" id="btn-card-return" style="margin-top:10px">คืนบัตรที่ติ๊กไว้</button>
       </div>
 
-      <div>
+      <div id="card-issue-wrap">
         <span class="label">จ่ายบัตร · จับคู่บัตรกับคนรับ</span>
         <div id="card-pairs"></div>
         <button id="btn-card-add" style="width:100%;margin-top:6px;padding:9px;background:transparent;cursor:pointer;
@@ -170,7 +170,7 @@
         </button>
       </div>
 
-      <div>
+      <div id="card-why-wrap">
         <span class="label">เหตุผล</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-why"></div>
       </div>
@@ -186,12 +186,8 @@
 
       <div>
         <span class="label">รูป · แนบกี่รูปก็ได้</span>
-        <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
-          ถ่าย <strong>2 อย่าง</strong> ในชุดเดียวกัน
-          <div style="margin-top:5px">① <strong>หน้าคนที่รับบัตร</strong> — ให้เห็นหน้าชัด ถือบัตรที่ได้รับให้เห็นเลขบัตรด้วย</div>
-          <div>② <strong>หลักฐานการอบรม</strong> — ใบเซ็นชื่อ หรือตอนกำลังอบรม</div>
-          <div class="muted" style="margin-top:5px">รับบัตรหลายคน ถ่ายให้ครบทุกคน · เก็บรวมไว้ที่เดียวกัน</div>
-        </div>
+        <div class="surface" id="card-shot-tip"
+             style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px"></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-shots"></div>
       </div>
     </section>

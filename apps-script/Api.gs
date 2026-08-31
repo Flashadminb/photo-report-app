@@ -341,6 +341,10 @@ function sessionPayload_(m, u) {
     shifts: m.shifts,
     issueTags: m.issueTags,
     openJobs: mine,
+    // บัตรชั่วคราวที่ยังไม่คืน — โชว์ที่หน้าแรกเหมือนของค้างคืน จะได้ไม่ต้องเข้าไปหาเอง
+    // ส่งให้ทุกคนเหมือนกัน ไม่กรองตามคนจ่าย เพราะบัตรอยู่กับคนขับไม่ได้อยู่กับคนจ่าย
+    // จ่ายกะเช้า คนขับมาคืนกะดึก คนกะดึกต้องเห็นและกดคืนให้ได้
+    cardsOut: cardsOutCached_(),
     crossUse: crossDeptUse_(m, u, open),
     // รายชื่อไว้ให้แอดมินเลือกตอนบันทึกแทนคนอื่น — ส่งเฉพาะแอดมิน และเฉพาะช่องที่ต้องใช้
     staffList: isAdmin ? m.staff.filter(function (x) { return x.status === CFG.V.ACTIVE; })
@@ -883,7 +887,7 @@ function apiCardBoot(empId) {
       user:   { id: u.id, name: u.name, dept: u.dept },
       people: cardPeople_(),
       cards:  cardList_(),
-      out:    cardsOut_(),
+      out:    cardsOutCached_(),
       today:  fmtDate_(new Date())
     });
   });
@@ -928,6 +932,7 @@ function apiCardIssue(payload) {
     try {
       var n = writeCardIssue_(items, s_(p.why), u.name, !!p.trained, s_(p.proof));
       if (p.clientId) rememberSubmitted_(p.clientId, 'CARD-' + n);
+      clearCardsOutCache_();
       return ok_({ wrote: n });
     } finally {
       lock.releaseLock();
@@ -947,7 +952,9 @@ function apiCardReturn(payload) {
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      return ok_({ closed: writeCardReturn_(rows) });
+      var closed = writeCardReturn_(rows, s_(p.proof));
+      clearCardsOutCache_();
+      return ok_({ closed: closed });
     } finally {
       lock.releaseLock();
     }
