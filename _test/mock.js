@@ -101,6 +101,13 @@ var SIDE = function (t, n, id, extra) {
     extra || {});
 };
 
+// สมุดบัตรชั่วคราวจำลอง — TEMP-05 ถูกจ่ายออกไปแล้วยังไม่คืน
+var CARD_ROW = 5;
+var CARDS_OUT = [
+  { row: 5, card: 'TEMP-05', name: 'Aung Ko', dept: 'Do3', sub: 'AK',
+    why: 'ลืมบัตร', date: '29/8/2026', out: '06:10', giver: 'หัวหน้า ก.' }
+];
+
 var API = {
   apiHello: function () { return { ok: true, serverTime: '6/8/2026, 16:12:04', today: '6/8/2026',
     demo: STAFF.map(function (p) { return { id: p.id, name: p.name, role: p.role }; }) }; },
@@ -142,6 +149,49 @@ var API = {
       master: { staff: STAFF, assets: ASSETS, topics: [TOPIC_PP, TOPIC_ID], slots: SLOTS_PP, rules: [],
         depts: ['IN LH+BG', 'REPACK', 'ทุกแผนก'], shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.'],
         issueTags: ['แบตไม่เก็บไฟ'] } };
+  },
+  // ── บัตรชั่วคราว ──
+  // สมุดบัตรจำลอง — จ่าย/คืนแล้วเปลี่ยนจริง เหมือนแถวในชีท
+  apiCardBoot: function (empId) {
+    MOCK_CALLS.push('cardBoot');
+    return { ok: true,
+      user: { id: empId, name: 'ธนกฤต ศรีสุข', dept: 'ทุกแผนก' },
+      people: [
+        { card: 'BPL-007', name: 'Myo Thet Khaing', sub: 'AK',  dept: 'Bulky', train: 'อบรมเต็ม' },
+        { card: 'BPL-011', name: 'Min Lwin',        sub: 'AK',  dept: 'Bulky', train: 'อบรมเต็ม' },
+        { card: 'BPL-021', name: 'Aung Ko',         sub: 'AK',  dept: 'Do3',   train: 'อบรมเต็ม' },
+        { card: 'BPL-030', name: 'Aung Thu',        sub: 'SVT', dept: 'Do3',   train: 'อบรมเต็ม' }
+      ],
+      cards: [
+        { code: 'TEMP-01', dept: '', keeper: 'STD' }, { code: 'TEMP-02', dept: '', keeper: 'STD' },
+        { code: 'TEMP-03', dept: '', keeper: 'STD' }, { code: 'TEMP-04', dept: '', keeper: 'STD' },
+        { code: 'TEMP-05', dept: '', keeper: 'STD' }, { code: 'TEMP-06', dept: '', keeper: 'STD' },
+        { code: 'TEMP-07', dept: '', keeper: 'STD' }
+      ],
+      out: CARDS_OUT,
+      today: '29/8/2026' };
+  },
+  // จ่ายจริงในตัวจำลองด้วย ไม่งั้นทดสอบ "จ่ายแล้วใบนั้นต้องหายจากตัวเลือก" ไม่ได้
+  apiCardIssue: function (p) {
+    MOCK_CALLS.push('cardIssue:' + (p.items || []).map(function (x) { return x.card + '=' + x.name; }).join(','));
+    window.MOCK_LAST_ISSUE = p;
+    var items = p.items || [];
+    for (var i = 0; i < items.length; i++) {
+      var x = items[i];
+      if (CARDS_OUT.some(function (o) { return o.card === x.card; })) {
+        return { ok: false, error: 'บัตร ' + x.card + ' ยังไม่ได้คืน' };
+      }
+      CARDS_OUT.push({ row: ++CARD_ROW, card: x.card, name: x.name, dept: x.dept, sub: x.sub,
+        why: p.why, date: '29/8/2026', out: '08:30', giver: 'ธนกฤต ศรีสุข' });
+    }
+    return { ok: true, wrote: items.length };
+  },
+  apiCardReturn: function (p) {
+    MOCK_CALLS.push('cardReturn:' + (p.rows || []).join(','));
+    var rows = (p.rows || []).map(Number);
+    var n = CARDS_OUT.length;
+    CARDS_OUT = CARDS_OUT.filter(function (o) { return rows.indexOf(o.row) < 0; });
+    return { ok: true, closed: n - CARDS_OUT.length };
   },
   apiAssetHistory: function (id, code) {
     MOCK_CALLS.push('history:' + code);

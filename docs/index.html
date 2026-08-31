@@ -291,12 +291,66 @@ textarea.input{min-height:90px;resize:vertical}
         <div style="display:flex;flex-direction:column;gap:10px" id="topic-list"></div>
       </div>
 
+      <!-- บัตรชั่วคราว BPL — คนละทะเบียนกับงานเบิกเครื่อง เลยแยกปุ่มออกมา -->
+      <button id="btn-cards" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
+              border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
+        <span style="font-size:13px;font-weight:600">บัตรชั่วคราว / TEMP CARD</span>
+        <span id="cards-badge" class="hide" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;
+              font-size:13px;background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
+      </button>
+
       <button id="btn-queue" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
               border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
         <span style="font-size:13px;font-weight:600">คิวรอส่ง / OFFLINE QUEUE</span>
         <span id="queue-badge" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;font-size:13px;
               background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
       </button>
+    </section>
+
+    <!-- ══ บัตรชั่วคราว ══ -->
+    <section class="pane hide" data-screen="cards">
+      <div id="cards-msg" class="surface" style="padding:10px;font-size:12px">กำลังโหลด…</div>
+
+      <!-- บัตรที่ยังไม่คืน — ติ๊กคืนทีละใบได้ ไม่ต้องคืนพร้อมกันทั้งชุด -->
+      <div id="cards-out-wrap" class="hide">
+        <span class="label">บัตรที่ยังไม่คืน</span>
+        <div id="cards-out"></div>
+        <button class="btn btn-primary btn-block" id="btn-card-return" style="margin-top:10px">คืนบัตรที่ติ๊กไว้</button>
+      </div>
+
+      <div>
+        <span class="label">จ่ายบัตร · จับคู่บัตรกับคนรับ</span>
+        <div id="card-pairs"></div>
+        <button id="btn-card-add" style="width:100%;margin-top:6px;padding:9px;background:transparent;cursor:pointer;
+                border:1px dashed var(--color-divider);font-family:var(--font-body);font-size:12px;color:var(--color-text)">
+          + เพิ่มอีกใบ
+        </button>
+      </div>
+
+      <div>
+        <span class="label">เหตุผล</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-why"></div>
+      </div>
+
+      <button id="card-train" style="display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;
+              padding:10px;background:var(--color-surface);border:1px solid var(--color-divider);cursor:pointer;
+              font-family:var(--font-body);color:var(--color-text)">
+        <span id="card-train-box" style="width:20px;height:20px;flex:none;border:1px solid var(--color-divider);
+              display:flex;align-items:center;justify-content:center;font-size:13px"></span>
+        <span style="font-size:12px;line-height:1.45">อบรมย่อ B3 ให้ทุกคนแล้ว<br>
+          <span class="muted">ติ๊กเมื่ออบรมเสร็จแล้ว แล้วถ่ายรูปหลักฐานไว้ด้านล่าง</span></span>
+      </button>
+
+      <div>
+        <span class="label">รูป · แนบกี่รูปก็ได้</span>
+        <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
+          ถ่าย <strong>2 อย่าง</strong> ในชุดเดียวกัน
+          <div style="margin-top:5px">① <strong>หน้าคนที่รับบัตร</strong> — ให้เห็นหน้าชัด ถือบัตรที่ได้รับให้เห็นเลขบัตรด้วย</div>
+          <div>② <strong>หลักฐานการอบรม</strong> — ใบเซ็นชื่อ หรือตอนกำลังอบรม</div>
+          <div class="muted" style="margin-top:5px">รับบัตรหลายคน ถ่ายให้ครบทุกคน · เก็บรวมไว้ที่เดียวกัน</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-shots"></div>
+      </div>
     </section>
 
     <!-- ══ ข้อมูลงาน ══ -->
@@ -562,12 +616,14 @@ textarea.input{min-height:90px;resize:vertical}
 
 <input type="file" accept="image/*" capture="environment" id="file-cam" style="display:none">
 <input type="file" accept="image/*" multiple id="file-up" style="display:none">
+<datalist id="card-people"></datalist>
+<datalist id="card-subs"></datalist>
 
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v57';
-window.APP_BUILT   = '29/8/2026 17:26';
+window.APP_VERSION = 'v59';
+window.APP_BUILT   = '31/8/2026 17:38';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1210,7 +1266,8 @@ function back() {
 var TITLES = {
   login: ['เข้าสู่ระบบ', 'SIGN IN'], home: ['อัพเดทงาน', 'HOME'],
   form: ['ข้อมูลงาน', 'JOB INFO'], shoot: ['ถ่ายรูป', 'CAPTURE'],
-  review: ['ตรวจทาน', 'REVIEW'], done: ['ส่งแล้ว', 'SUBMITTED'], queue: ['คิวรอส่ง', 'QUEUE']
+  review: ['ตรวจทาน', 'REVIEW'], done: ['ส่งแล้ว', 'SUBMITTED'], queue: ['คิวรอส่ง', 'QUEUE'],
+  cards: ['บัตรชั่วคราว', 'TEMP CARD']
 };
 
 function render() {
@@ -1235,6 +1292,7 @@ function render() {
   if (S.screen === 'shoot')  renderShoot();
   if (S.screen === 'review') renderReview();
   if (S.screen === 'queue')  renderQueue();
+  if (S.screen === 'cards')  renderCards();
 
   renderFooter();
 }
@@ -1668,6 +1726,303 @@ function renderOthers(t, pool, shown) {
   });
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  บัตรชั่วคราว BPL
+//
+//  คนละทะเบียนกับงานเบิกเครื่อง เขียนลงไฟล์ชีทของ HUB โดยตรง
+//  ตัวคนรับบัตรเป็นคนของซัพ ไม่ใช่พนักงาน Flash เลยไม่ใช้ทะเบียนพนักงานเดิม
+//
+//  กติกาหลัก 1 ใบบัตร = 1 แถวในสมุด จับคู่บัตรกับชื่อไว้ตั้งแต่ต้นทาง
+//  ไม่งั้นตอบไม่ได้ว่า TEMP-03 อยู่กับใคร ซึ่งเป็นคำถามเดียวที่สมุดเล่มนี้มีไว้ตอบ
+// ══════════════════════════════════════════════════════════════════════
+
+var CARD = {
+  people: [], cards: [], out: [],
+  pairs: [{ card: '', name: '', sub: '' }],   // แถวจับคู่ เริ่มจากแถวเดียว
+  why: 'ลืมบัตร',
+  trained: false,
+  shots: [],
+  back: {},                          // เลขแถวที่ติ๊กคืน
+  loaded: false, busy: false
+};
+var CARD_WHY = ['ลืมบัตร', 'คนขับแทน', 'บัตรหาย', 'อื่น ๆ'];
+
+function openCards() {
+  go('cards');
+  if (CARD.loaded) { renderCards(); return; }
+  $('#cards-msg').textContent = 'กำลังโหลดทะเบียน…';
+  rpc('apiCardBoot', S.user.id).then(function (r) {
+    CARD.people = r.people || []; CARD.cards = r.cards || []; CARD.out = r.out || [];
+    CARD.loaded = true;
+    // แถวแรกสร้างไว้ตั้งแต่ยังไม่รู้ว่ามีบัตรอะไรบ้าง มาเติมให้ตอนนี้
+    if (CARD.pairs.length === 1 && !CARD.pairs[0].card) CARD.pairs[0].card = freeCard();
+    renderCards();
+  }).catch(function (e) {
+    $('#cards-msg').textContent = 'โหลดทะเบียนไม่สำเร็จ · ' + e.message;
+  });
+}
+
+/** ทะเบียนคน ค้นด้วยชื่อพิมพ์เล็ก — ใช้เติมสังกัดให้อัตโนมัติและตอนส่ง */
+function peopleByName() {
+  var by = {};
+  CARD.people.forEach(function (p) { by[cs_(p.name).toLowerCase()] = p; });
+  return by;
+}
+
+/** ใบที่ยังไม่คืนอยู่ จ่ายซ้ำไม่ได้ ต้องไม่ขึ้นให้เลือก */
+function cardBusy() {
+  var b = {};
+  CARD.out.forEach(function (o) { b[o.card] = o; });
+  return b;
+}
+
+/**
+ * ใบว่างใบถัดไป — เอาไว้เติมให้อัตโนมัติตอนเพิ่มแถว
+ *
+ * หน้างานไม่ได้แคร์ว่าใครได้ใบไหน แค่อยากรู้ทีหลังว่าใบไหนอยู่กับใคร
+ * จ่ายทีเดียว 5 คนแล้วต้องมาแตะเลือกเลขบัตรทีละแถวจึงเป็นงานเปล่า
+ * เติมให้เลย เหลือแค่พิมพ์ชื่อ อยากเปลี่ยนใบก็ยังแตะเปลี่ยนได้เหมือนเดิม
+ *
+ * ว่าง = ไม่ได้อยู่ในมือใคร และยังไม่ถูกใช้ในแถวอื่นของรอบนี้
+ */
+function freeCard() {
+  var busy = cardBusy();
+  var used = {};
+  CARD.pairs.forEach(function (p) { if (p.card) used[p.card] = true; });
+  for (var i = 0; i < CARD.cards.length; i++) {
+    var c = CARD.cards[i].code;
+    if (!busy[c] && !used[c]) return c;
+  }
+  return '';   // บัตรหมดทุกใบ — ปล่อยว่างไว้ ให้ตัวเลือกในแถวบอกเองว่าไม่มีให้เลือก
+}
+
+function renderCards() {
+  var busy = cardBusy();
+
+  $('#cards-msg').textContent = CARD.loaded
+    ? 'บัตรทั้งหมด ' + CARD.cards.length + ' ใบ · จ่ายออกอยู่ ' + CARD.out.length + ' ใบ · ทะเบียน ' + CARD.people.length + ' คน'
+    : 'กำลังโหลด…';
+
+  // ── บัตรที่ยังไม่คืน ──
+  $('#cards-out-wrap').classList.toggle('hide', !CARD.out.length);
+  var ow = $('#cards-out'); ow.innerHTML = '';
+  CARD.out.forEach(function (o) {
+    var on = !!CARD.back[o.row];
+    var b = el('button', { class: 'chip' + (on ? ' on' : ''), style: 'font-size:11px' },
+      [on ? 'คืนแล้ว' : 'ยังไม่คืน']);
+    b.addEventListener('click', function () {
+      if (on) delete CARD.back[o.row]; else CARD.back[o.row] = true;
+      renderCards();
+    });
+    ow.appendChild(el('div', {
+      style: 'display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--color-divider)'
+    }, [
+      el('strong', { style: 'font-family:var(--font-heading);font-weight:800;font-size:13px;min-width:72px' }, [o.card]),
+      el('div', { style: 'flex:1;font-size:11.5px;line-height:1.35' }, [
+        o.name + (o.sub ? ' · ' + o.sub : ''),
+        el('div', { style: 'opacity:.6' }, ['เบิก ' + o.date + ' ' + o.out + (o.giver ? ' · จ่ายโดย ' + o.giver : '')])
+      ]), b
+    ]));
+  });
+  $('#btn-card-return').disabled = !Object.keys(CARD.back).length;
+
+  // ── แถวจับคู่บัตรกับคนรับ ──
+  var pw = $('#card-pairs'); pw.innerHTML = '';
+  CARD.pairs.forEach(function (p, i) {
+    var sel = el('select', { class: 'input', style: 'width:104px;flex:none' });
+    sel.appendChild(el('option', { value: '' }, ['เลือกบัตร']));
+    CARD.cards.forEach(function (c) {
+      var taken = busy[c.code] || CARD.pairs.some(function (x, j) { return j !== i && x.card === c.code; });
+      if (taken && p.card !== c.code) return;
+      sel.appendChild(el('option', { value: c.code, selected: p.card === c.code ? 'selected' : null }, [c.code]));
+    });
+    sel.addEventListener('change', function (e) { p.card = e.target.value; renderCards(); });
+
+    var who = el('input', {
+      class: 'input', style: 'flex:1', list: 'card-people', placeholder: 'แตะเลือก หรือพิมพ์ชื่อ',
+      value: p.name || ''
+    });
+    // ชื่อที่มีในทะเบียนอยู่แล้ว เติมสังกัดให้เลย — แต่ถ้าพิมพ์สังกัดเองไว้ ห้ามทับ
+    //
+    // เรียก renderFooter() ด้วย ไม่ใช่ renderCards() — ปุ่ม "จ่ายบัตร" ต้องปลดล็อกทันที
+    // ที่พิมพ์ชื่อครบ แต่ถ้า render ทั้งหน้าจะสร้างช่องกรอกใหม่แล้วเคอร์เซอร์หลุดกลางคำ
+    who.addEventListener('input', function (e) {
+      p.name = e.target.value;
+      if (!p.subOwn) {
+        var m = peopleByName()[cs_(p.name).toLowerCase()];
+        var was = p.sub;
+        p.sub = m ? m.sub : '';
+        if (p.sub !== was) sub.value = p.sub || '';
+      }
+      renderFooter();
+    });
+
+    var sub = el('input', {
+      class: 'input', style: 'flex:1', list: 'card-subs', placeholder: 'สังกัด (บริษัท/ผู้รับเหมา)',
+      value: p.sub || ''
+    });
+    sub.addEventListener('input', function (e) {
+      p.sub = e.target.value;
+      p.subOwn = !!cs_(p.sub);   // พิมพ์เองแล้ว ไม่ต้องให้ตัวเติมอัตโนมัติมายุ่งอีก
+    });
+
+    var rm = el('button', {
+      style: 'border:0;background:transparent;color:var(--color-text);opacity:.5;cursor:pointer;font-size:16px;padding:0 4px'
+    }, ['✕']);
+    rm.addEventListener('click', function () {
+      CARD.pairs.splice(i, 1);
+      if (!CARD.pairs.length) CARD.pairs.push({ card: freeCard(), name: '', sub: '' });
+      renderCards();
+    });
+
+    // 3 ช่องเรียงกันแถวเดียวแคบเกินไปบนมือถือ — บัตร+ชื่อบรรทัดบน สังกัดบรรทัดล่าง
+    pw.appendChild(el('div', {
+      style: 'border:1px solid var(--color-divider);padding:7px;margin-bottom:6px'
+    }, [
+      el('div', { style: 'display:flex;gap:6px;align-items:center' },
+        [sel, who, CARD.pairs.length > 1 ? rm : null].filter(Boolean)),
+      el('div', { style: 'display:flex;gap:6px;margin-top:5px' }, [sub])
+    ]));
+  });
+
+  // บัตรหมดแล้วก็เพิ่มแถวไปก็ไม่มีใบให้เลือก บอกไปตรง ๆ ดีกว่าให้กดแล้วงง
+  var free = freeCard();
+  var add = $('#btn-card-add');
+  add.disabled = !free;
+  add.style.opacity = free ? '' : '.45';
+  add.textContent = free ? '+ เพิ่มอีกใบ (' + free + ')' : 'บัตรหมดแล้ว · ต้องรอคืนก่อน';
+
+  // รายชื่อให้เลือก — ใช้ datalist จะได้พิมพ์ค้นได้ด้วยและพิมพ์ชื่อใหม่ได้ด้วย
+  var dl = $('#card-people');
+  if (dl && dl.childElementCount !== CARD.people.length) {
+    dl.innerHTML = '';
+    CARD.people.forEach(function (p) {
+      dl.appendChild(el('option', { value: p.name }, [p.sub + (p.dept ? ' · ' + p.dept : '')]));
+    });
+  }
+
+  // สังกัดที่เคยมีในทะเบียน — แตะเลือกได้ไว ๆ ส่วนสังกัดใหม่ก็พิมพ์เองได้
+  var ds = $('#card-subs');
+  if (ds) {
+    var subs = [], seen = {};
+    CARD.people.forEach(function (p) {
+      var v = cs_(p.sub);
+      if (v && !seen[v]) { seen[v] = true; subs.push(v); }
+    });
+    subs.sort();
+    if (ds.childElementCount !== subs.length) {
+      ds.innerHTML = '';
+      subs.forEach(function (v) { ds.appendChild(el('option', { value: v })); });
+    }
+  }
+
+  // ── เหตุผล ──
+  var ww = $('#card-why'); ww.innerHTML = '';
+  CARD_WHY.forEach(function (w) {
+    var b = el('button', { class: 'chip' + (CARD.why === w ? ' on' : '') }, [w]);
+    b.addEventListener('click', function () { CARD.why = w; renderCards(); });
+    ww.appendChild(b);
+  });
+
+  // ── ติ๊กอบรม ──
+  var bx = $('#card-train-box');
+  bx.textContent = CARD.trained ? '✓' : '';
+  bx.style.background = CARD.trained ? 'var(--color-accent)' : 'transparent';
+  bx.style.color = CARD.trained ? 'var(--color-bg)' : '';
+  bx.style.borderColor = CARD.trained ? 'var(--color-accent)' : 'var(--color-divider)';
+
+  // ── รูป ──
+  var sw = $('#card-shots'); sw.innerHTML = '';
+  CARD.shots.forEach(function (p) {
+    var im = el('img', { src: p.dataUrl, style: 'width:64px;height:64px;object-fit:cover;cursor:pointer' });
+    im.addEventListener('click', function () {
+      CARD.shots = CARD.shots.filter(function (x) { return x.id !== p.id; }); renderCards();
+    });
+    sw.appendChild(im);
+  });
+  var add = el('button', {
+    style: 'width:64px;height:64px;border:1px dashed var(--color-divider);background:transparent;cursor:pointer;font-size:20px;color:var(--color-text)'
+  }, ['+']);
+  add.addEventListener('click', function () { capture('card', 'บัตรชั่วคราว', false); });
+  sw.appendChild(add);
+
+  renderFooter();
+}
+
+/** คู่ที่กรอกครบแล้ว — ต้องมีทั้งบัตรและชื่อ */
+function cardReady() {
+  return CARD.pairs.filter(function (p) { return cs_(p.card) && cs_(p.name); });
+}
+function cs_(v) { return (v || '').toString().trim(); }
+
+function sendCards() {
+  var items = cardReady();
+  if (!items.length) { toast('ต้องจับคู่บัตรกับชื่อผู้รับอย่างน้อย 1 คู่', true); return; }
+
+  // เติมข้อมูลจากทะเบียนให้อัตโนมัติ — พิมพ์ชื่อใหม่ก็ส่งได้ ช่องพวกนี้จะว่างไว้
+  var byName = peopleByName();
+  var payload = {
+    empId: S.user.id, why: CARD.why, trained: CARD.trained,
+    clientId: uid('card'),
+    items: items.map(function (p) {
+      var m = byName[cs_(p.name).toLowerCase()] || {};
+      return {
+        card: cs_(p.card), name: cs_(p.name),
+        // สังกัดที่พิมพ์เองมาก่อนเสมอ — คนไม่มีในทะเบียนจะได้ลงสังกัดได้
+        // และคนที่ย้ายสังกัดแล้วแต่ทะเบียนยังไม่อัพเดท ก็แก้หน้างานได้เลย
+        realCard: m.card || '', sub: cs_(p.sub) || m.sub || '',
+        dept: m.dept || '', train: m.train || ''
+      };
+    })
+  };
+
+  CARD.busy = true; S.busy = true; renderFooter();
+  cardPhotos().then(function (folder) {
+    payload.proof = folder;
+    return rpc('apiCardIssue', payload);
+  }).then(function (r) {
+    CARD.busy = false; S.busy = false;
+    toast('จ่ายบัตรแล้ว ' + r.wrote + ' ใบ');
+    CARD.pairs = [{ card: '', name: '', sub: '' }]; CARD.trained = false; CARD.shots = [];
+    CARD.loaded = false;
+    openCards();
+  }).catch(function (e) {
+    CARD.busy = false; S.busy = false;
+    toast(e.message, true); renderCards();
+  });
+}
+
+/**
+ * อัปรูปขึ้นไดรฟ์ก่อนเขียนแถว แล้วเอาลิงก์โฟลเดอร์ใส่ช่องหลักฐานการอบรม
+ * ไม่มีรูปก็ไม่ต้องอัป ส่งค่าว่างไป
+ */
+function cardPhotos() {
+  if (!CARD.shots.length) return Promise.resolve('');
+  return rpc('apiReserve', S.user.id, S.topics[0].id).then(function (j) {
+    var seq = 0;
+    return CARD.shots.reduce(function (chain, p) {
+      return chain.then(function () {
+        return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
+                   'บัตรชั่วคราว', p.dataUrl, p.time, p.gps, ++seq, p.id);
+      });
+    }, Promise.resolve()).then(function () { return j.folderUrl; });
+  }).catch(function () { return ''; });   // อัปรูปไม่ได้ก็ยังบันทึกบัตรได้ ข้อมูลสำคัญกว่ารูป
+}
+
+function returnCards() {
+  var rows = Object.keys(CARD.back).map(Number);
+  if (!rows.length) return;
+  S.busy = true; renderFooter();
+  rpc('apiCardReturn', { empId: S.user.id, rows: rows }).then(function (r) {
+    S.busy = false;
+    toast('คืนบัตรแล้ว ' + r.closed + ' ใบ');
+    CARD.back = {}; CARD.loaded = false;
+    openCards();
+  }).catch(function (e) {
+    S.busy = false; toast(e.message, true); renderCards();
+  });
+}
+
 // ── หน้าถ่ายรูป ───────────────────────────────────────────────────────
 
 function renderShoot() {
@@ -2042,6 +2397,16 @@ function renderFooter() {
     hintText = S.pinErr || (S.pin.length < PIN_MIN
       ? 'ใส่รหัสพนักงาน ' + PIN_MIN + '–' + PIN_MAX + ' หลัก'
       : 'กดเข้าใช้งานได้เลย');
+  } else if (S.screen === 'cards') {
+    var ready = cardReady();
+    label = 'จ่ายบัตร' + (ready.length ? ' ' + ready.length + ' ใบ' : '');
+    okState = ready.length > 0 && !CARD.busy;
+    // บอกจำนวนรูปไว้ตรงนี้ด้วย เพราะรูปคือหลักฐานว่าใครรับบัตรและอบรมแล้วจริง
+    // ไม่ได้บังคับ ส่งโดยไม่มีรูปก็ยังได้ แต่ต้องเห็นก่อนกดว่ายังไม่ได้ถ่าย
+    hintText = !CARD.loaded ? 'กำลังโหลดทะเบียน…'
+      : (ready.length ? (CARD.shots.length ? 'แนบรูปแล้ว ' + CARD.shots.length + ' รูป' : 'ยังไม่ได้ถ่ายรูป')
+                        + ' · 1 ใบ = 1 แถวในสมุด'
+                      : 'เลือกบัตรและใส่ชื่อผู้รับก่อน');
   } else if (S.screen === 'form') {
     label = 'ไปถ่ายรูป';
     var n = totalQty();
@@ -2273,6 +2638,10 @@ function handleFiles(files, fromCamera) {
         var o = Object.assign({ id: uid('i') }, p);
         S.issueShots.push(o); bgUpload(o, cap.slot);
       });
+    } else if (cap.target === 'card') {
+      // บัตรชั่วคราวเก็บรูปไว้ในเครื่องก่อน ส่งพร้อมกันตอนกดจ่ายบัตร
+      // ไม่ใช้ bgUpload เพราะยังไม่มีรหัสรายการให้ผูก คนละระบบกับงานเบิกเครื่อง
+      list.forEach(function (p) { CARD.shots.push(Object.assign({ id: uid('c') }, p)); });
     } else {
       list.forEach(function (p) {
         var o = Object.assign({ id: uid('p') }, p);
@@ -2812,6 +3181,19 @@ function bind() {
   });
   $('#btn-queue').addEventListener('click', function () { go('queue'); });
 
+  // ── บัตรชั่วคราว ──
+  $('#btn-cards').addEventListener('click', openCards);
+  $('#btn-card-add').addEventListener('click', function () {
+    CARD.pairs.push({ card: freeCard(), name: '', sub: '' }); renderCards();
+  });
+  $('#card-train').addEventListener('click', function () {
+    CARD.trained = !CARD.trained; renderCards();
+  });
+  $('#btn-card-return').addEventListener('click', function () {
+    if (!confirm('ยืนยันคืนบัตรที่ติ๊กไว้ ' + Object.keys(CARD.back).length + ' ใบ?')) return;
+    returnCards();
+  });
+
   // กล่องพับ "เครื่องแผนกอื่น" — จำสถานะไว้ในหน้าเดียว ปิดใหม่ทุกครั้งที่เริ่มรายการใหม่
   $('#others-head').addEventListener('click', function () {
     S.othersOpen = !S.othersOpen; render();
@@ -2920,6 +3302,7 @@ function bind() {
     if (S.screen === 'form')   { S.step = 0; return go('shoot'); }
     if (S.screen === 'shoot')  return nextStep();
     if (S.screen === 'review') return submit();
+    if (S.screen === 'cards')  return sendCards();
   });
 
   window.addEventListener('online', function () {

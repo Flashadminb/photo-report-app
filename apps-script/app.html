@@ -134,12 +134,66 @@
         <div style="display:flex;flex-direction:column;gap:10px" id="topic-list"></div>
       </div>
 
+      <!-- บัตรชั่วคราว BPL — คนละทะเบียนกับงานเบิกเครื่อง เลยแยกปุ่มออกมา -->
+      <button id="btn-cards" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
+              border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
+        <span style="font-size:13px;font-weight:600">บัตรชั่วคราว / TEMP CARD</span>
+        <span id="cards-badge" class="hide" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;
+              font-size:13px;background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
+      </button>
+
       <button id="btn-queue" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
               border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
         <span style="font-size:13px;font-weight:600">คิวรอส่ง / OFFLINE QUEUE</span>
         <span id="queue-badge" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;font-size:13px;
               background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
       </button>
+    </section>
+
+    <!-- ══ บัตรชั่วคราว ══ -->
+    <section class="pane hide" data-screen="cards">
+      <div id="cards-msg" class="surface" style="padding:10px;font-size:12px">กำลังโหลด…</div>
+
+      <!-- บัตรที่ยังไม่คืน — ติ๊กคืนทีละใบได้ ไม่ต้องคืนพร้อมกันทั้งชุด -->
+      <div id="cards-out-wrap" class="hide">
+        <span class="label">บัตรที่ยังไม่คืน</span>
+        <div id="cards-out"></div>
+        <button class="btn btn-primary btn-block" id="btn-card-return" style="margin-top:10px">คืนบัตรที่ติ๊กไว้</button>
+      </div>
+
+      <div>
+        <span class="label">จ่ายบัตร · จับคู่บัตรกับคนรับ</span>
+        <div id="card-pairs"></div>
+        <button id="btn-card-add" style="width:100%;margin-top:6px;padding:9px;background:transparent;cursor:pointer;
+                border:1px dashed var(--color-divider);font-family:var(--font-body);font-size:12px;color:var(--color-text)">
+          + เพิ่มอีกใบ
+        </button>
+      </div>
+
+      <div>
+        <span class="label">เหตุผล</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-why"></div>
+      </div>
+
+      <button id="card-train" style="display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;
+              padding:10px;background:var(--color-surface);border:1px solid var(--color-divider);cursor:pointer;
+              font-family:var(--font-body);color:var(--color-text)">
+        <span id="card-train-box" style="width:20px;height:20px;flex:none;border:1px solid var(--color-divider);
+              display:flex;align-items:center;justify-content:center;font-size:13px"></span>
+        <span style="font-size:12px;line-height:1.45">อบรมย่อ B3 ให้ทุกคนแล้ว<br>
+          <span class="muted">ติ๊กเมื่ออบรมเสร็จแล้ว แล้วถ่ายรูปหลักฐานไว้ด้านล่าง</span></span>
+      </button>
+
+      <div>
+        <span class="label">รูป · แนบกี่รูปก็ได้</span>
+        <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
+          ถ่าย <strong>2 อย่าง</strong> ในชุดเดียวกัน
+          <div style="margin-top:5px">① <strong>หน้าคนที่รับบัตร</strong> — ให้เห็นหน้าชัด ถือบัตรที่ได้รับให้เห็นเลขบัตรด้วย</div>
+          <div>② <strong>หลักฐานการอบรม</strong> — ใบเซ็นชื่อ หรือตอนกำลังอบรม</div>
+          <div class="muted" style="margin-top:5px">รับบัตรหลายคน ถ่ายให้ครบทุกคน · เก็บรวมไว้ที่เดียวกัน</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-shots"></div>
+      </div>
     </section>
 
     <!-- ══ ข้อมูลงาน ══ -->
@@ -405,6 +459,8 @@
 
 <input type="file" accept="image/*" capture="environment" id="file-cam" style="display:none">
 <input type="file" accept="image/*" multiple id="file-up" style="display:none">
+<datalist id="card-people"></datalist>
+<datalist id="card-subs"></datalist>
 
 <script>var WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;</script>
 <?!= include('js-common'); ?>
