@@ -618,8 +618,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v60';
-window.APP_BUILT   = '31/8/2026 18:00';
+window.APP_VERSION = 'v61';
+window.APP_BUILT   = '31/8/2026 18:22';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1275,6 +1275,9 @@ function render() {
 
   // หน้าตรวจทานที่ส่งไม่ผ่าน ต้องขึ้นหัวข้อว่ายังไม่เข้าระบบ ไม่ใช่ "ตรวจทานก่อนส่ง" เฉย ๆ
   var t = (S.screen === 'review' && S.sendFail) ? ['ยังไม่เข้าระบบ', 'NOT SENT']
+        // หัวข้อต้องบอกว่ามาทำอะไร เหมือนตอนคืนอุปกรณ์ที่ขึ้นว่า "คืน" ชัด ๆ
+        : (S.screen === 'cards') ? (CARD.mode === 'back' ? ['คืนบัตรชั่วคราว', 'RETURN CARD']
+                                                         : ['จ่ายบัตรชั่วคราว', 'ISSUE CARD'])
         : (TITLES[S.screen] || ['', '']);
   $('#head-title').textContent = S.screen === 'shoot' ? shootTitle() : t[0];
   $('#head-sub').textContent = S.screen === 'shoot' ? (S.step + 1) + '/' + steps().length : t[1];
@@ -1843,19 +1846,21 @@ function renderCards() {
   var busy = cardBusy();
   var back = (CARD.mode === 'back');
 
-  // โหมดคืน ซ่อนทุกอย่างที่ไม่เกี่ยวกับการคืน เหลือแค่ติ๊กกับถ่ายรูป
+  // เบิกกับคืนแยกกันคนละหน้า เหมือน IDATA — เบิกเข้าจากเมนู คืนกดจากรายการค้างคืนหน้าแรก
+  //
+  // ของเดิมเอามารวมหน้าเดียว หน้างานเปิดมาเจอทั้งรายการคืนและฟอร์มจ่ายพร้อมกัน
+  // ต้องอ่านก่อนว่าตัวเองมาทำอะไร ซึ่งผิดกับที่ใช้อยู่ทุกวันกับอุปกรณ์
   ['card-issue-wrap', 'card-why-wrap', 'card-train'].forEach(function (id) {
     var e = $('#' + id); if (e) e.classList.toggle('hide', back);
   });
-  // ปุ่มคืนในหน้าใช้เฉพาะตอนเข้ามาเองแบบไม่ได้ตั้งใจมาคืน — โหมดคืนใช้ปุ่มแถบล่างแทน
-  $('#btn-card-return').classList.toggle('hide', back);
+  // รายการบัตรที่ยังไม่คืนขึ้นเฉพาะโหมดคืน — โหมดจ่ายไม่ต้องเห็น มีที่หน้าแรกแล้ว
+  $('#cards-out-wrap').classList.toggle('hide', !back || !CARD.out.length);
+  // ปุ่มคืนในหน้าไม่ใช้แล้ว โหมดคืนใช้ปุ่มแถบล่างเหมือนส่งงานปกติ
+  $('#btn-card-return').classList.add('hide');
 
   $('#cards-msg').textContent = !CARD.loaded ? 'กำลังโหลด…'
     : back ? 'ติ๊กใบที่คืนแล้วถ่ายรูป · จ่ายออกอยู่ ' + CARD.out.length + ' ใบ'
            : 'บัตรทั้งหมด ' + CARD.cards.length + ' ใบ · จ่ายออกอยู่ ' + CARD.out.length + ' ใบ · ทะเบียน ' + CARD.people.length + ' คน';
-
-  // ── บัตรที่ยังไม่คืน ──
-  $('#cards-out-wrap').classList.toggle('hide', !CARD.out.length);
   var ow = $('#cards-out'); ow.innerHTML = '';
   CARD.out.forEach(function (o) {
     var on = !!CARD.back[o.row];
