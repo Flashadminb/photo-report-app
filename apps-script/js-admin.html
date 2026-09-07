@@ -61,8 +61,13 @@ var TABS = [
   { id: 'topics', label: 'หัวข้อสำรวจ' },
   { id: 'rules',  label: 'เงื่อนไขถ่ายรูป' },
   { id: 'roster', label: 'ทะเบียนพนักงาน' },
-  { id: 'assets', label: 'ทะเบียนอุปกรณ์' }
+  { id: 'assets', label: 'ทะเบียนอุปกรณ์' },
+  { id: 'sup',    label: 'วัสดุสิ้นเปลือง' }
 ];
+
+// สถานะของแท็บวัสดุ — อยู่คนละไฟล์ชีทกับข้อมูลหลัก จึงโหลดแยกตอนกดเข้าแท็บ
+// ไม่พ่วงไปกับ apiAdminLoad เพราะแท็บอื่นไม่ได้ใช้ จะทำให้ทุกหน้าช้าเปล่า ๆ
+var SUP = { days: 30, sub: 'stock', data: null, loading: false, err: '' };
 
 // ══ เข้าสู่ระบบ ═══════════════════════════════════════════════════════
 
@@ -385,7 +390,7 @@ function renderAll() {
 
   ({
     vault:  viewVault, data: viewData, dash: viewDash, topics: viewTopics,
-    rules:  viewRules, roster: viewRoster, assets: viewAssets
+    rules:  viewRules, roster: viewRoster, assets: viewAssets, sup: viewSup
   }[A.tab] || viewVault)(v);
 }
 
@@ -1576,6 +1581,318 @@ $('#hist').addEventListener('click', function (e) {     // คลิกพื้
 $('#btn-out').addEventListener('click', function () {
   store.del('adminId'); location.reload();
 });
+
+// ══ วัสดุสิ้นเปลือง ════════════════════════════════════════════════════
+//
+//  3 หน้าย่อยในแท็บเดียว: คงคลัง · ประวัติการเบิก · สถิติ
+//  อ่านชีทรอบเดียวได้ครบทั้งสามหน้า สลับหน้าย่อยไม่ต้องโหลดใหม่
+// ══════════════════════════════════════════════════════════════════════
+
+var SUP_SUBS = [
+  { id: 'stock', label: 'คงคลัง' },
+  { id: 'hist',  label: 'ประวัติการเบิก' },
+  { id: 'stats', label: 'สถิติ' }
+];
+var SUP_RANGES = [
+  { d: 7,   label: '7 วัน' },
+  { d: 30,  label: '30 วัน' },
+  { d: 90,  label: '90 วัน' },
+  { d: 365, label: '1 ปี' }
+];
+
+function supLoad(force) {
+  if (SUP.loading) return;
+  if (SUP.data && !force) return;
+  SUP.loading = true; SUP.err = '';
+  renderAll();
+  rpc('apiSupAdmin', A.empId, SUP.days).then(function (r) {
+    SUP.data = r; SUP.loading = false; renderAll();
+  }).catch(function (e) {
+    SUP.loading = false; SUP.err = e.message; renderAll();
+  });
+}
+
+/** ตัวเลขคงเหลือ — ติดลบต้องเห็นชัดว่าผิดปกติ ไม่ใช่แค่เลขน้อย ๆ */
+function supLeftCell(x) {
+  return h('td', {
+    style: 'font-family:var(--font-heading);font-weight:800;font-size:15px' +
+           (x.neg ? ';color:var(--color-accent)' : '')
+  }, [String(x.left) + ' ' + x.unit]);
+}
+
+function viewSup(v) {
+  var bar = h('div', { class: 'bar', style: 'margin:0 0 14px' }, []);
+  SUP_SUBS.forEach(function (s) {
+    var b = h('button', { class: 'chip' + (SUP.sub === s.id ? ' on' : '') }, [s.label]);
+    b.addEventListener('click', function () { SUP.sub = s.id; renderAll(); });
+    bar.appendChild(b);
+  });
+  bar.appendChild(h('span', { style: 'flex:1' }, []));
+  SUP_RANGES.forEach(function (r) {
+    var b = h('button', { class: 'chip' + (SUP.days === r.d ? ' on' : '') }, [r.label]);
+    b.addEventListener('click', function () { SUP.days = r.d; supLoad(true); });
+    bar.appendChild(b);
+  });
+  var rl = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['โหลดใหม่']);
+  rl.addEventListener('click', function () { supLoad(true); });
+  bar.appendChild(rl);
+  v.appendChild(bar);
+
+  if (SUP.err) {
+    v.appendChild(section('โหลดข้อมูลวัสดุไม่สำเร็จ', [h('div', { class: 'muted' }, [SUP.err])]));
+    return;
+  }
+  if (!SUP.data) {
+    v.appendChild(h('div', { class: 'muted', style: 'padding:20px 0' },
+      [SUP.loading ? 'กำลังโหลดข้อมูลวัสดุ…' : 'กำลังเริ่ม…']));
+    supLoad(false);
+    return;
+  }
+
+  if (SUP.sub === 'stock') return supViewStock(v);
+  if (SUP.sub === 'hist')  return supViewHist(v);
+  return supViewStats(v);
+}
+
+// ── คงคลัง ────────────────────────────────────────────────────────────
+
+function supViewStock(v) {
+  var st = SUP.data.stats.items.slice();
+  // ของใกล้หมดต้องอยู่บนสุด เพราะเป็นสิ่งเดียวในหน้านี้ที่ต้องรีบทำอะไร
+  st.sort(function (a, b) {
+    var ka = a.neg ? 0 : a.left <= 0 ? 1 : a.low ? 2 : 3;
+    var kb = b.neg ? 0 : b.left <= 0 ? 1 : b.low ? 2 : 3;
+    if (ka !== kb) return ka - kb;
+    var da = (a.daysLeft === null) ? 99999 : a.daysLeft;
+    var db = (b.daysLeft === null) ? 99999 : b.daysLeft;
+    return da - db;
+  });
+
+  var nLow = st.filter(function (x) { return x.low || x.left <= 0; }).length;
+  var nNeg = st.filter(function (x) { return x.neg; }).length;
+  v.appendChild(h('div', { class: 'stats', style: 'margin-bottom:16px' }, [
+    statCard('รายการทั้งหมด', st.length),
+    statCard('ต้องสั่งซื้อ', nLow, nLow > 0),
+    statCard('ยอดติดลบ', nNeg, nNeg > 0)
+  ]));
+
+  var rows = st.map(function (x) {
+    var flag = x.neg ? 'ยอดติดลบ' : x.left <= 0 ? 'หมดแล้ว' : x.low ? 'ใกล้หมด' : '';
+    var days = (x.left <= 0) ? 'หมดแล้ว'
+             : (x.daysLeft === null) ? '—'
+             : x.daysLeft + ' วัน';
+
+    var rc = h('button', { class: 'btn btn-secondary', style: 'font-size:12px' }, ['รับเข้า']);
+    rc.addEventListener('click', function () { supMoveDlg(x, 'รับเข้า'); });
+    var aj = h('button', { class: 'btn btn-secondary', style: 'font-size:12px;margin-left:6px' }, ['ปรับยอด']);
+    aj.addEventListener('click', function () { supAdjustDlg(x); });
+
+    return h('tr', {}, [
+      h('td', { style: 'font-family:var(--font-heading);font-weight:800' }, [x.code]),
+      h('td', {}, [x.name]),
+      h('td', { style: 'font-size:12px' }, [x.cat || '—']),
+      supLeftCell(x),
+      h('td', { style: 'font-size:12px' }, [x.reorder ? String(x.reorder) : '—']),
+      h('td', { style: 'font-size:12px' }, [x.perMonth ? String(x.perMonth) : '—']),
+      h('td', { style: 'font-size:12px' + (x.daysLeft !== null && x.daysLeft <= 14 ? ';color:var(--color-accent);font-weight:600' : '') }, [days]),
+      h('td', { style: 'font-size:11px' + (flag ? ';color:var(--color-accent);font-weight:600' : '') }, [flag || '—']),
+      h('td', { style: 'white-space:nowrap' }, [rc, aj])
+    ]);
+  });
+
+  v.appendChild(h('div', { class: 'wrap', style: 'margin-bottom:18px' }, [
+    h('table', { class: 'table' }, [
+      h('thead', {}, [h('tr', {}, ['รหัส', 'ชื่อวัสดุ', 'หมวด', 'คงเหลือ', 'จุดสั่งซื้อ',
+        'ใช้/เดือน', 'หมดในอีก', 'สถานะ', ''].map(function (t) { return h('th', {}, [t]); }))]),
+      h('tbody', {}, rows)
+    ])
+  ]));
+
+  if (!st.length) {
+    v.appendChild(section('ยังไม่มีรายการวัสดุ', [
+      h('div', { class: 'muted' }, ['เพิ่มด้านล่าง หรือใส่ตรง ๆ ในชีท "คงคลัง" ของไฟล์วัสดุสิ้นเปลือง'])
+    ]));
+  }
+
+  // ── เพิ่ม/แก้รายการ ──
+  var f = {
+    code:    h('input', { class: 'input', placeholder: 'รหัส เช่น MAT-01', style: 'width:150px' }),
+    name:    h('input', { class: 'input', placeholder: 'ชื่อวัสดุ', style: 'width:220px' }),
+    unit:    h('input', { class: 'input', placeholder: 'หน่วย', style: 'width:100px' }),
+    cat:     h('input', { class: 'input', placeholder: 'หมวด', style: 'width:150px' }),
+    start:   h('input', { class: 'input', type: 'number', placeholder: 'ยอดตั้งต้น', style: 'width:120px' }),
+    reorder: h('input', { class: 'input', type: 'number', placeholder: 'จุดสั่งซื้อ', style: 'width:120px' })
+  };
+  var add = h('button', { class: 'btn btn-primary' }, ['เพิ่ม / อัปเดต']);
+  add.addEventListener('click', function () {
+    if (!guardEdit()) return;
+    if (!f.code.value.trim() || !f.name.value.trim()) { toast('ต้องมีรหัสและชื่อวัสดุ', true); return; }
+    rpc('apiSupSaveItem', A.empId, {
+      code: f.code.value.trim(), name: f.name.value.trim(), unit: f.unit.value.trim(),
+      cat: f.cat.value.trim(), start: Number(f.start.value) || 0,
+      reorder: Number(f.reorder.value) || 0, status: 'ใช้งาน'
+    }).then(function () {
+      toast('บันทึกแล้ว'); supLoad(true);
+    }).catch(function (e) { toast(e.message, true); });
+  });
+  v.appendChild(section('เพิ่มวัสดุ (รหัสซ้ำ = แก้ของเดิม)', [
+    h('div', { class: 'bar', style: 'margin:0' }, [f.code, f.name, f.unit, f.cat, f.start, f.reorder, add]),
+    h('div', { class: 'muted', style: 'font-size:12px;margin-top:8px' },
+      ['ยอดตั้งต้น = จำนวนที่นับได้จริงวันที่เริ่มใช้ระบบ · จากนั้นระบบเดินยอดเองจากการเบิกและรับเข้า'])
+  ]));
+}
+
+/** กล่องรับเข้า/ปรับยอด — ใช้ prompt เพราะเป็นงานนาน ๆ ทำที ไม่คุ้มกับการทำหน้าจอเต็ม */
+function supMoveDlg(x, kind) {
+  if (!guardEdit()) return;
+  var q = prompt(kind + ' · ' + x.name + ' (' + x.unit + ')\nคงเหลือตอนนี้ ' + x.left + '\n\nใส่จำนวนที่' + kind, '');
+  if (q === null) return;
+  var n = Math.floor(Number(q));
+  if (!(n > 0)) { toast('จำนวนต้องมากกว่า 0', true); return; }
+  var note = prompt('หมายเหตุ (ไม่บังคับ) เช่น เลขที่ใบสั่งซื้อ', '') || '';
+  rpc('apiSupReceive', {
+    empId: A.empId, kind: kind, note: note, items: [{ code: x.code, qty: n }]
+  }).then(function () { toast(kind + ' ' + n + ' ' + x.unit + ' แล้ว'); supLoad(true); })
+    .catch(function (e) { toast(e.message, true); });
+}
+
+/**
+ * ปรับยอดจากการนับจริง — ถามยอดที่นับได้ แล้วคำนวณส่วนต่างเอง
+ * ให้แอดมินคิดเองว่าต้องบวกหรือลบเท่าไหร่คือแหล่งของความผิดพลาด
+ */
+function supAdjustDlg(x) {
+  if (!guardEdit()) return;
+  var q = prompt('ปรับยอด · ' + x.name + ' (' + x.unit + ')\nระบบว่าเหลือ ' + x.left +
+                 '\n\nนับของจริงได้เท่าไหร่', String(x.left));
+  if (q === null) return;
+  var real = Math.floor(Number(q));
+  if (!isFinite(real) || real < 0) { toast('ใส่จำนวนที่นับได้', true); return; }
+  var diff = real - x.left;
+  if (!diff) { toast('ยอดตรงกันอยู่แล้ว ไม่ต้องปรับ'); return; }
+  var kind = diff > 0 ? 'ปรับเพิ่ม' : 'ปรับลด';
+  if (!confirm('นับได้ ' + real + ' · ระบบว่า ' + x.left + '\nจะบันทึก "' + kind + ' ' +
+               Math.abs(diff) + ' ' + x.unit + '"\n\nยืนยัน?')) return;
+  var note = prompt('เหตุผล (ไม่บังคับ)', 'ปรับตามการนับจริง') || '';
+  rpc('apiSupReceive', {
+    empId: A.empId, kind: kind, note: note, items: [{ code: x.code, qty: Math.abs(diff) }]
+  }).then(function () { toast('ปรับยอดแล้ว'); supLoad(true); })
+    .catch(function (e) { toast(e.message, true); });
+}
+
+// ── ประวัติการเบิก ────────────────────────────────────────────────────
+
+function supViewHist(v) {
+  var hist = SUP.data.history || [];
+  var q = (SUP.find || '').trim().toLowerCase();
+  var find = h('input', { class: 'input', placeholder: 'ค้นหา ชื่อวัสดุ / ชื่อคน / แผนก', style: 'width:280px', value: SUP.find || '' });
+  find.addEventListener('input', function (e) { SUP.find = e.target.value; renderAll(); });
+  v.appendChild(h('div', { class: 'bar', style: 'margin:0 0 12px' }, [find]));
+
+  var list = hist.filter(function (r) {
+    if (!q) return true;
+    return (r.name + ' ' + r.code + ' ' + r.empName + ' ' + r.dept + ' ' + r.note + ' ' + r.kind)
+      .toLowerCase().indexOf(q) >= 0;
+  });
+
+  var rows = list.map(function (r) {
+    var out = (r.kind === 'เบิก');
+    var pf = r.proof
+      ? h('a', { href: r.proof, target: '_blank', rel: 'noopener', style: 'font-size:12px' }, ['ดูรูป'])
+      : h('span', { class: 'muted', style: 'font-size:12px' }, ['—']);
+    return h('tr', {}, [
+      h('td', { style: 'font-size:12px;white-space:nowrap' }, [r.date + ' ' + r.time]),
+      h('td', { style: 'font-size:12px' + (out ? '' : ';color:var(--color-accent);font-weight:600') }, [r.kind]),
+      h('td', {}, [r.name]),
+      h('td', { style: 'font-family:var(--font-heading);font-weight:800' }, [(out ? '−' : '+') + r.qty + ' ' + r.unit]),
+      h('td', { style: 'font-size:12px' + (r.left < 0 ? ';color:var(--color-accent);font-weight:600' : '') }, [String(r.left)]),
+      h('td', {}, [r.empName]),
+      h('td', { style: 'font-size:12px' }, [r.dept || '—']),
+      h('td', { style: 'font-size:12px' }, [r.note || '—']),
+      h('td', {}, [pf])
+    ]);
+  });
+
+  v.appendChild(h('div', { class: 'wrap' }, [
+    h('table', { class: 'table' }, [
+      h('thead', {}, [h('tr', {}, ['วันเวลา', 'รายการ', 'ชื่อวัสดุ', 'จำนวน', 'คงเหลือ',
+        'ผู้ทำรายการ', 'แผนก', 'หมายเหตุ', 'หลักฐาน'].map(function (t) { return h('th', {}, [t]); }))]),
+      h('tbody', {}, rows)
+    ])
+  ]));
+
+  if (!rows.length) {
+    v.appendChild(h('div', { class: 'muted', style: 'padding:16px 0' },
+      [hist.length ? 'ไม่เจอรายการที่ค้นหา' : 'ยังไม่มีการเบิกในช่วง ' + SUP.days + ' วันที่ผ่านมา']));
+  }
+}
+
+// ── สถิติ ─────────────────────────────────────────────────────────────
+
+/** แท่งเทียบสัดส่วน — ข้อมูลน้อยแบบนี้ไม่ต้องลากไลบรารีกราฟเข้ามา */
+function supBars(rows, labelOf, qtyOf) {
+  var max = rows.reduce(function (a, r) { return Math.max(a, qtyOf(r)); }, 0) || 1;
+  return h('div', {}, rows.map(function (r) {
+    var q = qtyOf(r);
+    return h('div', { style: 'display:flex;align-items:center;gap:10px;padding:6px 0' }, [
+      h('div', { style: 'width:150px;font-size:13px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, [labelOf(r)]),
+      h('div', { style: 'flex:1;height:16px;background:var(--color-divider);min-width:60px' }, [
+        h('div', { style: 'height:16px;width:' + Math.round(q / max * 100) + '%;background:var(--color-accent)' }, [])
+      ]),
+      h('div', { style: 'width:60px;text-align:right;font-family:var(--font-heading);font-weight:800;font-size:13px' }, [String(q)])
+    ]);
+  }));
+}
+
+function supViewStats(v) {
+  var s = SUP.data.stats;
+  var used = s.items.filter(function (x) { return x.used > 0; })
+    .sort(function (a, b) { return b.used - a.used; }).slice(0, 10);
+
+  var totalOut = s.items.reduce(function (a, x) { return a + x.used; }, 0);
+  v.appendChild(h('div', { class: 'stats', style: 'margin-bottom:16px' }, [
+    statCard('ยอดเบิกรวม ' + SUP.days + ' วัน', totalOut),
+    statCard('รายการที่มีการเบิก', used.length),
+    statCard('คนที่เบิก', s.topUsers.length)
+  ]));
+
+  if (used.length) {
+    v.appendChild(section('ของที่เบิกมากที่สุด', [supBars(used,
+      function (r) { return r.name; }, function (r) { return r.used; })]));
+  }
+  if (s.topUsers.length) {
+    v.appendChild(section('คนที่เบิกมากที่สุด', [supBars(s.topUsers,
+      function (r) { return r.name; }, function (r) { return r.qty; })]));
+  }
+  if (s.topDepts.length) {
+    v.appendChild(section('ยอดเบิกแยกแผนก', [supBars(s.topDepts,
+      function (r) { return r.dept; }, function (r) { return r.qty; })]));
+  }
+  if (s.months.length > 1) {
+    v.appendChild(section('ยอดเบิกรายเดือน', [supBars(s.months,
+      function (r) { return r.month; }, function (r) { return r.qty; })]));
+  }
+
+  // ของที่ซื้อมาแล้วไม่มีใครใช้ = ทุนจม ไม่มีทางเห็นถ้าไม่ไล่ดูทีละรายการ
+  var dead = s.items.filter(function (x) { return x.used === 0 && x.left > 0; });
+  if (dead.length) {
+    v.appendChild(section('ไม่มีการเบิกเลยใน ' + SUP.days + ' วัน (' + dead.length + ' รายการ)', [
+      h('div', { class: 'wrap' }, [h('table', { class: 'table' }, [
+        h('thead', {}, [h('tr', {}, ['รหัส', 'ชื่อวัสดุ', 'คงเหลือ'].map(function (t) { return h('th', {}, [t]); }))]),
+        h('tbody', {}, dead.map(function (x) {
+          return h('tr', {}, [
+            h('td', { style: 'font-family:var(--font-heading);font-weight:800' }, [x.code]),
+            h('td', {}, [x.name]), supLeftCell(x)
+          ]);
+        }))
+      ])])
+    ]));
+  }
+
+  if (!totalOut) {
+    v.appendChild(h('div', { class: 'muted', style: 'padding:16px 0' },
+      ['ยังไม่มีการเบิกในช่วง ' + SUP.days + ' วันที่ผ่านมา']));
+  }
+}
 
 // จำรหัสไว้แล้วก็ข้ามหน้าใส่รหัสไปเลย ไม่ต้องให้เห็นวูบหนึ่งทุกครั้งที่รีเฟรช
 if (A.empId) {

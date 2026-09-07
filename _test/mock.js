@@ -112,6 +112,20 @@ var SUP_STOCK = [
   { code: 'MAT-05', name: 'สเปรย์หล่อลื่น', unit: 'กระป๋อง', cat: 'ซ่อมบำรุง',      left: 0,   reorder: 5 }
 ];
 
+// ประวัติการเบิกวัสดุจำลอง — ใหม่สุดขึ้นก่อน เหมือนที่เซิร์ฟเวอร์ส่งมา
+var SUP_HIST = [
+  { date:'7/9/2026', time:'09:12', kind:'เบิก', code:'MAT-02', name:'ถุงมือผ้า', qty:30, unit:'คู่', left:12,
+    empId:'730075', empName:'สุพัตรา แก้วมณี', dept:'IN LH+BG', note:'งานแพ็ค', proof:'https://drive.google.com/drive/folders/xxx', ref:'MAT-20260907-2790' },
+  { date:'6/9/2026', time:'14:40', kind:'เบิก', code:'MAT-01', name:'เทปใส 2 นิ้ว', qty:12, unit:'ม้วน', left:117,
+    empId:'720002', empName:'สมศรี ลูกทีม', dept:'IN LH+BG', note:'', proof:'https://drive.google.com/drive/folders/xxx', ref:'MAT-20260906-2770' },
+  { date:'5/9/2026', time:'08:05', kind:'รับเข้า', code:'MAT-01', name:'เทปใส 2 นิ้ว', qty:100, unit:'ม้วน', left:129,
+    empId:'600112', empName:'ธนกฤต ศรีสุข', dept:'ทุกแผนก', note:'PO-2026-118', proof:'', ref:'MAT-20260905-2740' },
+  { date:'3/9/2026', time:'16:20', kind:'เบิก', code:'MAT-04', name:'คัตเตอร์', qty:6, unit:'ด้าม', left:8,
+    empId:'730075', empName:'สุพัตรา แก้วมณี', dept:'IN LH+BG', note:'', proof:'', ref:'MAT-20260903-2700' },
+  { date:'1/9/2026', time:'10:00', kind:'เบิก', code:'MAT-05', name:'สเปรย์หล่อลื่น', qty:4, unit:'กระป๋อง', left:0,
+    empId:'710001', empName:'มานะ หัวหน้ากะ', dept:'BULKY', note:'ซ่อมรถลาก', proof:'', ref:'MAT-20260901-2650' }
+];
+
 // สมุดบัตรชั่วคราวจำลอง — TEMP-05 ถูกจ่ายออกไปแล้วยังไม่คืน
 var CARD_ROW = 5;
 var CARDS_OUT = [
@@ -243,6 +257,63 @@ var API = {
         empName:'นาย อับดุลลาฟิก อาแว', dept:'OUT 4W', by:'อนุชา นิสสัยกล้า (713570)',
         issue:'หน้าจอแตกเบอร์ 11/05', note:'', folder:'https://drive.google.com/drive/folders/yyy' }
     ] };
+  },
+  // หน้าแอดมินวัสดุ — สร้างสถิติจากประวัติจำลอง เหมือนที่เซิร์ฟเวอร์คิดจริง
+  apiSupAdmin: function (empId, days) {
+    MOCK_CALLS.push('supAdmin:' + days);
+    var d = Number(days) || 30;
+    var hist = SUP_HIST.slice();
+    var perItem = {}, perUser = {}, perDept = {}, perMonth = {};
+    hist.forEach(function (h) {
+      if (h.kind !== 'เบิก') return;
+      perItem[h.code] = (perItem[h.code] || 0) + h.qty;
+      var uk = h.empId + '|' + h.empName;
+      perUser[uk] = (perUser[uk] || 0) + h.qty;
+      if (h.dept) perDept[h.dept] = (perDept[h.dept] || 0) + h.qty;
+      var m = /^(\d+)\/(\d+)\/(\d+)$/.exec(h.date);
+      if (m) { var k = m[3] + '-' + ('0' + m[2]).slice(-2); perMonth[k] = (perMonth[k] || 0) + h.qty; }
+    });
+    var seen = {};
+    hist.forEach(function (h) { if (!seen[h.code]) seen[h.code] = h.date; });
+    var items = SUP_STOCK.map(function (x) {
+      var usedN = perItem[x.code] || 0;
+      var perDay = usedN ? usedN / d : 0;
+      return { code: x.code, name: x.name, unit: x.unit, cat: x.cat, left: x.left,
+        reorder: x.reorder, low: (x.reorder > 0 && x.left <= x.reorder), neg: x.left < 0,
+        used: usedN, perMonth: perDay ? Math.round(perDay * 30 * 10) / 10 : 0,
+        daysLeft: (perDay > 0 && x.left > 0) ? Math.floor(x.left / perDay) : null,
+        lastMove: seen[x.code] || '' };
+    });
+    var top = function (o) {
+      return Object.keys(o).map(function (k) { return { key: k, qty: o[k] }; })
+        .sort(function (a, b) { return b.qty - a.qty; }).slice(0, 10);
+    };
+    return { ok: true, days: d, stock: items, history: hist, today: '7/9/2026',
+      stats: { items: items,
+        topUsers: top(perUser).map(function (x) { var p = x.key.split('|'); return { id: p[0], name: p[1], qty: x.qty }; }),
+        topDepts: top(perDept).map(function (x) { return { dept: x.key, qty: x.qty }; }),
+        months: Object.keys(perMonth).sort().map(function (k) { return { month: k, qty: perMonth[k] }; }) } };
+  },
+  apiSupReceive: function (p) {
+    MOCK_CALLS.push('supReceive:' + p.kind + ':' + (p.items || []).map(function (x) { return x.code + '×' + x.qty; }).join(','));
+    var sign = (p.kind === 'รับเข้า' || p.kind === 'ปรับเพิ่ม') ? 1 : -1;
+    (p.items || []).forEach(function (x) {
+      var it = SUP_STOCK.filter(function (y) { return y.code === x.code; })[0];
+      if (!it) return;
+      it.left += sign * (Number(x.qty) || 0);
+      SUP_HIST.unshift({ date: '7/9/2026', time: '10:40', kind: p.kind, code: it.code, name: it.name,
+        qty: Number(x.qty), unit: it.unit, left: it.left, empId: '600112', empName: 'ธนกฤต ศรีสุข',
+        dept: 'ทุกแผนก', note: p.note || '', proof: '', ref: 'MAT-20260907-2900' });
+    });
+    return { ok: true, wrote: (p.items || []).length };
+  },
+  apiSupSaveItem: function (empId, it) {
+    MOCK_CALLS.push('supSaveItem:' + it.code);
+    var f = SUP_STOCK.filter(function (y) { return y.code === it.code; })[0];
+    if (f) { f.name = it.name; f.unit = it.unit; f.cat = it.cat; f.reorder = it.reorder; }
+    else SUP_STOCK.push({ code: it.code, name: it.name, unit: it.unit, cat: it.cat,
+      left: Number(it.start) || 0, reorder: Number(it.reorder) || 0 });
+    return { ok: true, code: it.code, added: !f };
   },
   apiAdminLoad: function (id, range) {
     var u = STAFF.filter(function (p) { return p.id === String(id); })[0];
