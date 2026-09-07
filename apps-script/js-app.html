@@ -250,7 +250,7 @@ var TITLES = {
   login: ['เข้าสู่ระบบ', 'SIGN IN'], home: ['อัพเดทงาน', 'HOME'],
   form: ['ข้อมูลงาน', 'JOB INFO'], shoot: ['ถ่ายรูป', 'CAPTURE'],
   review: ['ตรวจทาน', 'REVIEW'], done: ['ส่งแล้ว', 'SUBMITTED'], queue: ['คิวรอส่ง', 'QUEUE'],
-  cards: ['บัตรชั่วคราว', 'TEMP CARD']
+  cards: ['บัตรชั่วคราว', 'TEMP CARD'], sup: ['เบิกวัสดุสิ้นเปลือง', 'SUPPLIES']
 };
 
 function render() {
@@ -279,6 +279,7 @@ function render() {
   if (S.screen === 'review') renderReview();
   if (S.screen === 'queue')  renderQueue();
   if (S.screen === 'cards')  renderCards();
+  if (S.screen === 'sup')    renderSup();
 
   renderFooter();
 }
@@ -1077,6 +1078,224 @@ function returnCards() {
   });
 }
 
+// ══════════════════════════════════════════════════════════════════════
+//  วัสดุสิ้นเปลือง
+//
+//  เบิกแล้วไม่ต้องคืน ไม่มีรายการค้าง จึงไม่ต้องไปโผล่ที่หน้าแรก
+//  ยอดคงเหลือคำนวณจากสมุดฝั่งเซิร์ฟเวอร์ ฝั่งนี้แค่เอามาโชว์และคิดยอดหลังเบิกให้ดู
+// ══════════════════════════════════════════════════════════════════════
+
+var SUP = {
+  stock: [],            // [{code,name,unit,cat,left,reorder,low,neg}]
+  cart: {},             // { รหัส: จำนวน }
+  note: '', shots: [],
+  find: '', cat: '',
+  loaded: false, busy: false
+};
+
+function openSup() {
+  go('sup');
+  if (SUP.loaded) { renderSup(); return; }
+  $('#sup-msg').textContent = 'กำลังโหลดทะเบียนวัสดุ…';
+  rpc('apiSupBoot', S.user.id).then(function (r) {
+    SUP.stock = r.stock || [];
+    SUP.loaded = true;
+    renderSup();
+  }).catch(function (e) {
+    $('#sup-msg').textContent = 'โหลดทะเบียนไม่สำเร็จ · ' + e.message;
+  });
+}
+
+function supItem(code) {
+  return SUP.stock.filter(function (x) { return x.code === code; })[0];
+}
+
+/** ของที่เลือกแล้วและใส่จำนวนมากกว่า 0 */
+function supPicked() {
+  return Object.keys(SUP.cart)
+    .filter(function (c) { return SUP.cart[c] > 0 && supItem(c); })
+    .map(function (c) { return { code: c, qty: SUP.cart[c] }; });
+}
+
+function renderSup() {
+  var low = SUP.stock.filter(function (x) { return x.low; }).length;
+  $('#sup-msg').textContent = !SUP.loaded ? 'กำลังโหลด…'
+    : SUP.stock.length ? 'วัสดุ ' + SUP.stock.length + ' รายการ' + (low ? ' · ใกล้หมด ' + low + ' รายการ' : '')
+                       : 'ยังไม่มีรายการวัสดุในทะเบียน — แอดมินต้องใส่ในชีทคงคลังก่อน';
+
+  // ── ตะกร้า ──
+  var picked = supPicked();
+  $('#sup-cart-wrap').classList.toggle('hide', !picked.length);
+  var cw = $('#sup-cart'); cw.innerHTML = '';
+  picked.forEach(function (p) {
+    var it = supItem(p.code);
+
+    var rm = el('button', {
+      style: 'border:0;background:transparent;color:var(--color-text);opacity:.5;cursor:pointer;font-size:16px;padding:0 4px'
+    }, ['✕']);
+    rm.addEventListener('click', function () { delete SUP.cart[p.code]; renderSup(); });
+
+    var num = el('input', {
+      class: 'input', type: 'number', min: '1', value: String(p.qty),
+      style: 'width:56px;text-align:center;flex:none'
+    });
+    var rng = el('input', {
+      type: 'range', min: '1', step: '1',
+      // เพดานแถบเลื่อนอิงของที่มีจริง แต่ไม่ต่ำกว่า 10 ไม่งั้นของเหลือ 2 ชิ้นจะเลื่อนไม่ได้เลย
+      max: String(Math.max(it.left, p.qty, 10)), value: String(p.qty),
+      style: 'flex:1;min-width:0'
+    });
+
+    var msg = el('div', { style: 'font-size:11px;margin-top:6px' }, []);
+
+    // อัปเดตเฉพาะตัวเลขกับข้อความ ไม่วาดทั้งหน้า
+    //
+    // ถ้าเรียก renderSup() ตอนลากแถบเลื่อน ตัวแถบจะถูกสร้างใหม่ทุกครั้งที่ขยับ
+    // นิ้วจะหลุดจากตัวเลื่อนทันทีตั้งแต่ก้าวแรก ลากไม่ได้เลย
+    // เหตุผลเดียวกับที่ช่องพิมพ์ชื่อในหน้าบัตรวาดแค่แถบล่าง
+    var paint = function (n) {
+      var after2 = it.left - n;
+      msg.textContent = after2 < 0
+        ? '⚠ เหลือ ' + it.left + ' แต่เบิก ' + n + ' จะติดลบ ' + Math.abs(after2) + ' — ส่งได้ แต่แอดมินจะเห็น'
+        : 'เหลือ ' + it.left + ' → ' + after2 + ' ' + it.unit;
+      msg.style.color = after2 < 0 ? 'var(--color-accent)' : '';
+      msg.style.opacity = after2 < 0 ? '1' : '.7';
+    };
+    var set = function (v, redraw) {
+      var n = Math.max(1, Math.floor(Number(v) || 1));
+      SUP.cart[p.code] = n;
+      if (redraw) { renderSup(); return; }
+      if (rng.value !== String(n)) rng.value = n;
+      if (num.value !== String(n)) num.value = n;
+      paint(n);
+      renderFooter();   // ยอดรวมที่แถบล่างต้องขยับตาม
+    };
+    paint(p.qty);
+
+    rng.addEventListener('input',  function (e) { set(e.target.value, false); });
+    num.addEventListener('input',  function (e) { set(e.target.value, false); });
+    // ปล่อยนิ้ว/ออกจากช่องแล้วค่อยวาดใหม่ทีเดียว เผื่อเพดานแถบเลื่อนต้องขยาย
+    rng.addEventListener('change', function (e) { set(e.target.value, true); });
+    num.addEventListener('blur',   function (e) { set(e.target.value, true); });
+
+    var minus = el('button', { class: 'chip', style: 'padding:4px 10px' }, ['−']);
+    var plus  = el('button', { class: 'chip', style: 'padding:4px 10px' }, ['+']);
+    minus.addEventListener('click', function () { set(SUP.cart[p.code] - 1, true); });
+    plus.addEventListener('click', function () { set(SUP.cart[p.code] + 1, true); });
+
+    cw.appendChild(el('div', {
+      style: 'border:1px solid var(--color-divider);padding:9px;margin-bottom:6px'
+    }, [
+      el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:7px' }, [
+        el('div', { style: 'flex:1;font-size:13px' }, [it.name]), rm
+      ]),
+      el('div', { style: 'display:flex;align-items:center;gap:6px' }, [minus, rng, plus, num]),
+      msg
+    ]));
+  });
+
+  // ── หมวด ──
+  var cats = [], seen = {};
+  SUP.stock.forEach(function (x) { if (x.cat && !seen[x.cat]) { seen[x.cat] = true; cats.push(x.cat); } });
+  var cw2 = $('#sup-cats'); cw2.innerHTML = '';
+  if (cats.length) {
+    [''].concat(cats).forEach(function (c) {
+      var b = el('button', { class: 'chip' + (SUP.cat === c ? ' on' : '') }, [c || 'ทั้งหมด']);
+      b.addEventListener('click', function () { SUP.cat = c; renderSup(); });
+      cw2.appendChild(b);
+    });
+  }
+
+  // ── รายการให้เลือก ──
+  var q = SUP.find.trim().toLowerCase();
+  var list = SUP.stock.filter(function (x) {
+    if (SUP.cat && x.cat !== SUP.cat) return false;
+    if (q && (x.name + ' ' + x.code).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+
+  var lw = $('#sup-list'); lw.innerHTML = '';
+  list.forEach(function (x) {
+    var inCart = SUP.cart[x.code] > 0;
+    var add = el('button', {
+      class: inCart ? 'chip on' : 'chip', style: 'padding:5px 11px;font-size:12px'
+    }, [inCart ? 'เลือกแล้ว' : '+']);
+    add.addEventListener('click', function () {
+      if (inCart) delete SUP.cart[x.code]; else SUP.cart[x.code] = 1;
+      renderSup();
+    });
+    lw.appendChild(el('div', {
+      style: 'display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--color-divider)'
+    }, [
+      el('div', { style: 'flex:1;line-height:1.35' }, [
+        el('div', { style: 'font-size:13px' }, [x.name]),
+        x.low ? el('span', {
+          style: 'font-size:10px;padding:1px 6px;background:var(--color-accent);color:var(--color-bg)'
+        }, [x.left <= 0 ? 'หมดแล้ว' : 'ใกล้หมด']) : null
+      ].filter(Boolean)),
+      el('div', { style: 'font-size:11.5px;opacity:.7;white-space:nowrap' }, ['เหลือ ' + x.left + ' ' + x.unit]),
+      add
+    ]));
+  });
+  if (!list.length && SUP.stock.length) {
+    lw.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่เจอวัสดุที่ค้นหา']));
+  }
+
+  // ── รูป ──
+  var sw = $('#sup-shots'); sw.innerHTML = '';
+  SUP.shots.forEach(function (p) {
+    var im = el('img', { src: p.dataUrl, style: 'width:64px;height:64px;object-fit:cover;cursor:pointer' });
+    im.addEventListener('click', function () {
+      SUP.shots = SUP.shots.filter(function (x) { return x.id !== p.id; }); renderSup();
+    });
+    sw.appendChild(im);
+  });
+  var addShot = el('button', {
+    style: 'width:64px;height:64px;border:1px dashed var(--color-divider);background:transparent;cursor:pointer;font-size:20px;color:var(--color-text)'
+  }, ['+']);
+  addShot.addEventListener('click', function () { capture('sup', 'วัสดุสิ้นเปลือง', false); });
+  sw.appendChild(addShot);
+
+  renderFooter();
+}
+
+/** รูปบังคับ — อัปขึ้นไดรฟ์ก่อน ถ้าอัปไม่ได้ต้องไม่เขียนแถว ไม่งั้นได้ของโดยไม่มีหลักฐาน */
+function supPhotos() {
+  return rpc('apiReserve', S.user.id, S.topics[0].id).then(function (j) {
+    var seq = 0;
+    return SUP.shots.reduce(function (chain, p) {
+      return chain.then(function () {
+        return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
+                   'วัสดุสิ้นเปลือง', p.dataUrl, p.time, p.gps, ++seq, p.id);
+      });
+    }, Promise.resolve()).then(function () { return j.folderUrl; });
+  });
+}
+
+function sendSup() {
+  var items = supPicked();
+  if (!items.length) { toast('เลือกของที่จะเบิกก่อน', true); return; }
+  if (!SUP.shots.length) { toast('ต้องถ่ายรูปหลักฐานอย่างน้อย 1 รูป', true); return; }
+
+  SUP.busy = true; S.busy = true; renderFooter();
+  supPhotos().then(function (folder) {
+    return rpc('apiSupIssue', {
+      empId: S.user.id, note: cs_(SUP.note), proof: folder,
+      clientId: uid('sup'), items: items
+    });
+  }).then(function (r) {
+    SUP.busy = false; S.busy = false;
+    var neg = (r.lines || []).filter(function (l) { return l.neg; });
+    toast('เบิกแล้ว ' + r.wrote + ' รายการ' + (neg.length ? ' · มี ' + neg.length + ' รายการยอดติดลบ' : ''));
+    SUP.cart = {}; SUP.note = ''; SUP.shots = []; SUP.loaded = false;
+    $('#sup-note').value = '';
+    go('home');
+  }).catch(function (e) {
+    SUP.busy = false; S.busy = false;
+    toast(e.message, true); renderSup();
+  });
+}
+
 // ── หน้าถ่ายรูป ───────────────────────────────────────────────────────
 
 function renderShoot() {
@@ -1451,6 +1670,16 @@ function renderFooter() {
     hintText = S.pinErr || (S.pin.length < PIN_MIN
       ? 'ใส่รหัสพนักงาน ' + PIN_MIN + '–' + PIN_MAX + ' หลัก'
       : 'กดเข้าใช้งานได้เลย');
+  } else if (S.screen === 'sup') {
+    var pick = supPicked();
+    var tot = pick.reduce(function (a, b) { return a + b.qty; }, 0);
+    label = 'เบิก' + (pick.length ? ' ' + pick.length + ' รายการ' : '');
+    // รูปบังคับ ปุ่มจะติดก็ต่อเมื่อเลือกของแล้วและถ่ายรูปแล้ว
+    okState = pick.length > 0 && SUP.shots.length > 0 && !SUP.busy;
+    hintText = !SUP.loaded ? 'กำลังโหลดทะเบียนวัสดุ…'
+      : !pick.length ? 'เลือกของที่จะเบิกก่อน'
+      : !SUP.shots.length ? 'ยังไม่ได้ถ่ายรูป — รูปหลักฐานต้องมีอย่างน้อย 1 รูป'
+      : 'รวม ' + tot + ' ชิ้น · แนบรูปแล้ว ' + SUP.shots.length + ' รูป';
   } else if (S.screen === 'cards' && CARD.mode === 'back') {
     var nBack = Object.keys(CARD.back).length;
     label = 'คืนบัตร' + (nBack ? ' ' + nBack + ' ใบ' : '');
@@ -1704,6 +1933,9 @@ function handleFiles(files, fromCamera) {
       // บัตรชั่วคราวเก็บรูปไว้ในเครื่องก่อน ส่งพร้อมกันตอนกดจ่ายบัตร
       // ไม่ใช้ bgUpload เพราะยังไม่มีรหัสรายการให้ผูก คนละระบบกับงานเบิกเครื่อง
       list.forEach(function (p) { CARD.shots.push(Object.assign({ id: uid('c') }, p)); });
+    } else if (cap.target === 'sup') {
+      // เหมือนบัตร — เก็บไว้ในเครื่องก่อน ส่งพร้อมกันตอนกดเบิก
+      list.forEach(function (p) { SUP.shots.push(Object.assign({ id: uid('m') }, p)); });
     } else {
       list.forEach(function (p) {
         var o = Object.assign({ id: uid('p') }, p);
@@ -2250,6 +2482,9 @@ function bind() {
 
   // ── บัตรชั่วคราว ──
   $('#btn-cards').addEventListener('click', function () { openCards('issue'); });
+  $('#btn-sup').addEventListener('click', openSup);
+  $('#sup-find').addEventListener('input', function (e) { SUP.find = e.target.value; renderSup(); });
+  $('#sup-note').addEventListener('input', function (e) { SUP.note = e.target.value; });
   $('#btn-card-add').addEventListener('click', function () {
     CARD.pairs.push({ card: freeCard(), name: '', sub: '' }); renderCards();
   });
@@ -2370,6 +2605,7 @@ function bind() {
     if (S.screen === 'shoot')  return nextStep();
     if (S.screen === 'review') return submit();
     if (S.screen === 'cards')  return CARD.mode === 'back' ? returnCards() : sendCards();
+    if (S.screen === 'sup')    return sendSup();
   });
 
   window.addEventListener('online', function () {

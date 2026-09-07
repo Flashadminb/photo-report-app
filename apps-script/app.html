@@ -142,6 +142,14 @@
               font-size:13px;background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
       </button>
 
+      <!-- วัสดุสิ้นเปลือง — เบิกแล้วไม่ต้องคืน คนละเรื่องกับเบิกเครื่อง เลยแยกปุ่มเล็ก -->
+      <button id="btn-sup" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
+              border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
+        <span style="font-size:13px;font-weight:600">วัสดุสิ้นเปลือง / SUPPLIES</span>
+        <span id="sup-badge" class="hide" style="margin-left:auto;font-family:var(--font-heading);font-weight:800;
+              font-size:13px;background:var(--color-accent);color:var(--color-bg);padding:2px 8px">0</span>
+      </button>
+
       <button id="btn-queue" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;background:transparent;
               border:1px solid var(--color-divider);cursor:pointer;font-family:var(--font-body);color:var(--color-text)">
         <span style="font-size:13px;font-weight:600">คิวรอส่ง / OFFLINE QUEUE</span>
@@ -189,6 +197,37 @@
         <div class="surface" id="card-shot-tip"
              style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px"></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-shots"></div>
+      </div>
+    </section>
+
+    <!-- ══ วัสดุสิ้นเปลือง ══ -->
+    <section class="pane hide" data-screen="sup">
+      <div id="sup-msg" class="surface" style="padding:10px;font-size:12px">กำลังโหลด…</div>
+
+      <!-- ของที่เลือกไว้ — ขึ้นบนสุดเพราะเป็นสิ่งที่กำลังทำอยู่ -->
+      <div id="sup-cart-wrap" class="hide">
+        <span class="label">ของที่เลือก</span>
+        <div id="sup-cart"></div>
+      </div>
+
+      <div id="sup-pick-wrap">
+        <span class="label">เลือกของที่จะเบิก</span>
+        <input type="search" id="sup-find" class="input" placeholder="ค้นหาชื่อวัสดุ" style="width:100%">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:7px 0" id="sup-cats"></div>
+        <div id="sup-list"></div>
+      </div>
+
+      <div id="sup-note-wrap">
+        <span class="label">หมายเหตุ · ไม่บังคับ</span>
+        <input type="text" id="sup-note" class="input" placeholder="เอาไปใช้กับงานอะไร" style="width:100%">
+      </div>
+
+      <div>
+        <span class="label">รูปหลักฐาน · ต้องมีอย่างน้อย 1 รูป</span>
+        <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
+          ถ่ายให้เห็น<strong>ของที่เบิก</strong>วางรวมกัน ให้นับจำนวนได้ตรงกับที่กรอก
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="sup-shots"></div>
       </div>
     </section>
 

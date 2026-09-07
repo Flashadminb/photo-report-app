@@ -103,6 +103,15 @@ var SIDE = function (t, n, id, extra) {
     extra || {});
 };
 
+// คงคลังวัสดุจำลอง — ถุงมือกับสเปรย์ตั้งใจให้ต่ำกว่าจุดสั่งซื้อ ไว้ทดสอบป้ายเตือน
+var SUP_STOCK = [
+  { code: 'MAT-01', name: 'เทปใส 2 นิ้ว',  unit: 'ม้วน',    cat: 'เทป/กาว',        left: 117, reorder: 20 },
+  { code: 'MAT-02', name: 'ถุงมือผ้า',      unit: 'คู่',      cat: 'อุปกรณ์ป้องกัน', left: 12,  reorder: 50 },
+  { code: 'MAT-03', name: 'ปากกาเคมี',      unit: 'ด้าม',     cat: 'เครื่องเขียน',   left: 60,  reorder: 10 },
+  { code: 'MAT-04', name: 'คัตเตอร์',       unit: 'ด้าม',     cat: 'เครื่องเขียน',   left: 8,   reorder: 15 },
+  { code: 'MAT-05', name: 'สเปรย์หล่อลื่น', unit: 'กระป๋อง', cat: 'ซ่อมบำรุง',      left: 0,   reorder: 5 }
+];
+
 // สมุดบัตรชั่วคราวจำลอง — TEMP-05 ถูกจ่ายออกไปแล้วยังไม่คืน
 var CARD_ROW = 5;
 var CARDS_OUT = [
@@ -152,6 +161,31 @@ var API = {
         depts: ['IN LH+BG', 'REPACK', 'ทุกแผนก'], shifts: ['กะ 03:00 - 12:00 น.', 'กะ 09:00 - 18:00 น.'],
         issueTags: ['แบตไม่เก็บไฟ'] } };
   },
+  // ── วัสดุสิ้นเปลือง ── ยอดคงเหลือเดินจริงในตัวจำลอง เบิกแล้วยอดต้องลด
+  apiSupBoot: function (empId) {
+    MOCK_CALLS.push('supBoot');
+    return { ok: true, user: { id: empId, name: 'ธนกฤต ศรีสุข', dept: 'ทุกแผนก' },
+      stock: SUP_STOCK.map(function (x) {
+        return { code: x.code, name: x.name, unit: x.unit, cat: x.cat, reorder: x.reorder,
+          left: x.left, low: (x.reorder > 0 && x.left <= x.reorder), neg: x.left < 0 };
+      }),
+      today: '7/9/2026' };
+  },
+  apiSupIssue: function (p) {
+    MOCK_CALLS.push('supIssue:' + (p.items || []).map(function (x) { return x.code + '×' + x.qty; }).join(','));
+    window.MOCK_LAST_SUP = p;
+    if (!p.proof) return { ok: false, error: 'ต้องแนบรูปหลักฐานอย่างน้อย 1 รูป' };
+    var lines = [];
+    (p.items || []).forEach(function (x) {
+      var it = SUP_STOCK.filter(function (y) { return y.code === x.code; })[0];
+      if (!it) return;
+      it.left -= Number(x.qty) || 0;
+      lines.push({ code: it.code, name: it.name, qty: Number(x.qty), unit: it.unit,
+        left: it.left, neg: it.left < 0 });
+    });
+    return { ok: true, wrote: lines.length, lines: lines, ref: 'MAT-20260907-2801' };
+  },
+
   // ── บัตรชั่วคราว ──
   // สมุดบัตรจำลอง — จ่าย/คืนแล้วเปลี่ยนจริง เหมือนแถวในชีท
   apiCardBoot: function (empId) {
