@@ -380,10 +380,7 @@ textarea.input{min-height:90px;resize:vertical}
       </div>
 
       <div id="sup-shot-wrap">
-        <span class="label">รูปหลักฐาน · ต้องมีอย่างน้อย 1 รูป</span>
-        <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
-          ถ่ายให้เห็น<strong>ของที่เบิก</strong>วางรวมกัน ให้นับจำนวนได้ตรงกับที่กรอก
-        </div>
+        <span class="label">รูปหลักฐาน · ถ่ายให้เห็นของที่เบิกครบตามจำนวน</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="sup-shots"></div>
       </div>
     </section>
@@ -657,8 +654,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v63';
-window.APP_BUILT   = '7/9/2026 10:26';
+window.APP_VERSION = 'v64';
+window.APP_BUILT   = '7/9/2026 10:37';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -2332,43 +2329,39 @@ function renderSupPick() {
 
 // ── ขั้นที่ 2 · จำนวน + รูป ───────────────────────────────────────────
 
-var SUP_QUICK = [5, 10, 20, 50];
-
 function renderSupQty() {
   var picked = supPicked();
-  $('#sup-msg').textContent = 'ทวนจำนวนแล้วถ่ายรูป · ' + picked.length + ' รายการ';
 
+  // ทำหน้าให้สั้นที่สุด — ทั้งหน้าต้องจบในจอเดียวไม่ต้องเลื่อน
+  //
+  // ชื่อของกับปุ่มปรับจำนวนอยู่บรรทัดเดียวกัน เหลือแค่ 2 บรรทัดต่อรายการ
+  // ตัดปุ่มลัดออก (แตะที่ตัวเลขพิมพ์เองแทน) และตัดกล่องคำแนะนำถ่ายรูปออก
+  // เอาข้อความไปไว้ที่หัวข้อแทน ประหยัดไป 4 บรรทัด
   var cw = $('#sup-cart'); cw.innerHTML = '';
   picked.forEach(function (p) {
     var it = supItem(p.code);
-    var msg = el('div', { style: 'font-size:11px;margin-top:8px' }, []);
+    var msg = el('div', { style: 'font-size:11px;margin-top:5px' }, []);
     var st = supStepper(it, true, msg, function () { delete SUP.cart[it.code]; renderSupQty(); renderFooter(); });
     supLeftMsg(msg, it);
 
     var del = el('button', {
-      style: 'border:0;background:transparent;color:var(--color-text);opacity:.5;cursor:pointer;font-size:15px;padding:0 4px'
-    }, ['ลบ']);
+      style: 'border:0;background:transparent;color:var(--color-text);opacity:.45;cursor:pointer;' +
+             'font-size:17px;padding:0 2px;flex:none;font-family:var(--font-body)'
+    }, ['✕']);
     del.addEventListener('click', function () {
       delete SUP.cart[it.code];
       if (!supPicked().length) { SUP.step = 0; render(); return; }
       renderSupQty(); renderFooter();
     });
 
-    // ปุ่มลัด — เบิก 20 ไม่ต้องกดบวก 20 ครั้ง
-    var quick = el('div', { style: 'display:flex;gap:6px;margin-top:8px;flex-wrap:wrap' }, []);
-    SUP_QUICK.forEach(function (n) {
-      var b = el('button', { class: 'chip', style: 'padding:5px 12px' }, [String(n)]);
-      b.addEventListener('click', function () { st.set(n); });
-      quick.appendChild(b);
-    });
-
     cw.appendChild(el('div', {
-      style: 'border:1px solid var(--color-divider);padding:10px;margin-bottom:8px'
+      style: 'border:1px solid var(--color-divider);padding:8px 9px;margin-bottom:6px'
     }, [
-      el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:9px' }, [
-        el('div', { style: 'flex:1;font-size:14px' }, [it.name]), del
+      el('div', { style: 'display:flex;align-items:center;gap:8px' }, [
+        el('div', { style: 'flex:1;font-size:14px;line-height:1.3;min-width:0' }, [it.name]),
+        st.box, del
       ]),
-      st.box, quick, msg
+      msg
     ]));
   });
 
@@ -2389,6 +2382,8 @@ function renderSupQty() {
 
 function renderSup() {
   var pick = (SUP.step === 0);
+  // ขั้นสองไม่ต้องมีแถบหัวข้อ แถบล่างบอกอยู่แล้วว่าขั้นไหนและกี่รายการ
+  $('#sup-msg').classList.toggle('hide', !pick);
   $('#sup-pick-wrap').classList.toggle('hide', !pick);
   $('#sup-cart-wrap').classList.toggle('hide', pick);
   $('#sup-note-wrap').classList.toggle('hide', pick);
