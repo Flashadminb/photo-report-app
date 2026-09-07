@@ -87,12 +87,8 @@ function session(u) {
       ? STAFF.map(function (p) { return { id: p.id, name: p.name, dept: p.dept, shift: p.shift }; }) : [],
     // บัตรชั่วคราวที่ยังไม่คืน — ส่งเหมือนกันทุกคน โชว์ที่หน้าแรกรวมกับของค้างคืน
     cardsOut: CARDS_OUT.slice(),
-    // จำลองว่ามีคนอื่นเบิกไปแล้วยังไม่คืน
-    busyCodes: {
-      'PP-INLHBG-02': { by: 'สุพัตรา แก้วมณี', id: '730075', date: '6/8/2026', time: '09:12' },
-      'REPACK 02':    { by: 'ธนกฤต ศรีสุข',   id: '600112', date: '6/8/2026', time: '10:05' },
-      'BPL 02':       { by: 'ธนกฤต ศรีสุข',   id: '600112', date: '6/8/2026', time: '10:05' }
-    }
+    // เครื่องที่ยังไม่มีใครกดคืน — ส่งแค่รหัส ไม่มีชื่อคน เหมือนของจริง
+    busyCodes: ['PP-INLHBG-02', 'PP-INLHBG-01', 'PP-BULKY-01', 'PP-OUT4W-01', 'REPACK 02', 'BPL 02']
   };
 }
 

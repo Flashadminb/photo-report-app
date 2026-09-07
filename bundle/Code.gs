@@ -2233,6 +2233,15 @@ function sessionPayload_(m, u) {
     shifts: m.shifts,
     issueTags: m.issueTags,
     openJobs: mine,
+    // รหัสเครื่องที่ยังไม่มีใครกดคืน — ส่งแค่ "รหัส" ไม่มีชื่อคน
+    //
+    // ตัวกันเบิกซ้ำ (dup) ทำงานตอนกดส่งเท่านั้น ซึ่งต้องเป็นอย่างนั้นเพื่อกันสองคนกดพร้อมกัน
+    // แต่ผลคือหน้างานติ๊กเครื่อง ถ่ายรูปครบ 5 ใบ แล้วค่อยโดนปฏิเสธ รูปเสียเปล่าทั้งชุด
+    // ส่งรายการนี้ไปให้หน้าจอปิดตัวเลือกตั้งแต่แรก จะได้ไม่เสียเวลาถ่าย
+    //
+    // เคยส่ง "ใครถือเครื่องไหน" พร้อมชื่อ แล้วตัดออกเพราะหนัก 6 KB และเปิดเผยชื่อ
+    // รอบนี้ส่งแค่รหัสล้วน ๆ ราว 600 ไบต์ ไม่มีชื่อใครติดไปเลย
+    busyCodes: Object.keys(busyCodes_(open)),
     // บัตรชั่วคราวที่ยังไม่คืน — โชว์ที่หน้าแรกเหมือนของค้างคืน จะได้ไม่ต้องเข้าไปหาเอง
     // ส่งให้ทุกคนเหมือนกัน ไม่กรองตามคนจ่าย เพราะบัตรอยู่กับคนขับไม่ได้อยู่กับคนจ่าย
     // จ่ายกะเช้า คนขับมาคืนกะดึก คนกะดึกต้องเห็นและกดคืนให้ได้
@@ -3365,6 +3374,49 @@ function installOpenReturnsFormula() {
 }
 
 /** ล้างแคช MASTER — ใช้เมื่อแก้ชีทเองแล้วอยากให้แอพเห็นทันที */
+/**
+ * fixSeeAll() — ซ่อมช่อง seeall ที่ชีทใส่จุลภาคคั่นหลักพันให้เอง
+ *
+ * ต้นเหตุ: ช่อง "ค่า" ตั้งรูปแบบเป็นตัวเลข พอพิมพ์ 731495,755310 ชีทมองเป็นเลข
+ * แล้วจัดรูปแบบใหม่เป็น 731,495,755,310 ตอนอ่านกลับมาจึงกลายเป็นคนละรหัส
+ *
+ * ตัวนี้ตั้งรูปแบบช่องเป็น "ข้อความ" ก่อนเขียนกลับ จะได้ไม่โดนจัดรูปแบบซ้ำอีก
+ * ไล่ทุกแถวที่รหัสเงื่อนไขเป็น seeall — แถวที่ยังปกติอยู่ไม่แตะ
+ *
+ * @param {Object} [fix]  { IDATA: '731495,755310,755000' } ระบุค่าที่ถูกต้องเอง
+ */
+function fixSeeAll(fix) {
+  var sh = SpreadsheetApp.openById(CFG.MASTER_ID).getSheetByName(CFG.M.RULES);
+  if (!sh) throw new Error('ไม่พบชีท "' + CFG.M.RULES + '"');
+  var C = CFG.COL.RULE;
+  var last = sh.getLastRow();
+  var vals = sh.getRange(2, 1, last - 1, C.VALUE).getValues();
+  var out = [];
+
+  for (var i = 0; i < vals.length; i++) {
+    if (s_(vals[i][C.ID - 1]) !== 'seeall') continue;
+    var topic = s_(vals[i][C.TOPIC - 1]);
+    var row = i + 2;
+    var cur = s_(vals[i][C.VALUE - 1]);
+
+    var want = (fix && fix[topic] !== undefined) ? String(fix[topic]) : cur;
+    // ไม่ได้สั่งค่ามาเอง ก็แค่ล็อกรูปแบบเป็นข้อความไว้กันพังรอบหน้า
+    var cell = sh.getRange(row, C.VALUE);
+    cell.setNumberFormat('@');
+    if (want !== cur) cell.setValue(want);
+
+    out.push(topic + ' แถว ' + row + ' : ' + (want !== cur ? cur + '  ->  ' + want : cur + ' (ไม่เปลี่ยน)'));
+  }
+
+  clearMasterCache_();
+  return out.length ? out.join('\n') : 'ไม่พบแถว seeall';
+}
+
+/** ซ่อมช่อง seeall ของ IDATA ที่โดนจุลภาคคั่นหลักพันทำพัง */
+function fixSeeAllIdata() {
+  return fixSeeAll({ IDATA: '731495,755310,755000' });
+}
+
 function refreshCache() {
   clearMasterCache_();
   return 'ล้างแคชแล้ว — แอพจะอ่านชีทใหม่ในการเรียกครั้งถัดไป';

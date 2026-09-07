@@ -421,6 +421,7 @@ textarea.input{min-height:90px;resize:vertical}
       <div id="codes-wrap">
         <span class="label" id="codes-label">รหัสเครื่อง</span>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="code-chips"></div>
+        <div id="codes-busy" class="hide" style="font-size:11px;opacity:.7;margin-top:6px;line-height:1.4"></div>
 
         <!-- ป้ายแจ้งทราบ: คนแผนกอื่นถือเครื่องของแผนกเราอยู่ — บอกเฉย ๆ ไม่มีปุ่ม ไม่ขวางการเบิก -->
         <div id="crossuse-wrap" class="hide" style="margin-top:10px;padding:9px 11px;
@@ -654,8 +655,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v65';
-window.APP_BUILT   = '7/9/2026 10:57';
+window.APP_VERSION = 'v66';
+window.APP_BUILT   = '7/9/2026 20:27';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1645,27 +1646,54 @@ function renderForm() {
   var cw = $('#code-chips'); cw.innerHTML = '';
   list.forEach(function (a) {
     var on = S.picked.indexOf(a.code) >= 0;
-    // เครื่องที่ค้างอาการอยู่ ติดดาวไว้เฉย ๆ ยังเบิกได้ปกติ รายละเอียดอยู่หน้าเลือกสถานะ
-    var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [a.code + (a.defect ? ' ⚠' : '')]);
-    if (a.defect) b.title = a.defect;
-    cw.appendChild(b);
 
-    // เครื่องทุกตัวติ๊กได้เท่ากัน ไม่มีตัวไหนถูกปิด
+    // เครื่องที่ยังไม่มีใครกดคืน ปิดตัวเลือกไปเลยตอนเบิก
     //
-    // ระบบนี้เป็นสมุดบันทึก ไม่ใช่ระบบขออนุมัติเบิก — หน้างานไปหยิบของมาก่อน
-    // แล้วค่อยมาบันทึกว่าหยิบอะไรไปพร้อมรูป ของที่ไม่อยู่ตรงนั้นเขาก็ไม่ติ๊กอยู่แล้ว
-    // ความจริงหน้างานล็อกตัวมันเองอยู่แล้ว ซอฟต์แวร์ไม่ต้องมาห้ามซ้ำ
-    // และการขึ้นว่า "คนอื่นยังไม่คืน" ทั้งที่เครื่องอยู่ในมือเขา มีแต่ทำให้งง
-    b.addEventListener('click', function () {
-      S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
-      S.qty = totalQty();
-      render();
-    });
+    // เซิร์ฟเวอร์กันเบิกซ้ำอยู่แล้ว แต่กันตอนกดส่ง หน้างานเลยถ่ายรูปครบ 5 ใบ
+    // แล้วค่อยโดนปฏิเสธ รูปเสียเปล่าทั้งชุด ปิดตั้งแต่ตรงนี้จะได้ไม่ต้องถ่าย
+    //
+    // ตอนคืนไม่ปิด เพราะเครื่องที่กำลังจะคืนย่อมอยู่ในรายการที่ยังไม่คืนอยู่แล้ว
+    var busy = (S.action !== 'คืน') && !on && (S.busyCodes || []).indexOf(a.code) >= 0;
+
+    // เครื่องที่ค้างอาการอยู่ ติดดาวไว้เฉย ๆ ยังเบิกได้ปกติ รายละเอียดอยู่หน้าเลือกสถานะ
+    var b = el('button', { class: 'chip' + (on ? ' on' : '') },
+      [a.code + (a.defect ? ' ⚠' : '')]);
+    if (a.defect) b.title = a.defect;
+
+    if (busy) {
+      b.disabled = true;
+      b.style.opacity = '.35';
+      b.style.cursor = 'not-allowed';
+      b.style.textDecoration = 'line-through';
+      b.title = 'เครื่องนี้ถูกเบิกไปแล้ว ยังไม่มีใครกดคืน';
+      // แตะแล้วต้องมีอะไรตอบ ไม่งั้นหน้างานจะกดซ้ำ ๆ แล้วคิดว่าแอพค้าง
+      b.addEventListener('click', function () {
+        toast(a.code + ' ถูกเบิกไปแล้ว ยังไม่มีใครกดคืน', true);
+      });
+    } else {
+      b.addEventListener('click', function () {
+        S.picked = on ? S.picked.filter(function (c) { return c !== a.code; }) : S.picked.concat([a.code]);
+        S.qty = totalQty();
+        render();
+      });
+    }
+    cw.appendChild(b);
   });
   if (!list.length) {
     cw.appendChild(el('div', { style: 'font-size:12px;opacity:.7' },
       ['ไม่มีเครื่องสถานะ "พร้อมใช้" ในทะเบียนสำหรับหัวข้อนี้']));
   }
+
+  // บอกไว้ด้วยว่าที่จางอยู่คืออะไร ไม่งั้นหน้างานนึกว่าแอพเสีย
+  var nBusy = (S.action !== 'คืน')
+    ? list.filter(function (a) { return (S.busyCodes || []).indexOf(a.code) >= 0 && S.picked.indexOf(a.code) < 0; }).length
+    : 0;
+  var note = $('#codes-busy');
+  if (note) {
+    note.classList.toggle('hide', !nBusy);
+    note.textContent = nBusy ? 'ตัวที่จางและมีขีดคร่อม ' + nBusy + ' เครื่อง = ถูกเบิกไปแล้ว ยังไม่มีใครกดคืน' : '';
+  }
+
   $('#codes-count').textContent = S.picked.length + ' เครื่อง';
 
   renderCrossUse(t);
@@ -3584,6 +3612,9 @@ function applySession(r, fromCache) {
   // ใครถือเครื่องของแผนกเราอยู่ — ไม่เก็บลงเครื่อง เพราะของเก่าค้างวันจะแจ้งผิดคน
   // เปิดแอพจากแคชจึงยังไม่มีป้าย รอเซิร์ฟเวอร์ตอบแล้วค่อยขึ้น
   S.crossUse = fromCache ? [] : (r.crossUse || []);
+  // เครื่องที่ยังไม่มีใครกดคืน — ไม่เก็บลงเครื่อง ของเก่าค้างวันจะปิดตัวเลือกผิดตัว
+  // เปิดแอพจากแคชจึงยังไม่ปิดอะไร รอเซิร์ฟเวอร์ตอบแล้วค่อยปิด
+  S.busyCodes = fromCache ? [] : (r.busyCodes || []);
   // บัตรชั่วคราวที่ยังไม่คืน — เหมือน crossUse คือไม่เก็บลงเครื่อง
   // ของเก่าค้างวันจะทำให้กดคืนใบที่คนอื่นคืนไปแล้ว รอเซิร์ฟเวอร์ตอบก่อนดีกว่า
   S.cardsOut = fromCache ? [] : (r.cardsOut || []);
