@@ -66,6 +66,11 @@ function apiDispatch_(name) {
     apiCardBoot: apiCardBoot,
     apiCardIssue: apiCardIssue,
     apiCardReturn: apiCardReturn,
+    apiSupBoot: apiSupBoot,
+    apiSupIssue: apiSupIssue,
+    apiSupReceive: apiSupReceive,
+    apiSupAdmin: apiSupAdmin,
+    apiSupSaveItem: apiSupSaveItem,
     apiAdminHidePhotos: apiAdminHidePhotos,
     apiAdminDeletePhotos: apiAdminDeletePhotos,
     apiAdminDeletePhotosBulk: apiAdminDeletePhotosBulk,
@@ -955,6 +960,149 @@ function apiCardReturn(payload) {
       var closed = writeCardReturn_(rows, s_(p.proof));
       clearCardsOutCache_();
       return ok_({ closed: closed });
+    } finally {
+      lock.releaseLock();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  วัสดุสิ้นเปลือง
+// ══════════════════════════════════════════════════════════════════════════
+
+/** เปิดหน้าเบิกวัสดุ — ทะเบียนของ + ยอดคงเหลือสด */
+function apiSupBoot(empId) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireUser_(m, empId);
+    return ok_({
+      user:  { id: u.id, name: u.name, dept: u.dept },
+      stock: supStockCached_(),
+      today: fmtDate_(new Date())
+    });
+  });
+}
+
+/**
+ * เบิกของ — payload = { empId, note, proof, clientId, items:[{code, qty}] }
+ *
+ * เบิกเกินยอดไม่บล็อก แค่ตอบกลับมาว่าตัวไหนติดลบ
+ * ของจริงกับตัวเลขในชีทเหลื่อมกันเป็นปกติ (หยิบไปแล้วไม่ได้ลง · นับตอนแรกผิด)
+ * ถ้าบล็อก หน้างานจะทำงานไม่ได้แล้วเลิกใช้แอพ ซึ่งแย่กว่ายอดคลาดเคลื่อน
+ */
+function apiSupIssue(payload) {
+  return wrap_(function () {
+    var p = payload || {};
+
+    if (p.clientId) {
+      var dup = alreadySubmitted_(p.clientId);
+      if (dup) return ok_({ wrote: 0, duplicate: true });
+    }
+
+    var m = getMaster_();
+    var u = requireUser_(m, p.empId);
+
+    var items = (p.items || []).filter(function (x) { return x && s_(x.code) && supNum_(x.qty); });
+    if (!items.length) throw new Error('ต้องเลือกของและใส่จำนวนอย่างน้อย 1 รายการ');
+    if (!s_(p.proof)) throw new Error('ต้องแนบรูปหลักฐานอย่างน้อย 1 รูป');
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var r = writeSupMove_(CFG.V.SUP_OUT, items, u, s_(p.proof), s_(p.note));
+      if (p.clientId) rememberSubmitted_(p.clientId, r.ref);
+      clearSupCache_();
+      return ok_(r);
+    } finally {
+      lock.releaseLock();
+    }
+  });
+}
+
+/**
+ * รับเข้า / ปรับยอด — แอดมินเท่านั้น
+ * payload = { empId, kind, note, proof, items:[{code, qty}] }
+ */
+function apiSupReceive(payload) {
+  return wrap_(function () {
+    var p = payload || {};
+    var m = getMaster_();
+    var u = requireAdmin_(m, p.empId);
+    if (!canWriteMaster_(u)) throw new Error('เฉพาะแอดมินเท่านั้นที่รับเข้าหรือปรับยอดได้');
+
+    var kind = s_(p.kind) || CFG.V.SUP_IN;
+    if ([CFG.V.SUP_IN, CFG.V.SUP_UP, CFG.V.SUP_DN].indexOf(kind) < 0) {
+      throw new Error('ชนิดรายการไม่ถูกต้อง');
+    }
+    var items = (p.items || []).filter(function (x) { return x && s_(x.code) && supNum_(x.qty); });
+    if (!items.length) throw new Error('ต้องเลือกของและใส่จำนวนอย่างน้อย 1 รายการ');
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var r = writeSupMove_(kind, items, u, s_(p.proof), s_(p.note));
+      clearSupCache_();
+      return ok_(r);
+    } finally {
+      lock.releaseLock();
+    }
+  });
+}
+
+/** หน้าแอดมิน — คงคลัง + ประวัติ + สถิติ ในการอ่านชีทรอบเดียว */
+function apiSupAdmin(empId, days) {
+  return wrap_(function () {
+    var m = getMaster_();
+    requireAdmin_(m, empId);
+    var d = Number(days) || 30;
+    var stock = supStock_();
+    var hist = supHistory_(d);
+    return ok_({
+      days: d,
+      stock: stock,
+      history: hist,
+      stats: supStats_(hist, d, stock),
+      today: fmtDate_(new Date())
+    });
+  });
+}
+
+/** เพิ่ม/แก้รายการวัสดุในทะเบียน — แอดมินเท่านั้น */
+function apiSupSaveItem(empId, item) {
+  return wrap_(function () {
+    var m = getMaster_();
+    var u = requireAdmin_(m, empId);
+    if (!canWriteMaster_(u)) throw new Error('เฉพาะแอดมินเท่านั้นที่แก้ทะเบียนวัสดุได้');
+
+    var it = item || {};
+    var code = s_(it.code);
+    if (!code) throw new Error('ต้องมีรหัสวัสดุ');
+    if (!s_(it.name)) throw new Error('ต้องมีชื่อวัสดุ');
+
+    var sh = supSS_().getSheetByName(CFG.SUP.STOCK);
+    if (!sh) throw new Error('ไม่พบชีท "' + CFG.SUP.STOCK + '"');
+    var C = CFG.COL.SSTOCK;
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var found = 0;
+      supItems_().forEach(function (x) { if (x.code === code) found = x.row; });
+      var row = [];
+      for (var i = 0; i < C.NOTE; i++) row.push('');
+      row[C.CODE - 1]    = code;
+      row[C.NAME - 1]    = s_(it.name);
+      row[C.UNIT - 1]    = s_(it.unit);
+      row[C.CAT - 1]     = s_(it.cat);
+      row[C.START - 1]   = supNum_(it.start);
+      row[C.REORDER - 1] = supNum_(it.reorder);
+      row[C.STATUS - 1]  = s_(it.status) || CFG.V.ACTIVE;
+      row[C.NOTE - 1]    = s_(it.note);
+
+      var at = found || Math.max(sh.getLastRow(), CFG.SUP_HEAD.STOCK) + 1;
+      sh.getRange(at, 1, 1, C.NOTE).setValues([row]);
+      clearSupCache_();
+      return ok_({ code: code, row: at, added: !found });
     } finally {
       lock.releaseLock();
     }
