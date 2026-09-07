@@ -379,7 +379,7 @@ textarea.input{min-height:90px;resize:vertical}
         <input type="text" id="sup-note" class="input" placeholder="เอาไปใช้กับงานอะไร" style="width:100%">
       </div>
 
-      <div>
+      <div id="sup-shot-wrap">
         <span class="label">รูปหลักฐาน · ต้องมีอย่างน้อย 1 รูป</span>
         <div class="surface" style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px">
           ถ่ายให้เห็น<strong>ของที่เบิก</strong>วางรวมกัน ให้นับจำนวนได้ตรงกับที่กรอก
@@ -657,8 +657,8 @@ textarea.input{min-height:90px;resize:vertical}
 <script>
 window.API_URL     = 'https://script.google.com/macros/s/AKfycbzyDZ_cZ6FxLz9OSmeOr4KOTPq0qX2kZesGQU8lvwbj3Il38KR-UGmvp4SQkoLSiX-H/exec';
 window.ADMIN_URL   = './admin.html';
-window.APP_VERSION = 'v62';
-window.APP_BUILT   = '7/9/2026 10:14';
+window.APP_VERSION = 'v63';
+window.APP_BUILT   = '7/9/2026 10:26';
 var WEBAPP_URL     = './';
 </script>
 <!-- ===== js-common.html ===== -->
@@ -1293,6 +1293,8 @@ function back() {
   if (S.screen === 'form') { go('home'); return; }
   // ออกจากหน้าบัตรแล้วเลิกโหมดคืน ไม่งั้นครั้งหน้าเข้าจากเมนูจะยังเป็นหน้าคืนอยู่
   if (S.screen === 'cards') { CARD.mode = 'issue'; CARD.back = {}; CARD.shots = []; }
+  // ขั้นที่ 2 กดย้อน = กลับไปเลือกของ ไม่ใช่ออกจากหน้าเบิกทั้งหมด ของที่เลือกไว้ไม่หาย
+  if (S.screen === 'sup' && SUP.step === 1) { SUP.step = 0; render(); return; }
   go('home');
 }
 
@@ -2144,10 +2146,12 @@ var SUP = {
   cart: {},             // { รหัส: จำนวน }
   note: '', shots: [],
   find: '', cat: '',
+  step: 0,               // 0 = เลือกของ · 1 = ใส่จำนวน + ถ่ายรูป
   loaded: false, busy: false
 };
 
 function openSup() {
+  SUP.step = 0;          // เข้าจากเมนูทุกครั้งเริ่มที่ขั้นเลือกของเสมอ
   go('sup');
   if (SUP.loaded) { renderSup(); return; }
   $('#sup-msg').textContent = 'กำลังโหลดทะเบียนวัสดุ…';
@@ -2171,96 +2175,147 @@ function supPicked() {
     .map(function (c) { return { code: c, qty: SUP.cart[c] }; });
 }
 
-function renderSup() {
+/** ยอดคงเหลือหลังเบิกจำนวนที่กรอกไว้ */
+function supAfter(it) { return it.left - (SUP.cart[it.code] || 0); }
+
+/** ข้อความใต้ช่องจำนวน — เตือนตอนติดลบ แต่ไม่ห้ามส่ง */
+function supLeftMsg(node, it) {
+  var a = supAfter(it);
+  node.textContent = a < 0
+    ? '⚠ เหลือ ' + it.left + ' เบิก ' + SUP.cart[it.code] + ' จะติดลบ ' + Math.abs(a) + ' — ส่งได้ แต่แอดมินจะเห็น'
+    : 'เหลือ ' + it.left + ' → ' + a + ' ' + it.unit;
+  node.style.color = a < 0 ? 'var(--color-accent)' : '';
+  node.style.opacity = a < 0 ? '1' : '.7';
+}
+
+/**
+ * ช่องปรับจำนวน — ใช้ร่วมกันทั้งสองขั้น ต่างกันแค่ขนาดปุ่ม
+ *
+ * ปรับเลขแล้ววาดใหม่เฉพาะตัวเลขกับข้อความบรรทัดเดียว ไม่วาดทั้งลิสต์
+ * ของ 40 รายการถ้าวาดใหม่ทุกครั้งที่กดบวก จะกระตุกจนกดรัวไม่ได้
+ */
+function supStepper(it, big, msgNode, onZero) {
+  var sz = big ? 44 : 32;
+  var fs = big ? 19 : 15;
+  var num = el('div', {
+    style: 'min-width:' + (big ? 60 : 44) + 'px;height:' + sz + 'px;border:1px solid var(--color-divider);' +
+           'display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);' +
+           'font-weight:800;font-size:' + (big ? 20 : 15) + 'px;flex:none'
+  }, [String(SUP.cart[it.code] || 1)]);
+
+  var paint = function () {
+    num.textContent = String(SUP.cart[it.code] || 0);
+    num.style.borderColor = supAfter(it) < 0 ? 'var(--color-accent)' : 'var(--color-divider)';
+    if (msgNode) supLeftMsg(msgNode, it);
+    renderFooter();
+  };
+  var set = function (n) {
+    n = Math.max(0, Math.floor(Number(n) || 0));
+    if (!n) { if (onZero) onZero(); return; }
+    SUP.cart[it.code] = n;
+    paint();
+  };
+
+  var mk = function (txt, fn) {
+    var b = el('button', {
+      style: 'width:' + sz + 'px;height:' + sz + 'px;flex:none;border:1px solid var(--color-divider);' +
+             'background:transparent;cursor:pointer;font-size:' + fs + 'px;color:var(--color-text);' +
+             'font-family:var(--font-body)'
+    }, [txt]);
+    // ปุ่มอยู่ในแถวที่แตะแล้วเลือก/ยกเลิก — กันไม่ให้การกดบวกลบไปสั่งยกเลิกรายการ
+    b.addEventListener('click', function (e) { e.stopPropagation(); fn(); });
+    return b;
+  };
+
+  var box = el('div', { style: 'display:flex;align-items:center;gap:6px' }, [
+    mk('−', function () { set((SUP.cart[it.code] || 0) - 1); }),
+    num,
+    mk('+', function () { set((SUP.cart[it.code] || 0) + 1); })
+  ]);
+  box.addEventListener('click', function (e) { e.stopPropagation(); });
+
+  // แตะที่ตัวเลขเพื่อพิมพ์เอง — เบิก 250 จะได้ไม่ต้องกดบวก 250 ครั้ง
+  num.style.cursor = 'pointer';
+  num.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var v = prompt('จำนวนที่เบิก · ' + it.name + ' (' + it.unit + ')', String(SUP.cart[it.code] || 1));
+    if (v !== null) set(v);
+  });
+
+  if (big) box.appendChild(el('div', { style: 'font-size:12px;opacity:.7;margin-left:2px' }, [it.unit]));
+  return { box: box, paint: paint, set: set };
+}
+
+// ── ขั้นที่ 1 · เลือกของ ──────────────────────────────────────────────
+
+/** สร้างแถวเดียวในลิสต์ — เอาไว้วาดใหม่ทีละแถวตอนแตะเลือก */
+function supPickRow(x) {
+  var on = SUP.cart[x.code] > 0;
+  var row = el('div', {
+    style: 'display:flex;align-items:center;gap:10px;padding:11px 9px;margin-bottom:6px;cursor:pointer;' +
+           'border:' + (on ? '2px solid var(--color-accent)' : '1px solid var(--color-divider)')
+  }, []);
+  row.setAttribute('data-code', x.code);
+
+  var tick = el('div', {
+    style: 'width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;font-size:14px;' +
+           'border:1px solid ' + (on ? 'var(--color-accent)' : 'var(--color-divider)') +
+           ';background:' + (on ? 'var(--color-accent)' : 'transparent') +
+           ';color:' + (on ? 'var(--color-bg)' : 'var(--color-text)')
+  }, [on ? '✓' : '']);
+
+  var name = el('div', { style: 'flex:1;line-height:1.35' }, [
+    el('div', { style: 'font-size:14px' }, [x.name]),
+    x.low ? el('span', {
+      style: 'font-size:10px;padding:1px 6px;background:var(--color-accent);color:var(--color-bg)'
+    }, [x.left <= 0 ? 'หมดแล้ว' : 'ใกล้หมด']) : null
+  ].filter(Boolean));
+
+  row.appendChild(tick);
+  row.appendChild(name);
+  if (on) {
+    row.appendChild(supStepper(x, false, null, function () { toggleSup(x.code); }).box);
+  } else {
+    row.appendChild(el('div', { style: 'font-size:12px;opacity:.7;white-space:nowrap' },
+      [x.left + ' ' + x.unit]));
+  }
+
+  // แตะทั้งแถวเพื่อเลือก/ยกเลิก — ปุ่มบวกลบกัน event ไว้แล้ว
+  row.addEventListener('click', function () { toggleSup(x.code); });
+  return row;
+}
+
+/**
+ * เลือก/ยกเลิกของหนึ่งชิ้น — วาดใหม่แค่แถวนั้นแถวเดียว
+ * ลิสต์ 40 รายการจะได้ไม่ต้องสร้าง DOM ใหม่ทั้งก้อนทุกครั้งที่แตะ
+ */
+function toggleSup(code) {
+  var it = supItem(code);
+  if (!it) return;
+  if (SUP.cart[code] > 0) delete SUP.cart[code]; else SUP.cart[code] = 1;
+
+  var old = $('#sup-list').querySelector('[data-code="' + code + '"]');
+  if (old) old.parentNode.replaceChild(supPickRow(it), old);
+  renderFooter();
+}
+
+function renderSupPick() {
   var low = SUP.stock.filter(function (x) { return x.low; }).length;
   $('#sup-msg').textContent = !SUP.loaded ? 'กำลังโหลด…'
     : SUP.stock.length ? 'วัสดุ ' + SUP.stock.length + ' รายการ' + (low ? ' · ใกล้หมด ' + low + ' รายการ' : '')
                        : 'ยังไม่มีรายการวัสดุในทะเบียน — แอดมินต้องใส่ในชีทคงคลังก่อน';
 
-  // ── ตะกร้า ──
-  var picked = supPicked();
-  $('#sup-cart-wrap').classList.toggle('hide', !picked.length);
-  var cw = $('#sup-cart'); cw.innerHTML = '';
-  picked.forEach(function (p) {
-    var it = supItem(p.code);
-
-    var rm = el('button', {
-      style: 'border:0;background:transparent;color:var(--color-text);opacity:.5;cursor:pointer;font-size:16px;padding:0 4px'
-    }, ['✕']);
-    rm.addEventListener('click', function () { delete SUP.cart[p.code]; renderSup(); });
-
-    var num = el('input', {
-      class: 'input', type: 'number', min: '1', value: String(p.qty),
-      style: 'width:56px;text-align:center;flex:none'
-    });
-    var rng = el('input', {
-      type: 'range', min: '1', step: '1',
-      // เพดานแถบเลื่อนอิงของที่มีจริง แต่ไม่ต่ำกว่า 10 ไม่งั้นของเหลือ 2 ชิ้นจะเลื่อนไม่ได้เลย
-      max: String(Math.max(it.left, p.qty, 10)), value: String(p.qty),
-      style: 'flex:1;min-width:0'
-    });
-
-    var msg = el('div', { style: 'font-size:11px;margin-top:6px' }, []);
-
-    // อัปเดตเฉพาะตัวเลขกับข้อความ ไม่วาดทั้งหน้า
-    //
-    // ถ้าเรียก renderSup() ตอนลากแถบเลื่อน ตัวแถบจะถูกสร้างใหม่ทุกครั้งที่ขยับ
-    // นิ้วจะหลุดจากตัวเลื่อนทันทีตั้งแต่ก้าวแรก ลากไม่ได้เลย
-    // เหตุผลเดียวกับที่ช่องพิมพ์ชื่อในหน้าบัตรวาดแค่แถบล่าง
-    var paint = function (n) {
-      var after2 = it.left - n;
-      msg.textContent = after2 < 0
-        ? '⚠ เหลือ ' + it.left + ' แต่เบิก ' + n + ' จะติดลบ ' + Math.abs(after2) + ' — ส่งได้ แต่แอดมินจะเห็น'
-        : 'เหลือ ' + it.left + ' → ' + after2 + ' ' + it.unit;
-      msg.style.color = after2 < 0 ? 'var(--color-accent)' : '';
-      msg.style.opacity = after2 < 0 ? '1' : '.7';
-    };
-    var set = function (v, redraw) {
-      var n = Math.max(1, Math.floor(Number(v) || 1));
-      SUP.cart[p.code] = n;
-      if (redraw) { renderSup(); return; }
-      if (rng.value !== String(n)) rng.value = n;
-      if (num.value !== String(n)) num.value = n;
-      paint(n);
-      renderFooter();   // ยอดรวมที่แถบล่างต้องขยับตาม
-    };
-    paint(p.qty);
-
-    rng.addEventListener('input',  function (e) { set(e.target.value, false); });
-    num.addEventListener('input',  function (e) { set(e.target.value, false); });
-    // ปล่อยนิ้ว/ออกจากช่องแล้วค่อยวาดใหม่ทีเดียว เผื่อเพดานแถบเลื่อนต้องขยาย
-    rng.addEventListener('change', function (e) { set(e.target.value, true); });
-    num.addEventListener('blur',   function (e) { set(e.target.value, true); });
-
-    var minus = el('button', { class: 'chip', style: 'padding:4px 10px' }, ['−']);
-    var plus  = el('button', { class: 'chip', style: 'padding:4px 10px' }, ['+']);
-    minus.addEventListener('click', function () { set(SUP.cart[p.code] - 1, true); });
-    plus.addEventListener('click', function () { set(SUP.cart[p.code] + 1, true); });
-
-    cw.appendChild(el('div', {
-      style: 'border:1px solid var(--color-divider);padding:9px;margin-bottom:6px'
-    }, [
-      el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:7px' }, [
-        el('div', { style: 'flex:1;font-size:13px' }, [it.name]), rm
-      ]),
-      el('div', { style: 'display:flex;align-items:center;gap:6px' }, [minus, rng, plus, num]),
-      msg
-    ]));
-  });
-
-  // ── หมวด ──
   var cats = [], seen = {};
   SUP.stock.forEach(function (x) { if (x.cat && !seen[x.cat]) { seen[x.cat] = true; cats.push(x.cat); } });
-  var cw2 = $('#sup-cats'); cw2.innerHTML = '';
-  if (cats.length) {
+  var cw = $('#sup-cats'); cw.innerHTML = '';
+  if (cats.length > 1) {
     [''].concat(cats).forEach(function (c) {
       var b = el('button', { class: 'chip' + (SUP.cat === c ? ' on' : '') }, [c || 'ทั้งหมด']);
-      b.addEventListener('click', function () { SUP.cat = c; renderSup(); });
-      cw2.appendChild(b);
+      b.addEventListener('click', function () { SUP.cat = c; renderSupPick(); });
+      cw.appendChild(b);
     });
   }
 
-  // ── รายการให้เลือก ──
   var q = SUP.find.trim().toLowerCase();
   var list = SUP.stock.filter(function (x) {
     if (SUP.cat && x.cat !== SUP.cat) return false;
@@ -2269,51 +2324,79 @@ function renderSup() {
   });
 
   var lw = $('#sup-list'); lw.innerHTML = '';
-  list.forEach(function (x) {
-    var inCart = SUP.cart[x.code] > 0;
-    var add = el('button', {
-      class: inCart ? 'chip on' : 'chip', style: 'padding:5px 11px;font-size:12px'
-    }, [inCart ? 'เลือกแล้ว' : '+']);
-    add.addEventListener('click', function () {
-      if (inCart) delete SUP.cart[x.code]; else SUP.cart[x.code] = 1;
-      renderSup();
-    });
-    lw.appendChild(el('div', {
-      style: 'display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--color-divider)'
-    }, [
-      el('div', { style: 'flex:1;line-height:1.35' }, [
-        el('div', { style: 'font-size:13px' }, [x.name]),
-        x.low ? el('span', {
-          style: 'font-size:10px;padding:1px 6px;background:var(--color-accent);color:var(--color-bg)'
-        }, [x.left <= 0 ? 'หมดแล้ว' : 'ใกล้หมด']) : null
-      ].filter(Boolean)),
-      el('div', { style: 'font-size:11.5px;opacity:.7;white-space:nowrap' }, ['เหลือ ' + x.left + ' ' + x.unit]),
-      add
-    ]));
-  });
+  list.forEach(function (x) { lw.appendChild(supPickRow(x)); });
   if (!list.length && SUP.stock.length) {
     lw.appendChild(el('div', { class: 'surface', style: 'padding:10px;font-size:12px' }, ['ไม่เจอวัสดุที่ค้นหา']));
   }
+}
 
-  // ── รูป ──
+// ── ขั้นที่ 2 · จำนวน + รูป ───────────────────────────────────────────
+
+var SUP_QUICK = [5, 10, 20, 50];
+
+function renderSupQty() {
+  var picked = supPicked();
+  $('#sup-msg').textContent = 'ทวนจำนวนแล้วถ่ายรูป · ' + picked.length + ' รายการ';
+
+  var cw = $('#sup-cart'); cw.innerHTML = '';
+  picked.forEach(function (p) {
+    var it = supItem(p.code);
+    var msg = el('div', { style: 'font-size:11px;margin-top:8px' }, []);
+    var st = supStepper(it, true, msg, function () { delete SUP.cart[it.code]; renderSupQty(); renderFooter(); });
+    supLeftMsg(msg, it);
+
+    var del = el('button', {
+      style: 'border:0;background:transparent;color:var(--color-text);opacity:.5;cursor:pointer;font-size:15px;padding:0 4px'
+    }, ['ลบ']);
+    del.addEventListener('click', function () {
+      delete SUP.cart[it.code];
+      if (!supPicked().length) { SUP.step = 0; render(); return; }
+      renderSupQty(); renderFooter();
+    });
+
+    // ปุ่มลัด — เบิก 20 ไม่ต้องกดบวก 20 ครั้ง
+    var quick = el('div', { style: 'display:flex;gap:6px;margin-top:8px;flex-wrap:wrap' }, []);
+    SUP_QUICK.forEach(function (n) {
+      var b = el('button', { class: 'chip', style: 'padding:5px 12px' }, [String(n)]);
+      b.addEventListener('click', function () { st.set(n); });
+      quick.appendChild(b);
+    });
+
+    cw.appendChild(el('div', {
+      style: 'border:1px solid var(--color-divider);padding:10px;margin-bottom:8px'
+    }, [
+      el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:9px' }, [
+        el('div', { style: 'flex:1;font-size:14px' }, [it.name]), del
+      ]),
+      st.box, quick, msg
+    ]));
+  });
+
   var sw = $('#sup-shots'); sw.innerHTML = '';
   SUP.shots.forEach(function (p) {
     var im = el('img', { src: p.dataUrl, style: 'width:64px;height:64px;object-fit:cover;cursor:pointer' });
     im.addEventListener('click', function () {
-      SUP.shots = SUP.shots.filter(function (x) { return x.id !== p.id; }); renderSup();
+      SUP.shots = SUP.shots.filter(function (x) { return x.id !== p.id; }); renderSupQty(); renderFooter();
     });
     sw.appendChild(im);
   });
-  var addShot = el('button', {
+  var add = el('button', {
     style: 'width:64px;height:64px;border:1px dashed var(--color-divider);background:transparent;cursor:pointer;font-size:20px;color:var(--color-text)'
   }, ['+']);
-  addShot.addEventListener('click', function () { capture('sup', 'วัสดุสิ้นเปลือง', false); });
-  sw.appendChild(addShot);
+  add.addEventListener('click', function () { capture('sup', 'วัสดุสิ้นเปลือง', false); });
+  sw.appendChild(add);
+}
 
+function renderSup() {
+  var pick = (SUP.step === 0);
+  $('#sup-pick-wrap').classList.toggle('hide', !pick);
+  $('#sup-cart-wrap').classList.toggle('hide', pick);
+  $('#sup-note-wrap').classList.toggle('hide', pick);
+  $('#sup-shot-wrap').classList.toggle('hide', pick);
+  if (pick) renderSupPick(); else renderSupQty();
   renderFooter();
 }
 
-/** รูปบังคับ — อัปขึ้นไดรฟ์ก่อน ถ้าอัปไม่ได้ต้องไม่เขียนแถว ไม่งั้นได้ของโดยไม่มีหลักฐาน */
 function supPhotos() {
   return rpc('apiReserve', S.user.id, S.topics[0].id).then(function (j) {
     var seq = 0;
@@ -2341,7 +2424,7 @@ function sendSup() {
     SUP.busy = false; S.busy = false;
     var neg = (r.lines || []).filter(function (l) { return l.neg; });
     toast('เบิกแล้ว ' + r.wrote + ' รายการ' + (neg.length ? ' · มี ' + neg.length + ' รายการยอดติดลบ' : ''));
-    SUP.cart = {}; SUP.note = ''; SUP.shots = []; SUP.loaded = false;
+    SUP.cart = {}; SUP.note = ''; SUP.shots = []; SUP.loaded = false; SUP.step = 0;
     $('#sup-note').value = '';
     go('home');
   }).catch(function (e) {
@@ -2727,13 +2810,20 @@ function renderFooter() {
   } else if (S.screen === 'sup') {
     var pick = supPicked();
     var tot = pick.reduce(function (a, b) { return a + b.qty; }, 0);
-    label = 'เบิก' + (pick.length ? ' ' + pick.length + ' รายการ' : '');
-    // รูปบังคับ ปุ่มจะติดก็ต่อเมื่อเลือกของแล้วและถ่ายรูปแล้ว
-    okState = pick.length > 0 && SUP.shots.length > 0 && !SUP.busy;
-    hintText = !SUP.loaded ? 'กำลังโหลดทะเบียนวัสดุ…'
-      : !pick.length ? 'เลือกของที่จะเบิกก่อน'
-      : !SUP.shots.length ? 'ยังไม่ได้ถ่ายรูป — รูปหลักฐานต้องมีอย่างน้อย 1 รูป'
-      : 'รวม ' + tot + ' ชิ้น · แนบรูปแล้ว ' + SUP.shots.length + ' รูป';
+    if (SUP.step === 0) {
+      label = 'ถัดไป' + (pick.length ? ' · ' + pick.length + ' รายการ' : '');
+      okState = pick.length > 0;
+      hintText = !SUP.loaded ? 'กำลังโหลดทะเบียนวัสดุ…'
+        : pick.length ? 'ขั้นที่ 1 จาก 2 · รวม ' + tot + ' ชิ้น'
+                      : 'ขั้นที่ 1 จาก 2 · แตะทั้งแถวเพื่อเลือก';
+    } else {
+      label = 'เบิก' + (pick.length ? ' ' + pick.length + ' รายการ' : '');
+      // รูปบังคับ ปุ่มจะติดก็ต่อเมื่อเลือกของแล้วและถ่ายรูปแล้ว
+      okState = pick.length > 0 && SUP.shots.length > 0 && !SUP.busy;
+      hintText = !pick.length ? 'ยังไม่ได้เลือกของ'
+        : !SUP.shots.length ? 'ขั้นที่ 2 จาก 2 · ยังไม่ได้ถ่ายรูป'
+        : 'ขั้นที่ 2 จาก 2 · รวม ' + tot + ' ชิ้น · แนบรูปแล้ว ' + SUP.shots.length + ' รูป';
+    }
   } else if (S.screen === 'cards' && CARD.mode === 'back') {
     var nBack = Object.keys(CARD.back).length;
     label = 'คืนบัตร' + (nBack ? ' ' + nBack + ' ใบ' : '');
@@ -3537,7 +3627,7 @@ function bind() {
   // ── บัตรชั่วคราว ──
   $('#btn-cards').addEventListener('click', function () { openCards('issue'); });
   $('#btn-sup').addEventListener('click', openSup);
-  $('#sup-find').addEventListener('input', function (e) { SUP.find = e.target.value; renderSup(); });
+  $('#sup-find').addEventListener('input', function (e) { SUP.find = e.target.value; renderSupPick(); });
   $('#sup-note').addEventListener('input', function (e) { SUP.note = e.target.value; });
   $('#btn-card-add').addEventListener('click', function () {
     CARD.pairs.push({ card: freeCard(), name: '', sub: '' }); renderCards();
@@ -3659,7 +3749,7 @@ function bind() {
     if (S.screen === 'shoot')  return nextStep();
     if (S.screen === 'review') return submit();
     if (S.screen === 'cards')  return CARD.mode === 'back' ? returnCards() : sendCards();
-    if (S.screen === 'sup')    return sendSup();
+    if (S.screen === 'sup')    { if (SUP.step === 0) { SUP.step = 1; return render(); } return sendSup(); }
   });
 
   window.addEventListener('online', function () {
