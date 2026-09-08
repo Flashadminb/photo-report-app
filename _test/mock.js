@@ -221,6 +221,7 @@ var API = {
   apiCardIssue: function (p) {
     MOCK_CALLS.push('cardIssue:' + (p.items || []).map(function (x) { return x.card + '=' + x.name; }).join(','));
     window.MOCK_LAST_ISSUE = p;
+    if (!p.proof) return { ok: false, error: 'ต้องแนบรูปหลักฐานอย่างน้อย 1 รูป' };
     var items = p.items || [];
     for (var i = 0; i < items.length; i++) {
       var x = items[i];

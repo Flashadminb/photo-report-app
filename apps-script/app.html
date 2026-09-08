@@ -169,13 +169,17 @@
         <button class="btn btn-primary btn-block" id="btn-card-return" style="margin-top:10px">คืนบัตรที่ติ๊กไว้</button>
       </div>
 
+      <!-- ขั้นที่ 1 · ติ๊กเลือกใบบัตร แบบเดียวกับติ๊กรหัสเครื่องของ IDATA -->
+      <div id="card-pick-wrap">
+        <span class="label">เลือกใบบัตรที่จะจ่าย (ติ๊กได้หลายใบ)</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-chips"></div>
+        <div id="card-chips-busy" class="hide" style="font-size:11px;opacity:.7;margin-top:6px;line-height:1.4"></div>
+      </div>
+
+      <!-- ขั้นที่ 2 · ใส่ชื่อผู้รับ (ไม่บังคับ) -->
       <div id="card-issue-wrap">
-        <span class="label">จ่ายบัตร · จับคู่บัตรกับคนรับ</span>
+        <span class="label">ชื่อผู้รับ · ไม่บังคับ ใส่ทีหลังในชีทก็ได้</span>
         <div id="card-pairs"></div>
-        <button id="btn-card-add" style="width:100%;margin-top:6px;padding:9px;background:transparent;cursor:pointer;
-                border:1px dashed var(--color-divider);font-family:var(--font-body);font-size:12px;color:var(--color-text)">
-          + เพิ่มอีกใบ
-        </button>
       </div>
 
       <div id="card-why-wrap">
@@ -192,8 +196,8 @@
           <span class="muted">ติ๊กเมื่ออบรมเสร็จแล้ว แล้วถ่ายรูปหลักฐานไว้ด้านล่าง</span></span>
       </button>
 
-      <div>
-        <span class="label">รูป · แนบกี่รูปก็ได้</span>
+      <div id="card-shot-wrap">
+        <span class="label">รูปหลักฐาน · ต้องมีอย่างน้อย 1 รูป</span>
         <div class="surface" id="card-shot-tip"
              style="padding:9px 10px;font-size:11.5px;line-height:1.5;margin-bottom:7px"></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="card-shots"></div>

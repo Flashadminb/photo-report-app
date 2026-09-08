@@ -238,7 +238,9 @@ function back() {
   if (S.screen === 'review') { S.step = steps().length - 1; go('shoot'); return; }
   if (S.screen === 'form') { go('home'); return; }
   // ออกจากหน้าบัตรแล้วเลิกโหมดคืน ไม่งั้นครั้งหน้าเข้าจากเมนูจะยังเป็นหน้าคืนอยู่
-  if (S.screen === 'cards') { CARD.mode = 'issue'; CARD.back = {}; CARD.shots = []; }
+  // ขั้นที่ 2 กดย้อน = กลับไปเลือกใบบัตร ใบที่ติ๊กไว้ไม่หาย
+  if (S.screen === 'cards' && CARD.mode === 'issue' && CARD.step === 1) { CARD.step = 0; render(); return; }
+  if (S.screen === 'cards') { CARD.mode = 'issue'; CARD.step = 0; CARD.back = {}; CARD.shots = []; }
   // ขั้นที่ 2 กดย้อน = กลับไปเลือกของ ไม่ใช่ออกจากหน้าเบิกทั้งหมด ของที่เลือกไว้ไม่หาย
   if (S.screen === 'sup' && SUP.step === 1) { SUP.step = 0; render(); return; }
   go('home');
@@ -780,14 +782,50 @@ function renderOthers(t, pool, shown) {
 
 var CARD = {
   people: [], cards: [], out: [],
-  pairs: [{ card: '', name: '', sub: '' }],   // แถวจับคู่ เริ่มจากแถวเดียว
+  pairs: [],            // ใบที่ติ๊กไว้ [{card, name, sub}]
   why: 'ลืมบัตร',
   trained: false,
   shots: [],
   back: {},                          // เลขแถวที่ติ๊กคืน
   mode: 'issue',                     // 'issue' = จ่ายบัตร · 'back' = คืนอย่างเดียว
+  step: 0,                           // 0 = ติ๊กเลือกใบบัตร · 1 = ใส่ชื่อ + ถ่ายรูป
+  job: null, jobWait: null, upSeq: 0,   // โฟลเดอร์รูปที่จองไว้ล่วงหน้า
   loaded: false, busy: false
 };
+
+/**
+ * จองโฟลเดอร์รูปไว้ล่วงหน้า — หัวใจของการทำให้กดส่งแล้วเร็ว
+ *
+ * ของเดิมกดส่งทีเดียวแล้วค่อยทำทั้งหมด: จองโฟลเดอร์ 1 ครั้ง อัปรูปทีละใบ N ครั้ง
+ * แล้วค่อยเขียนแถวอีก 1 ครั้ง = ยิงเซิร์ฟเวอร์ N+2 รอบเรียงกัน กว่าจะจบก็สิบกว่าวินาที
+ * งานเบิกเครื่องไม่ช้าแบบนี้เพราะมันอัปรูปเบื้องหลังตั้งแต่ตอนถ่าย พอกดส่งเหลือแค่เขียนแถว
+ * ตรงนี้ทำแบบเดียวกัน
+ */
+function cardJob() {
+  if (CARD.job) return Promise.resolve(CARD.job);
+  if (CARD.jobWait) return CARD.jobWait;
+  CARD.jobWait = rpc('apiReserve', S.user.id, S.topics[0].id).then(function (r) {
+    CARD.job = { recordId: r.recordId, folderId: r.folderId, folderUrl: r.folderUrl };
+    return CARD.job;
+  }).catch(function (e) { CARD.jobWait = null; throw e; });
+  return CARD.jobWait;
+}
+
+/** อัปรูปบัตรใบเดียวเบื้องหลัง — เงียบ ๆ ระหว่างที่คนยังกรอกชื่ออยู่ */
+function cardBgUpload(p) {
+  if (!p || !p.id || !navigator.onLine || !S.user || !S.topics.length) return;
+  if (p.up || p.upBusy) return;
+  p.upBusy = true;
+  cardJob().then(function (j) {
+    return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
+               'บัตรชั่วคราว', p.dataUrl, p.time, p.gps, ++CARD.upSeq, p.id);
+  }).then(function () {
+    p.up = true; p.upBusy = false;
+    if (S.screen === 'cards') renderFooter();
+  }).catch(function () {
+    p.upBusy = false;   // ไว้ไปอัปใหม่ตอนกดส่ง
+  });
+}
 var CARD_WHY = ['ลืมบัตร', 'คนขับแทน', 'บัตรหาย', 'อื่น ๆ'];
 
 /**
@@ -805,6 +843,7 @@ function startCardReturn(o) {
 }
 
 function openCards(mode) {
+  if (mode === 'issue') CARD.step = 0;
   if (mode) CARD.mode = mode;
   go('cards');
   if (CARD.loaded) { renderCards(); return; }
@@ -815,8 +854,6 @@ function openCards(mode) {
     // กลับหน้าแรกจะไม่เห็นใบที่เพิ่งจ่าย เพราะหน้าแรกยังถือของเก่าอยู่
     CARD.out = S.cardsOut = r.out || [];
     CARD.loaded = true;
-    // แถวแรกสร้างไว้ตั้งแต่ยังไม่รู้ว่ามีบัตรอะไรบ้าง มาเติมให้ตอนนี้
-    if (CARD.pairs.length === 1 && !CARD.pairs[0].card) CARD.pairs[0].card = freeCard();
     renderCards();
   }).catch(function (e) {
     $('#cards-msg').textContent = 'โหลดทะเบียนไม่สำเร็จ · ' + e.message;
@@ -837,25 +874,6 @@ function cardBusy() {
   return b;
 }
 
-/**
- * ใบว่างใบถัดไป — เอาไว้เติมให้อัตโนมัติตอนเพิ่มแถว
- *
- * หน้างานไม่ได้แคร์ว่าใครได้ใบไหน แค่อยากรู้ทีหลังว่าใบไหนอยู่กับใคร
- * จ่ายทีเดียว 5 คนแล้วต้องมาแตะเลือกเลขบัตรทีละแถวจึงเป็นงานเปล่า
- * เติมให้เลย เหลือแค่พิมพ์ชื่อ อยากเปลี่ยนใบก็ยังแตะเปลี่ยนได้เหมือนเดิม
- *
- * ว่าง = ไม่ได้อยู่ในมือใคร และยังไม่ถูกใช้ในแถวอื่นของรอบนี้
- */
-function freeCard() {
-  var busy = cardBusy();
-  var used = {};
-  CARD.pairs.forEach(function (p) { if (p.card) used[p.card] = true; });
-  for (var i = 0; i < CARD.cards.length; i++) {
-    var c = CARD.cards[i].code;
-    if (!busy[c] && !used[c]) return c;
-  }
-  return '';   // บัตรหมดทุกใบ — ปล่อยว่างไว้ ให้ตัวเลือกในแถวบอกเองว่าไม่มีให้เลือก
-}
 
 function renderCards() {
   var busy = cardBusy();
@@ -865,9 +883,13 @@ function renderCards() {
   //
   // ของเดิมเอามารวมหน้าเดียว หน้างานเปิดมาเจอทั้งรายการคืนและฟอร์มจ่ายพร้อมกัน
   // ต้องอ่านก่อนว่าตัวเองมาทำอะไร ซึ่งผิดกับที่ใช้อยู่ทุกวันกับอุปกรณ์
+  // จ่ายบัตรแยกเป็น 2 ขั้น เลือกใบ แล้วค่อยใส่ชื่อ + ถ่ายรูป
+  var pick = !back && CARD.step === 0;
+  $('#card-pick-wrap').classList.toggle('hide', back || !pick);
   ['card-issue-wrap', 'card-why-wrap', 'card-train'].forEach(function (id) {
-    var e = $('#' + id); if (e) e.classList.toggle('hide', back);
+    var e = $('#' + id); if (e) e.classList.toggle('hide', back || pick);
   });
+  $('#card-shot-wrap').classList.toggle('hide', pick);
   // รายการบัตรที่ยังไม่คืนขึ้นเฉพาะโหมดคืน — โหมดจ่ายไม่ต้องเห็น มีที่หน้าแรกแล้ว
   $('#cards-out-wrap').classList.toggle('hide', !back || !CARD.out.length);
   // ปุ่มคืนในหน้าไม่ใช้แล้ว โหมดคืนใช้ปุ่มแถบล่างเหมือนส่งงานปกติ
@@ -897,26 +919,52 @@ function renderCards() {
   });
   $('#btn-card-return').disabled = !Object.keys(CARD.back).length;
 
-  // ── แถวจับคู่บัตรกับคนรับ ──
-  var pw = $('#card-pairs'); pw.innerHTML = '';
-  CARD.pairs.forEach(function (p, i) {
-    var sel = el('select', { class: 'input', style: 'width:104px;flex:none' });
-    sel.appendChild(el('option', { value: '' }, ['เลือกบัตร']));
-    CARD.cards.forEach(function (c) {
-      var taken = busy[c.code] || CARD.pairs.some(function (x, j) { return j !== i && x.card === c.code; });
-      if (taken && p.card !== c.code) return;
-      sel.appendChild(el('option', { value: c.code, selected: p.card === c.code ? 'selected' : null }, [c.code]));
-    });
-    sel.addEventListener('change', function (e) { p.card = e.target.value; renderCards(); });
+  // ── ขั้นที่ 1 · ติ๊กเลือกใบบัตร ──
+  //
+  // แบบเดียวกับติ๊กรหัสเครื่องของ IDATA ที่หน้างานใช้อยู่ทุกวัน
+  // ของเดิมเป็นแถวจับคู่ ต้องแตะเลือกใบจากดรอปดาวน์แล้วพิมพ์ชื่อทีละแถว
+  // ซึ่งไม่เหมือนอะไรที่เขาเคยใช้เลย เห็นเลขบัตรทั้งหมดเรียงกันแบบนี้อ่านง่ายกว่า
+  var cc = $('#card-chips'); cc.innerHTML = '';
+  CARD.cards.forEach(function (c) {
+    var on = CARD.pairs.some(function (p) { return p.card === c.code; });
+    var taken = !!busy[c.code];
+    var b = el('button', { class: 'chip' + (on ? ' on' : '') }, [c.code]);
+    if (taken) {
+      b.disabled = true;
+      b.style.opacity = '.35';
+      b.style.cursor = 'not-allowed';
+      b.style.textDecoration = 'line-through';
+      b.title = 'ใบนี้ยังไม่ได้คืน อยู่กับ ' + busy[c.code].name;
+      b.addEventListener('click', function () {
+        toast(c.code + ' ยังไม่ได้คืน อยู่กับ ' + busy[c.code].name, true);
+      });
+    } else {
+      b.addEventListener('click', function () {
+        if (on) CARD.pairs = CARD.pairs.filter(function (p) { return p.card !== c.code; });
+        else CARD.pairs.push({ card: c.code, name: '', sub: '' });
+        renderCards();
+      });
+    }
+    cc.appendChild(b);
+  });
+  var nTaken = CARD.cards.filter(function (c) { return busy[c.code]; }).length;
+  var cb = $('#card-chips-busy');
+  cb.classList.toggle('hide', !nTaken);
+  cb.textContent = nTaken ? 'ตัวที่จางและมีขีดคร่อม ' + nTaken + ' ใบ = จ่ายออกไปแล้ว ยังไม่ได้คืน' : '';
 
+  // ── ขั้นที่ 2 · ชื่อผู้รับ (ไม่บังคับ) ──
+  var pw = $('#card-pairs'); pw.innerHTML = '';
+  CARD.pairs.forEach(function (p) {
     var who = el('input', {
-      class: 'input', style: 'flex:1', list: 'card-people', placeholder: 'แตะเลือก หรือพิมพ์ชื่อ',
-      value: p.name || ''
+      class: 'input', style: 'flex:1;min-width:0', list: 'card-people',
+      placeholder: 'ชื่อผู้รับ (ไม่บังคับ)', value: p.name || ''
+    });
+    var sub = el('input', {
+      class: 'input', style: 'flex:1;min-width:0', list: 'card-subs',
+      placeholder: 'สังกัด', value: p.sub || ''
     });
     // ชื่อที่มีในทะเบียนอยู่แล้ว เติมสังกัดให้เลย — แต่ถ้าพิมพ์สังกัดเองไว้ ห้ามทับ
-    //
-    // เรียก renderFooter() ด้วย ไม่ใช่ renderCards() — ปุ่ม "จ่ายบัตร" ต้องปลดล็อกทันที
-    // ที่พิมพ์ชื่อครบ แต่ถ้า render ทั้งหน้าจะสร้างช่องกรอกใหม่แล้วเคอร์เซอร์หลุดกลางคำ
+    // วาดแค่แถบล่าง ไม่วาดทั้งหน้า ไม่งั้นเคอร์เซอร์หลุดกลางคำที่กำลังพิมพ์
     who.addEventListener('input', function (e) {
       p.name = e.target.value;
       if (!p.subOwn) {
@@ -927,43 +975,32 @@ function renderCards() {
       }
       renderFooter();
     });
-
-    var sub = el('input', {
-      class: 'input', style: 'flex:1', list: 'card-subs', placeholder: 'สังกัด (บริษัท/ผู้รับเหมา)',
-      value: p.sub || ''
-    });
     sub.addEventListener('input', function (e) {
       p.sub = e.target.value;
-      p.subOwn = !!cs_(p.sub);   // พิมพ์เองแล้ว ไม่ต้องให้ตัวเติมอัตโนมัติมายุ่งอีก
+      p.subOwn = !!cs_(p.sub);
     });
 
     var rm = el('button', {
-      style: 'border:0;background:transparent;color:var(--color-text);opacity:.5;cursor:pointer;font-size:16px;padding:0 4px'
+      style: 'border:0;background:transparent;color:var(--color-text);opacity:.45;cursor:pointer;font-size:16px;padding:0 4px;flex:none'
     }, ['✕']);
     rm.addEventListener('click', function () {
-      CARD.pairs.splice(i, 1);
-      if (!CARD.pairs.length) CARD.pairs.push({ card: freeCard(), name: '', sub: '' });
+      CARD.pairs = CARD.pairs.filter(function (x) { return x.card !== p.card; });
+      if (!CARD.pairs.length) { CARD.step = 0; }
       renderCards();
     });
 
-    // 3 ช่องเรียงกันแถวเดียวแคบเกินไปบนมือถือ — บัตร+ชื่อบรรทัดบน สังกัดบรรทัดล่าง
     pw.appendChild(el('div', {
-      style: 'border:1px solid var(--color-divider);padding:7px;margin-bottom:6px'
+      style: 'border:1px solid var(--color-divider);padding:8px 9px;margin-bottom:6px'
     }, [
-      el('div', { style: 'display:flex;gap:6px;align-items:center' },
-        [sel, who, CARD.pairs.length > 1 ? rm : null].filter(Boolean)),
-      el('div', { style: 'display:flex;gap:6px;margin-top:5px' }, [sub])
+      el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:6px' }, [
+        el('strong', { style: 'font-family:var(--font-heading);font-weight:800;font-size:14px;flex:1' }, [p.card]),
+        rm
+      ]),
+      el('div', { style: 'display:flex;gap:6px' }, [who, sub])
     ]));
   });
 
-  // บัตรหมดแล้วก็เพิ่มแถวไปก็ไม่มีใบให้เลือก บอกไปตรง ๆ ดีกว่าให้กดแล้วงง
-  var free = freeCard();
-  var add = $('#btn-card-add');
-  add.disabled = !free;
-  add.style.opacity = free ? '' : '.45';
-  add.textContent = free ? '+ เพิ่มอีกใบ (' + free + ')' : 'บัตรหมดแล้ว · ต้องรอคืนก่อน';
-
-  // รายชื่อให้เลือก — ใช้ datalist จะได้พิมพ์ค้นได้ด้วยและพิมพ์ชื่อใหม่ได้ด้วย
+  // ── รายชื่อ/สังกัดให้เลือก ──
   var dl = $('#card-people');
   if (dl && dl.childElementCount !== CARD.people.length) {
     dl.innerHTML = '';
@@ -971,8 +1008,6 @@ function renderCards() {
       dl.appendChild(el('option', { value: p.name }, [p.sub + (p.dept ? ' · ' + p.dept : '')]));
     });
   }
-
-  // สังกัดที่เคยมีในทะเบียน — แตะเลือกได้ไว ๆ ส่วนสังกัดใหม่ก็พิมพ์เองได้
   var ds = $('#card-subs');
   if (ds) {
     var subs = [], seen = {};
@@ -1028,17 +1063,45 @@ function renderCards() {
   renderFooter();
 }
 
-/** คู่ที่กรอกครบแล้ว — ต้องมีทั้งบัตรและชื่อ */
+/**
+ * ใบที่ติ๊กไว้ — ต้องมีแค่เลขบัตร ชื่อไม่บังคับแล้ว
+ *
+ * ของเดิมบังคับใส่ชื่อถึงจะส่งได้ แต่ตอนจ่ายบัตรจริงคนขับยืนรออยู่
+ * มัวพิมพ์ชื่อพม่าให้ถูกทีละคนไม่ทันงาน ปล่อยว่างแล้วไปเติมในชีททีหลังได้
+ * สิ่งที่ขาดไม่ได้จริง ๆ คือ "ใบไหนออกไป" กับ "รูปตอนจ่าย" เท่านั้น
+ */
 function cardReady() {
-  return CARD.pairs.filter(function (p) { return cs_(p.card) && cs_(p.name); });
+  return CARD.pairs.filter(function (p) { return cs_(p.card); });
 }
 function cs_(v) { return (v || '').toString().trim(); }
 
+/**
+ * อัปรูปที่ยังค้างให้ครบ แล้วคืนลิงก์โฟลเดอร์
+ *
+ * ปกติรูปถูกอัปไปตั้งแต่ตอนถ่ายแล้ว ตรงนี้จึงมักไม่ต้องทำอะไรเลย
+ * เหลือไว้เผื่อรูปใบไหนอัปไม่สำเร็จตอนนั้น (เน็ตสะดุด) จะได้ตามเก็บก่อนเขียนแถว
+ */
+function cardPhotos() {
+  var left = CARD.shots.filter(function (p) { return !p.up; });
+  if (!CARD.shots.length) return Promise.resolve('');
+  if (!left.length) return Promise.resolve(CARD.job ? CARD.job.folderUrl : '');
+  return cardJob().then(function (j) {
+    return left.reduce(function (chain, p) {
+      return chain.then(function () {
+        return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
+                   'บัตรชั่วคราว', p.dataUrl, p.time, p.gps, ++CARD.upSeq, p.id)
+          .then(function () { p.up = true; });
+      });
+    }, Promise.resolve()).then(function () { return j.folderUrl; });
+  });
+}
+
 function sendCards() {
   var items = cardReady();
-  if (!items.length) { toast('ต้องจับคู่บัตรกับชื่อผู้รับอย่างน้อย 1 คู่', true); return; }
+  if (!items.length) { toast('ติ๊กเลือกใบบัตรก่อนอย่างน้อย 1 ใบ', true); return; }
+  if (!CARD.shots.length) { toast('ต้องถ่ายรูปหลักฐานอย่างน้อย 1 รูป', true); return; }
 
-  // เติมข้อมูลจากทะเบียนให้อัตโนมัติ — พิมพ์ชื่อใหม่ก็ส่งได้ ช่องพวกนี้จะว่างไว้
+  // เติมข้อมูลจากทะเบียนให้อัตโนมัติ — ไม่ใส่ชื่อก็ส่งได้ ช่องพวกนี้จะว่างไว้
   var byName = peopleByName();
   var payload = {
     empId: S.user.id, why: CARD.why, trained: CARD.trained,
@@ -1062,30 +1125,14 @@ function sendCards() {
   }).then(function (r) {
     CARD.busy = false; S.busy = false;
     toast('จ่ายบัตรแล้ว ' + r.wrote + ' ใบ');
-    CARD.pairs = [{ card: '', name: '', sub: '' }]; CARD.trained = false; CARD.shots = [];
+    CARD.pairs = []; CARD.trained = false; CARD.shots = [];
+    CARD.step = 0; CARD.job = null; CARD.jobWait = null; CARD.upSeq = 0;
     CARD.loaded = false;
     openCards();
   }).catch(function (e) {
     CARD.busy = false; S.busy = false;
     toast(e.message, true); renderCards();
   });
-}
-
-/**
- * อัปรูปขึ้นไดรฟ์ก่อนเขียนแถว แล้วเอาลิงก์โฟลเดอร์ใส่ช่องหลักฐานการอบรม
- * ไม่มีรูปก็ไม่ต้องอัป ส่งค่าว่างไป
- */
-function cardPhotos() {
-  if (!CARD.shots.length) return Promise.resolve('');
-  return rpc('apiReserve', S.user.id, S.topics[0].id).then(function (j) {
-    var seq = 0;
-    return CARD.shots.reduce(function (chain, p) {
-      return chain.then(function () {
-        return rpc('apiUploadPhoto', S.user.id, j.recordId, j.folderId,
-                   'บัตรชั่วคราว', p.dataUrl, p.time, p.gps, ++seq, p.id);
-      });
-    }, Promise.resolve()).then(function () { return j.folderUrl; });
-  }).catch(function () { return ''; });   // อัปรูปไม่ได้ก็ยังบันทึกบัตรได้ ข้อมูลสำคัญกว่ารูป
 }
 
 function returnCards() {
@@ -1805,14 +1852,22 @@ function renderFooter() {
                : 'ติ๊กใบที่ได้คืนมาก่อน');
   } else if (S.screen === 'cards') {
     var ready = cardReady();
-    label = 'จ่ายบัตร' + (ready.length ? ' ' + ready.length + ' ใบ' : '');
-    okState = ready.length > 0 && !CARD.busy;
-    // บอกจำนวนรูปไว้ตรงนี้ด้วย เพราะรูปคือหลักฐานว่าใครรับบัตรและอบรมแล้วจริง
-    // ไม่ได้บังคับ ส่งโดยไม่มีรูปก็ยังได้ แต่ต้องเห็นก่อนกดว่ายังไม่ได้ถ่าย
-    hintText = !CARD.loaded ? 'กำลังโหลดทะเบียน…'
-      : (ready.length ? (CARD.shots.length ? 'แนบรูปแล้ว ' + CARD.shots.length + ' รูป' : 'ยังไม่ได้ถ่ายรูป')
-                        + ' · 1 ใบ = 1 แถวในสมุด'
-                      : 'เลือกบัตรและใส่ชื่อผู้รับก่อน');
+    if (CARD.step === 0) {
+      label = 'ถัดไป' + (ready.length ? ' · ' + ready.length + ' ใบ' : '');
+      okState = ready.length > 0;
+      hintText = !CARD.loaded ? 'กำลังโหลดทะเบียน…'
+        : ready.length ? 'ขั้นที่ 1 จาก 2 · ติ๊กเพิ่มได้อีก'
+                       : 'ขั้นที่ 1 จาก 2 · ติ๊กใบบัตรที่จะจ่าย';
+    } else {
+      label = 'จ่ายบัตร' + (ready.length ? ' ' + ready.length + ' ใบ' : '');
+      // ชื่อไม่บังคับแล้ว บังคับแค่เลือกใบกับถ่ายรูป
+      okState = ready.length > 0 && CARD.shots.length > 0 && !CARD.busy;
+      var upN = CARD.shots.filter(function (p) { return p.up; }).length;
+      hintText = !ready.length ? 'ยังไม่ได้เลือกใบบัตร'
+        : !CARD.shots.length ? 'ขั้นที่ 2 จาก 2 · ยังไม่ได้ถ่ายรูป'
+        : 'ขั้นที่ 2 จาก 2 · รูป ' + upN + '/' + CARD.shots.length +
+          (upN < CARD.shots.length ? ' กำลังอัป' : ' พร้อมส่ง');
+    }
   } else if (S.screen === 'form') {
     label = 'ไปถ่ายรูป';
     var n = totalQty();
@@ -2047,7 +2102,11 @@ function handleFiles(files, fromCamera) {
     } else if (cap.target === 'card') {
       // บัตรชั่วคราวเก็บรูปไว้ในเครื่องก่อน ส่งพร้อมกันตอนกดจ่ายบัตร
       // ไม่ใช้ bgUpload เพราะยังไม่มีรหัสรายการให้ผูก คนละระบบกับงานเบิกเครื่อง
-      list.forEach(function (p) { CARD.shots.push(Object.assign({ id: uid('c') }, p)); });
+      // อัปขึ้นไดรฟ์เลยระหว่างที่คนยังกรอกชื่ออยู่ กดส่งจะได้เหลือแค่เขียนแถว
+      list.forEach(function (p) {
+        var o = Object.assign({ id: uid('c') }, p);
+        CARD.shots.push(o); cardBgUpload(o);
+      });
     } else if (cap.target === 'sup') {
       // เหมือนบัตร — เก็บไว้ในเครื่องก่อน ส่งพร้อมกันตอนกดเบิก
       list.forEach(function (p) { SUP.shots.push(Object.assign({ id: uid('m') }, p)); });
@@ -2603,9 +2662,6 @@ function bind() {
   $('#btn-sup').addEventListener('click', openSup);
   $('#sup-find').addEventListener('input', function (e) { SUP.find = e.target.value; renderSupPick(); });
   $('#sup-note').addEventListener('input', function (e) { SUP.note = e.target.value; });
-  $('#btn-card-add').addEventListener('click', function () {
-    CARD.pairs.push({ card: freeCard(), name: '', sub: '' }); renderCards();
-  });
   $('#card-train').addEventListener('click', function () {
     CARD.trained = !CARD.trained; renderCards();
   });
@@ -2722,7 +2778,11 @@ function bind() {
     if (S.screen === 'form')   { S.step = 0; return go('shoot'); }
     if (S.screen === 'shoot')  return nextStep();
     if (S.screen === 'review') return submit();
-    if (S.screen === 'cards')  return CARD.mode === 'back' ? returnCards() : sendCards();
+    if (S.screen === 'cards') {
+      if (CARD.mode === 'back') return returnCards();
+      if (CARD.step === 0) { CARD.step = 1; return render(); }
+      return sendCards();
+    }
     if (S.screen === 'sup')    { if (SUP.step === 0) { SUP.step = 1; return render(); } return sendSup(); }
   });
 

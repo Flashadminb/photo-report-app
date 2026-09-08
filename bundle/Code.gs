@@ -2811,8 +2811,11 @@ function apiCardIssue(payload) {
     var m = getMaster_();
     var u = requireUser_(m, p.empId);
 
-    var items = (p.items || []).filter(function (x) { return x && s_(x.card) && s_(x.name); });
-    if (!items.length) throw new Error('ต้องจับคู่บัตรกับชื่อผู้รับอย่างน้อย 1 คู่');
+    // ชื่อไม่บังคับแล้ว — ตอนจ่ายบัตรจริงคนขับยืนรออยู่ มัวพิมพ์ชื่อให้ถูกไม่ทันงาน
+    // ปล่อยว่างแล้วไปเติมในชีททีหลังได้ สิ่งที่ขาดไม่ได้คือใบไหนออกไปกับรูปตอนจ่าย
+    var items = (p.items || []).filter(function (x) { return x && s_(x.card); });
+    if (!items.length) throw new Error('ต้องเลือกใบบัตรอย่างน้อย 1 ใบ');
+    if (!s_(p.proof)) throw new Error('ต้องแนบรูปหลักฐานอย่างน้อย 1 รูป');
 
     // ใบเดียวจ่ายสองคนพร้อมกันไม่ได้ ต้องกันตั้งแต่ต้นทาง
     var seen = {};
