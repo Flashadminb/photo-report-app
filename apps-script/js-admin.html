@@ -412,6 +412,43 @@ function guardEdit() {
   return true;
 }
 
+/**
+ * เรียงรหัสเครื่องให้อ่านง่าย — ใช้ตอนแสดงผลเท่านั้น ไม่แตะข้อมูลในชีท
+ *
+ * ในชีทเก็บตามลำดับที่หน้างานแตะเลือก ซึ่งข้ามไปมาได้ เช่น OUT 6W 01, 02, 04, 03
+ * (แตะ 03 แล้วแตะออก แล้วแตะใหม่ทีหลัง มันจะไปต่อท้ายสุด)
+ * ลำดับนั้นคือหลักฐานว่าหน้างานกดอะไรก่อนหลัง จึงไม่ควรไปเขียนทับของเดิม
+ * แค่จัดให้ตาอ่านง่ายตอนโชว์ก็พอ
+ *
+ * เรียงแบบ "ตัวเลขเป็นตัวเลข" ไม่ใช่เรียงตัวอักษร — ไม่งั้น PP-10 จะมาก่อน PP-2
+ */
+function sortCodes(csv) {
+  var s = (csv == null ? '' : String(csv));
+  var parts = s.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  if (parts.length < 2) return s;
+
+  // "OUT 6W 01" -> ['OUT ', 6, 'W ', 1] · เทียบทีละก้อน เลขเทียบเป็นเลข
+  var chunk = function (t) {
+    return t.split(/(\d+)/).filter(function (x) { return x !== ''; })
+      .map(function (x) { return /^\d+$/.test(x) ? Number(x) : x.toLowerCase(); });
+  };
+  var keyed = parts.map(function (t, i) { return { t: t, k: chunk(t), i: i }; });
+  keyed.sort(function (a, b) {
+    var n = Math.min(a.k.length, b.k.length);
+    for (var j = 0; j < n; j++) {
+      var x = a.k[j], y = b.k[j];
+      if (x === y) continue;
+      var nx = typeof x === 'number', ny = typeof y === 'number';
+      if (nx && ny) return x - y;
+      if (nx !== ny) return nx ? -1 : 1;   // เลขมาก่อนตัวอักษรที่ตำแหน่งเดียวกัน
+      return String(x).localeCompare(String(y), 'th');
+    }
+    if (a.k.length !== b.k.length) return a.k.length - b.k.length;
+    return a.i - b.i;                      // เท่ากันจริง ๆ คงลำดับเดิมไว้
+  });
+  return keyed.map(function (x) { return x.t; }).join(', ');
+}
+
 function h(tag, attrs, kids) { return el(tag, attrs, kids); }
 function section(title, kids, actions) {
   return h('div', { class: 'group' }, [
@@ -824,7 +861,7 @@ function pairCardHidden(p) {
     style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;' +
            'padding:7px 12px;margin-bottom:6px;border:1px solid var(--color-divider);opacity:.65'
   }, [
-    h('span', { style: 'font-weight:700' }, [p.codes || p.id]),
+    h('span', { style: 'font-weight:700' }, [sortCodes(p.codes) || p.id]),
     recChip(p.id),
     h('span', { class: 'muted' }, [p.name + ' · ' + p.date]),
     h('span', { class: 'muted' }, [qty]),
@@ -848,7 +885,7 @@ function pairCard(p) {
 
   var mismatch = !p.back || (p.qtyBack !== null && p.qtyBack !== p.qty);
   var head = h('h4', {}, [
-    h('span', { style: 'font-size:16px' }, [p.codes || p.id]),
+    h('span', { style: 'font-size:16px' }, [sortCodes(p.codes) || p.id]),
     // รหัสรายการ — แอดมินใช้อ้างอิงกับที่หน้างานเห็นบนมือถือ ค้นหาด้วยเลขท้ายได้
     recChip(p.id),
     h('span', { class: 'muted', style: 'font-size:12px;font-weight:400' },
@@ -1056,7 +1093,7 @@ function fillDataRows(tbody) {
       h('td', {}, [p.date]), h('td', { style: 'font-size:12px' }, [p.shift]),
       h('td', {}, [p.name]), h('td', {}, [p.dept]), h('td', {}, [p.topic]),
       h('td', {}, [String(p.qty) + (p.qtyBack !== null && p.qtyBack !== p.qty ? ' → ' + p.qtyBack : '')]),
-      h('td', { style: 'font-size:12px' }, [p.codes]),
+      h('td', { style: 'font-size:12px' }, [sortCodes(p.codes)]),
       h('td', {}, [p.out ? p.out.time + ' (' + sidePhotos(p.out).length + ')' : '—']),
       textCell(p.out && p.out.by),
       resultCell(p.out), textCell(p.out && p.out.issue), textCell(p.out && p.out.note),
@@ -1145,7 +1182,7 @@ function viewDash(v) {
   v.appendChild(section('รายการที่พบปัญหา', issues.length ? issues.map(function (p) {
     return h('div', { style: 'border-top:2px solid var(--color-accent);padding:8px 0;margin-bottom:8px' }, [
       h('div', { style: 'font-family:var(--font-heading);font-weight:800;font-size:13px' },
-        [p.date + ' · ' + p.codes + ' · ' + p.name]),
+        [p.date + ' · ' + sortCodes(p.codes) + ' · ' + p.name]),
       h('div', { style: 'font-size:13px' }, [p.issue || '—']),
       h('div', { class: 'muted', style: 'font-size:12px' }, ['หมายเหตุ: ' + (p.note || '—')])
     ]);
@@ -1208,7 +1245,7 @@ function viewDash(v) {
     return h('div', {
       style: 'display:flex;gap:12px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--color-divider)'
     }, [
-      h('strong', { style: 'font-size:13px;min-width:150px' }, [r.codes || r.id]),
+      h('strong', { style: 'font-size:13px;min-width:150px' }, [sortCodes(r.codes) || r.id]),
       h('span', { style: 'font-size:13px;flex:1' },
         [r.empName + ' · ' + r.dept + ' · ' + r.action + ' ' + r.topic]),
       h('span', { class: 'muted', style: 'font-size:12px' },
@@ -1224,7 +1261,7 @@ function viewDash(v) {
   var open = P.filter(function (p) { return !p.back; });
   v.appendChild(section('ยังไม่คืน', open.length ? open.map(function (p) {
     return h('div', { style: 'display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--color-divider)' }, [
-      h('strong', { style: 'font-size:13px' }, [p.codes || p.id]),
+      h('strong', { style: 'font-size:13px' }, [sortCodes(p.codes) || p.id]),
       h('span', { class: 'muted', style: 'font-size:12px' },
         [p.name + ' · ' + p.dept + ' · เบิก ' + p.date + ' ' + (p.out ? p.out.time : '') + ' น.'])
     ]);
